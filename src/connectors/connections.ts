@@ -19,7 +19,7 @@ import {
 } from "./mcp.js";
 import { type Row, type Store, now, opt } from "../workflow/store.js";
 
-export const CONNECTIONS = ["slack", "notion", "jira", "claude", "github"] as const;
+export const CONNECTIONS = ["slack", "notion", "jira", "aws", "gmail", "drive", "claude", "github"] as const;
 export type ConnectionName = (typeof CONNECTIONS)[number];
 export type ConnectionStatus = "connected" | "expired" | "missing" | "error";
 
@@ -51,8 +51,8 @@ export interface ServerChoice {
   pinned: boolean;
 }
 
-const CONNECTOR_STEPS = (app: string, also = "") => [
-  `Run factory connect ${app.toLowerCase()}. If Claude needs you to sign in to ${app} again, it starts Claude Code's own sign-in (claude mcp login) and opens your browser.`,
+const CONNECTOR_STEPS = (app: string, cmd: string, also = "") => [
+  `Run factory connect ${cmd}. If Claude needs you to sign in to ${app} again, it starts Claude Code's own sign-in (claude mcp login) and opens your browser.`,
   `If Claude doesn't have ${app}${also} at all yet, add it in Claude's connector settings (it opens them for you). Claude Code uses the same connectors when it's signed in with that account. Or add a ${app} MCP server yourself with claude mcp add.`,
   "The factory only ever uses Claude's access; it never asks for a token.",
 ];
@@ -63,25 +63,52 @@ export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "
     neededFor: "Intake, reply drafts, write-back to threads",
     required: true,
     via: "The Slack connector in Claude",
-    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Slack") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Slack", "slack") },
   },
   notion: {
     label: "Notion",
     neededFor: "Review docs, comments, decisions, the factory board, learn-tagged artifacts",
     required: true,
     via: "The Notion connector in Claude",
-    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Notion") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Notion", "notion") },
   },
   jira: {
-    label: "Jira",
-    neededFor: "Intake of tickets assigned to you, write-back",
+    label: "Atlassian",
+    neededFor: "Jira: intake of tickets assigned to you, write-back; Confluence pages as context",
     required: false,
     via: "The Atlassian connector in Claude",
-    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Jira", " (the Atlassian connector)") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Atlassian", "jira", " (it covers Jira and Confluence)") },
+  },
+  aws: {
+    label: "AWS",
+    neededFor: "Read-only lookups (logs, resources, docs) when a task needs them",
+    required: false,
+    via: "An AWS MCP server you added to Claude Code",
+    fix: {
+      steps: [
+        "Add an AWS MCP server to Claude Code with claude mcp add, signed in with the profile you want the factory to read through.",
+        "Run factory connect aws, then pick the server on the Connections page when you have more than one.",
+        "Stages may use only its tools that plainly only read (get, list, describe, search); anything else asks you.",
+      ],
+    },
+  },
+  gmail: {
+    label: "Gmail",
+    neededFor: "Email threads as context for a task",
+    required: false,
+    via: "The Gmail connector in Claude",
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Gmail", "gmail") },
+  },
+  drive: {
+    label: "Google Drive",
+    neededFor: "Docs, sheets and files as context for a task",
+    required: false,
+    via: "The Google Drive connector in Claude",
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Google Drive", "drive") },
   },
   claude: {
     label: "Claude Code",
-    neededFor: "Every session, and the Slack, Notion and Jira connectors",
+    neededFor: "Every session, and every connector the factory reads through",
     required: true,
     via: "The claude command, signed in with your subscription",
     fix: { steps: ["Run claude in a terminal and sign in with your Claude account (not an API key)."] },
@@ -112,7 +139,10 @@ export const realTester =
     switch (name) {
       case "slack":
       case "notion":
-      case "jira": {
+      case "jira":
+      case "aws":
+      case "gmail":
+      case "drive": {
         const s = await serverFor(engine.store, name);
         if (!s)
           throw new HttpError(

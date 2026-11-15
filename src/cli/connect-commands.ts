@@ -3,6 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { call } from "../daemon/client.js";
 import type { Command, Flags } from "./cli.js";
 import { CONNECTIONS, type Connection, type ConnectionName, INFO } from "../connectors/connections.js";
+import { SERVICES } from "../connectors/mcp.js";
 import { table } from "./format.js";
 import type { IntakeItem, TriageRule } from "../integrations/intake.js";
 import type { Routine } from "../integrations/routines.js";
@@ -64,10 +65,10 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   connect: {
-    usage: "connect slack|notion|jira|claude|github [--server NAME] [--login]",
+    usage: "connect slack|notion|jira|aws|gmail|drive|claude|github [--server NAME] [--login]",
     help: "Connects Slack, Notion or Jira through Claude: signs you in with Claude Code's own sign-in if needed, then checks it can read; sets up the Notion board",
     async run(args, f) {
-      const name = args[0] as ConnectionName;
+      const name = (args[0] === "atlassian" ? "jira" : args[0]) as ConnectionName;
       if (!(CONNECTIONS as readonly string[]).includes(name)) throw new Error(`connect one of: ${CONNECTIONS.join(", ")}`);
       const info = INFO[name];
       out(`${info.label}: ${info.neededFor}.${info.via ? ` Uses: ${info.via}.` : ""}`);
@@ -117,11 +118,11 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   disconnect: {
-    usage: "disconnect slack|notion|jira",
+    usage: "disconnect slack|notion|jira|aws|gmail|drive",
     help: "Stop the factory using a connector; Claude keeps it (remove it in Claude to revoke access)",
     async run(args) {
-      const name = args[0] as ConnectionName;
-      if (!["slack", "notion", "jira"].includes(name)) throw new Error("disconnect one of: slack, notion, jira");
+      const name = (args[0] === "atlassian" ? "jira" : args[0]) as ConnectionName;
+      if (!(SERVICES as readonly string[]).includes(name)) throw new Error(`disconnect one of: ${SERVICES.join(", ")}`);
       const c = await call<Connection>("connections.disconnect", { name });
       out(`${c.label}: the factory no longer uses it, and work that needs it is paused. factory connect ${name} turns it back on.`);
       out("Claude still has the connector. To remove Claude's access too: https://claude.ai/customize/connectors");

@@ -470,3 +470,37 @@ test("small pieces: schedules, working hours, mcp list parsing, write tools, pag
   assert.equal(pageIdFrom("https://www.notion.so/acme/Factory-0123456789abcdef0123456789abcdef?pvs=4"), "01234567-89ab-cdef-0123-456789abcdef");
   assert.deepEqual(extractJson('sure: [{"a": "]"}] done'), [{ a: "]" }]);
 });
+
+test("AWS, Gmail and Google Drive are optional rows like Atlassian: quiet until turned on, with a server picker; AWS stages only get tools that plainly read", async () => {
+  const saved = mcpList;
+  const { servers, connectorSettings } = await import("../src/connectors/mcp.js");
+  mcpList = `${saved}aws-prod: uvx awslabs.aws-api-mcp-server (stdio) - ✓ Connected\naws-staging: uvx awslabs.aws-api-mcp-server (stdio) - ✓ Connected\nclaude.ai Gmail: https://gmail.mcp.claude.com/mcp (HTTP) - ! Needs authentication\n`;
+  await servers(true);
+  await c("connections.test", {});
+  const list = await c<Connection[]>("connections.list");
+  assert.deepEqual(
+    list.map((x) => x.name),
+    ["slack", "notion", "jira", "aws", "gmail", "drive", "claude", "github"],
+  );
+  assert.equal(list.find((x) => x.name === "jira")!.label, "Atlassian");
+  const alerts = (await c<Connection[]>("connections.alerts")).map((x) => x.name);
+  assert.ok(!alerts.includes("aws") && !alerts.includes("gmail") && !alerts.includes("drive"), "optional rows don't warn until turned on");
+  const choices = await c<{ name: string }[]>("connections.choices", { name: "aws" });
+  assert.deepEqual(
+    choices.map((x) => x.name),
+    ["aws-prod", "aws-staging"],
+    "AWS has no Claude connector of its own, so only the servers you added",
+  );
+  assert.deepEqual(
+    (await c<{ name: string }[]>("connections.choices", { name: "drive" })).map((x) => x.name),
+    ["claude.ai Google Drive"],
+  );
+  running.store.setSetting("connectors", {
+    ...connectorSettings(running.store),
+    tools: { aws: [`${toolPrefix("aws-prod")}__call_aws`, `${toolPrefix("aws-prod")}__list_buckets`, `${toolPrefix("aws-prod")}__describe_log_groups`] },
+  });
+  const reads = connectorReads(running.store).filter((t) => t.includes("aws"));
+  assert.deepEqual(reads, [`${toolPrefix("aws-prod")}__list_buckets`, `${toolPrefix("aws-prod")}__describe_log_groups`], "a generic call tool could change anything, so it asks");
+  mcpList = saved;
+  await servers(true);
+});

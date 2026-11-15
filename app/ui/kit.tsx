@@ -23,7 +23,7 @@ export const Brand = ({ n, s = 20 }: { n: string; s?: number }) => {
   if (!BRANDS[n])
     return (
       <span class="brand-tile you" style={{ width: s, height: s }}>
-        <Ic n={n === "github" ? "git-pull-request" : n === "factory" ? "factory" : "user"} s={Math.round(s * 0.65)} />
+        <Ic n={n === "github" ? "git-pull-request" : n === "factory" ? "factory" : ["aws", "gmail", "drive"].includes(n) ? "plug" : "user"} s={Math.round(s * 0.65)} />
       </span>
     );
   const inner = Math.round(s * 0.66);

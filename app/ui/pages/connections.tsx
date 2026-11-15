@@ -434,7 +434,7 @@ function ServerPick({ c }: { c: Connection }) {
     <div class="small">
       {c.workspace && (
         <div>
-          Workspace <b>{c.workspace}</b>
+          Signed in to <b>{c.workspace}</b>
         </div>
       )}
       <div class="row" style={{ gap: 6 }}>
