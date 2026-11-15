@@ -1,0 +1,13 @@
+# Design mockups are a local reference only; never pushed.
+design/
+
+node_modules/
+dist/
+dist-app/
+app/src-tauri/target/
+app/src-tauri/gen/
+spec/states/
+spec/*.out
+spec/Factory_TTrace_*
+*.log
+.DS_Store

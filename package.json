@@ -1,0 +1,25 @@
+{
+  "name": "factory",
+  "version": "0.1.0",
+  "description": "An on-device software factory: Slack and Jira in, reviewed and verified pull requests out, driven by Claude Code on your subscription.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "factory": "dist/src/cli.js",
+    "factoryd": "dist/src/factoryd.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --no-warnings=ExperimentalWarning --test dist/test/*.test.js",
+    "tlc": "node scripts/tlc.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
