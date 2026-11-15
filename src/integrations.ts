@@ -1,0 +1,216 @@
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { type ConnectionName, Connections, type Tester, realTester } from "./connections.js";
+import type { Decision, TaskView } from "./engine.js";
+import type { PluginFactory } from "./factoryd.js";
+import { Intake, type TriageAction } from "./intake.js";
+import * as jira from "./jira.js";
+import { NotionSync } from "./notion-sync.js";
+import { paths } from "./paths.js";
+import { type Builtin, Routines } from "./routines.js";
+import * as slack from "./slack.js";
+import type { Tag } from "./store.js";
+import { type Ticket, Tickets } from "./tickets.js";
+
+/*
+ * Wires intake, triage, connections, Notion and routines into the engine, and writes gate outcomes
+ * back to the Slack thread or Jira ticket the work came from.
+ */
+
+export interface IntegrationOptions {
+  tester?: Tester;
+  /** Extra built-in routines from later parts (doctor, usage guard, retros, improve-factory). */
+  extraRoutines?: (ctx: { routines: Routines }) => Builtin[];
+}
+
+/** Shared with later parts (self-improving loop, doctor). */
+export const shared: { routines?: Routines; connections?: Connections; notion?: NotionSync; intake?: Intake } = {};
+
+export const integrationsPart =
+  (opts: IntegrationOptions = {}): PluginFactory =>
+  ({ engine, store }) => {
+    const connections = new Connections(store, engine, opts.tester ?? realTester(engine));
+    const intake = new Intake(store, engine, connections);
+    const tickets = new Tickets(store, engine);
+    const sync = new NotionSync(store, engine, tickets, connections);
+    const routines = new Routines(store, engine);
+    Object.assign(shared, { routines, connections, notion: sync, intake });
+
+    const builtins: Builtin[] = [
+      {
+        id: "health-check",
+        name: "Health check",
+        description: "One cheap test call per connection; raises a sticky alert when one breaks",
+        everySeconds: 300,
+        run: async () => {
+          const all = await connections.testAll();
+          const bad = all.filter((c) => c.status !== "connected" && (c.required || connections.configured(c.name)));
+          return bad.length ? `${bad.map((c) => `${c.label} ${c.status}`).join(", ")}` : "all connections working";
+        },
+      },
+      {
+        id: "intake-slack",
+        name: "Slack intake",
+        description: "DMs and @-mentions newer than the last cursor, then triage",
+        everySeconds: engine.settings().pollMinutes * 60,
+        workingHours: true,
+        run: async () => {
+          const r = await intake.poll("slack");
+          if (r.skipped) return `skip: ${r.skipped}`;
+          const t = r.added ? await intake.triage() : { triaged: 0 };
+          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new (no tokens used)";
+        },
+      },
+      {
+        id: "intake-jira",
+        name: "Jira intake",
+        description: "Tickets assigned to you that changed since the last cursor, then triage",
+        everySeconds: engine.settings().pollMinutes * 60,
+        workingHours: true,
+        run: async () => {
+          if (!connections.configured("jira")) return "skip: Jira isn't set up (optional)";
+          const r = await intake.poll("jira");
+          if (r.skipped) return `skip: ${r.skipped}`;
+          const t = r.added ? await intake.triage() : { triaged: 0 };
+          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new (no tokens used)";
+        },
+      },
+      {
+        id: "triage",
+        name: "Triage",
+        description: "Sorts anything still in the inbox (rules first, then one batched Haiku call)",
+        everySeconds: 600,
+        run: async () => {
+          const r = await intake.triage();
+          return r.triaged ? `${r.triaged} sorted${r.tokensUsed ? "" : " by rules"}` : "inbox empty";
+        },
+      },
+      {
+        id: "notion-sync",
+        name: "Notion sync",
+        description: "Mirrors jobs and tickets, picks up tickets you added, retries anything pending",
+        everySeconds: 120,
+        run: async () => {
+          if (!sync.ready()) return "skip: the Notion board isn't set up (factory notion setup <page link>)";
+          if (!connections.ok("notion")) return "skip: Notion isn't connected; changes wait";
+          const flushed = await sync.flush();
+          const added = await sync.pullTickets();
+          return `${flushed} pending sent, ${added} tickets picked up from Notion`;
+        },
+      },
+      {
+        id: "cleanup",
+        name: "Cleanup",
+        description: "Removes worktrees and saved screens of tasks finished more than a week ago",
+        everySeconds: 86_400,
+        run: async () => {
+          let removed = 0;
+          const old = Date.now() - 7 * 86_400_000;
+          for (const t of engine.list({ all: true }).filter((x) => ["Done", "Dropped"].includes(x.machine.state) && Date.parse(x.updatedAt) < old)) {
+            const screens = join(paths.job(t.id), ".factory", "screens");
+            if (existsSync(screens)) {
+              rmSync(screens, { recursive: true, force: true });
+              removed++;
+            }
+          }
+          const wt = paths.worktrees();
+          const stale = existsSync(wt) ? readdirSync(wt).length : 0;
+          return `${removed} finished tasks tidied; ${stale} repos with worktrees`;
+        },
+      },
+      {
+        id: "post-merge-watch",
+        name: "Post-merge watch",
+        description: "Phase 2: watches errors and metrics for a day after each merge; a regression opens a task",
+        everySeconds: 3600,
+        enabled: false,
+        run: async () => "skip: needs a Sentry connection (phase 2)",
+      },
+      ...(opts.extraRoutines?.({ routines }) ?? []),
+    ];
+
+    // ---------- write-back and Notion mirroring, driven by engine events ----------
+
+    const writeBack = async (t: TaskView, text: string) => {
+      const cfg = store.setting<{ slack?: boolean; jira?: boolean }>("write_back", { slack: true, jira: true });
+      const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
+      if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store.setting("jira", {}), item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
+      if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(item.meta.channelId, item.meta.threadTs!, text);
+    };
+
+    const onChange = (c: { kind: string; task?: TaskView; action?: string }) => {
+      const t = c.task;
+      if (c.kind !== "task" || !t) return;
+      sync.later("job", t.id, () => sync.mirrorJob(t));
+      if (t.machine.state === "ResearchGate" || t.machine.state === "PlanGate") sync.later("review", t.id, () => sync.publishReview(t));
+    };
+    const onTicket = (d: { ticket: Ticket }) => sync.later("ticket", d.ticket.id, () => sync.mirrorTicket(d.ticket));
+    const onDecision = (d: Decision) => {
+      void sync.recordVerdict(d.task, d.verdict).catch(() => {});
+      const t = d.task;
+      const where = t.prUrl ? ` ${t.prUrl}` : "";
+      const text =
+        t.machine.state === "Done"
+          ? `Done: the change is approved.${where}`
+          : t.machine.state === "Dropped"
+            ? `Dropped this one${d.note ? `: ${d.note}` : "."}`
+            : d.verdict === "approve" && t.machine.state === "Planning" && t.tags.includes("learn") && t.notionReviewId
+              ? `Research write-up (statechart and formal check included): https://www.notion.so/${t.notionReviewId.replace(/-/g, "")}`
+              : "";
+      if (text) void writeBack(t, text).catch((e) => engine.emit("alert", { level: "warn", taskId: t.id, message: `Couldn't write back to ${t.source}: ${e instanceof Error ? e.message : e}` }));
+    };
+    engine.beforeWake.push(async (d) => {
+      if (d.verdict === "send_back" && sync.ready() && connections.ok("notion")) await sync.collectComments(d.task, d.note);
+    });
+
+    return {
+      name: "integrations",
+      start: () => {
+        for (const b of builtins) routines.register(b);
+        engine.on("change", onChange);
+        engine.on("ticket", onTicket);
+        engine.on("decision", onDecision);
+        routines.start();
+      },
+      stop: () => routines.stop(),
+      api: {
+        "connections.list": () => connections.list(),
+        "connections.test": async (p: { name?: ConnectionName }) => (p.name ? [await connections.test(p.name)] : connections.testAll()),
+        "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
+        "connections.alerts": () => connections.alerts(),
+        "jira.configure": (p: { site: string; email: string }) => {
+          store.setSetting("jira", { site: p.site, email: p.email });
+          return connections.test("jira");
+        },
+        "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
+        "intake.poll": async (p: { source: "slack" | "jira" }) => {
+          const r = await intake.poll(p.source);
+          return { ...r, ...(r.added ? await intake.triage() : {}) };
+        },
+        "intake.triage": () => intake.triage(),
+        "intake.override": (p: { id: string; action: TriageAction; tags?: Tag[]; title?: string }) => intake.override(p.id, p.action, p),
+        "intake.send": (p: { id: string; text?: string }) => intake.send(p.id, p.text),
+        "rules.list": () => intake.rules(),
+        "rules.set": (p: { id: string; status: "active" | "rejected" | "proposed" }) => intake.setRule(p.id, p.status),
+        "notion.setup": (p: { page: string }) => sync.setup(p.page),
+        "notion.status": () => ({ ...sync.ids(), ready: sync.ready(), pending: sync.pendingCount() }),
+        "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
+        "review.summary": (p: { id: string }) => sync.summary(p.id),
+        "routines.list": () => routines.list(),
+        "routines.run": (p: { id: string }) => routines.run(p.id, { manual: true }),
+        "routines.update": (p: { id: string; enabled?: boolean; every?: string; workingHours?: boolean }) => routines.update(p.id, p),
+        "routines.add": (p: { name: string; every: string; command: string; workingHours?: boolean }) => routines.add(p),
+        "routines.remove": (p: { id: string }) => routines.remove(p.id),
+        "routines.history": (p: { id: string; limit?: number }) => routines.history(p.id, p.limit),
+        "repo.add": (p: { path: string; name?: string; setup?: string; base?: string }) => {
+          if (!existsSync(p.path) || !statSync(p.path).isDirectory()) throw new Error(`${p.path} isn't a folder`);
+          const name = p.name ?? p.path.replace(/\/+$/, "").split("/").pop()!;
+          store.db
+            .prepare("INSERT INTO repos (name, path, base, setup) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET path = excluded.path, base = excluded.base, setup = excluded.setup")
+            .run(name, p.path, p.base ?? "main", p.setup ?? "");
+          return { name, path: p.path };
+        },
+        "repo.list": () => store.db.prepare("SELECT * FROM repos ORDER BY name").all(),
+      },
+    };
+  };

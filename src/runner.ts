@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
-import type { Engine, TaskView } from "./engine.js";
+import type { Decision, Engine, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree } from "./git.js";
 import { paths } from "./paths.js";
@@ -632,8 +632,11 @@ export class Runner {
   // ---------- reacting to people ----------
 
   /** A person decided at a gate: tell the coordinator, which resumes the task. */
-  onDecision(d: { task: TaskView; verdict: string; to?: string; note: string }) {
-    const t = d.task;
+  async onDecision(d: Decision) {
+    for (const hook of this.engine.beforeWake) {
+      await Promise.race([hook(d).catch(() => {}), new Promise((r) => setTimeout(r, 60_000).unref?.())]);
+    }
+    const t = this.engine.get(d.task.id) ?? d.task;
     const s = t.machine.state;
     if (s === "Done") return this.finishTask(t, "done");
     if (s === "Dropped") return this.finishTask(t, "dropped");
@@ -667,7 +670,7 @@ export class Runner {
 
   start() {
     this.recover();
-    this.engine.on("decision", (d) => this.onDecision(d));
+    this.engine.on("decision", (d: Decision) => void this.onDecision(d));
     this.engine.on("change", (c: { kind: string; task?: TaskView; action?: string }) => {
       if (c.task?.machine.state === "NeedsYou" && c.action === "Interrupt") {
         for (const s of this.running(c.task.id)) this.finishStage(s, "stopped");
