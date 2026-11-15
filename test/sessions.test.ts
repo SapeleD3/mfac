@@ -11,9 +11,9 @@ const fake = join(dir, "claude.sh");
 writeFileSync(fake, `#!/bin/sh\ncat >/dev/null\nnode -e 'console.log(JSON.stringify({ args: process.argv.slice(1), cwd: process.cwd() }))' -- "$@"\n`);
 chmodSync(fake, 0o755);
 process.env.FACTORY_CLAUDE = fake;
-const { ROTATE_TURNS, pooledSessions, realRunner } = await import("../src/claude-print.js");
-const { sessionName } = await import("../src/runner.js");
-const { paths } = await import("../src/paths.js");
+const { ROTATE_TURNS, pooledSessions, realRunner } = await import("../src/claude/print.js");
+const { sessionName } = await import("../src/stages/runner.js");
+const { paths } = await import("../src/shared/paths.js");
 
 const run = async (session?: string) => JSON.parse(await realRunner("hi", { model: "haiku", session })) as { args: string[]; cwd: string };
 const after = (args: string[], flag: string) => args[args.indexOf(flag) + 1];

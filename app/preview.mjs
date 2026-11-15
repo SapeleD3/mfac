@@ -2,7 +2,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Client } from "../dist/src/client.js";
+import { Client } from "../dist/src/daemon/client.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "dist-app");

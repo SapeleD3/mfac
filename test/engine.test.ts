@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { Client, call } from "../src/client.js";
-import type { TaskView } from "../src/engine.js";
-import { startEngine } from "../src/factoryd.js";
-import { main } from "../src/cli.js";
+import { Client, call } from "../src/daemon/client.js";
+import type { TaskView } from "../src/workflow/engine.js";
+import { startEngine } from "../src/daemon/host.js";
+import { main } from "../src/cli/cli.js";
 
 const dir = mkdtempSync(join(tmpdir(), "factory-test-"));
 process.env.FACTORY_HOME = dir;

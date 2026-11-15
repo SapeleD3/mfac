@@ -4,11 +4,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { call } from "../src/client.js";
-import type { TaskView } from "../src/engine.js";
-import { startEngine } from "../src/factoryd.js";
-import { type Stage, runnerPart } from "../src/runner.js";
-import { ticketsPart } from "../src/tickets.js";
+import { call } from "../src/daemon/client.js";
+import type { TaskView } from "../src/workflow/engine.js";
+import { startEngine } from "../src/daemon/host.js";
+import { type Stage, runnerPart } from "../src/stages/runner.js";
+import { ticketsPart } from "../src/board/tickets.js";
 
 const dir = mkdtempSync(join(tmpdir(), "factory-runner-"));
 process.env.FACTORY_HOME = dir;

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, validBranch } from "../src/conventions.js";
+import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, validBranch } from "../src/repo/conventions.js";
 
 function repo(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "factory-conv-"));

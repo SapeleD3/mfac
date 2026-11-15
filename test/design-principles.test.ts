@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFile
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { test } from "node:test";
-import { designPrinciplesDir, fetchDesignPrincipleSources, loadPrinciples, loadSources } from "../src/design-principles.js";
+import { designPrinciplesDir, fetchDesignPrincipleSources, loadPrinciples, loadSources } from "../src/skills/design-principles.js";
 
 const dir = designPrinciplesDir();
 const principles = loadPrinciples();
