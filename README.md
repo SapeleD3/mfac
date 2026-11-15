@@ -143,6 +143,13 @@ step with `factory coord` commands. The engine checks every one of those against
 
 Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `factory pause` stops new starts.
 
+**Sessions stay tidy.** Every Claude session the factory starts has a name. Stage sessions are named for their task
+and stage (`factory-F-012-research`, `factory-F-012-build-r2`). Small jobs reuse one session each, resumed call
+after call: `factory-triage`, `factory-replies`, and `factory-mcp-slack` / `-notion` / `-jira` for connector
+calls. Those run in `~/.factory/sessions`, so they list under one Claude project and never in your repos, and
+each one is replaced by a fresh session (old transcript deleted) after 30 calls or a week, to keep its context
+and cost small. A week after a task finishes, the cleanup routine deletes its sessions' transcripts.
+
 ## Where work comes from
 
 Every 30 minutes in working hours (Settings: 15, 30 or 60), a small Haiku call reads Slack (DMs, group DMs
