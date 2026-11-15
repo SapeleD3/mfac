@@ -159,7 +159,7 @@ export const integrationsPart =
       const cfg = store.setting<{ slack?: boolean; jira?: boolean; notion?: boolean }>("write_back", { slack: true, jira: true, notion: true });
       const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
       if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
-      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, t.sourceRef, text);
+      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, t.sourceRef, text, engine.settings().notion.intakeServer);
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
@@ -203,15 +203,18 @@ export const integrationsPart =
         "connections.test": async (p: { name?: ConnectionName }) => (p.name ? [await connections.test(p.name)] : connections.testAll()),
         "connections.verify": (p: { name: ConnectionName }) => connections.verify(p.name),
         "connections.connect": (p: { name: ConnectionName; server?: string }) => connections.connect(p.name, p.server),
+        "connections.choices": (p: { name: ConnectionName }) => connections.choices(p.name),
+        "connections.check": (p: { name: ConnectionName; server: string }) => connections.check(p.name, p.server),
         "connections.disconnect": (p: { name: ConnectionName }) => connections.disconnect(p.name),
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
-        "notion.intake": async (p: { board: string; status?: string; wait?: boolean }) => {
+        "notion.intake": async (p: { board: string; status?: string; server?: string; wait?: boolean }) => {
           const given = p.board?.trim();
           if (!given) throw new Error("give the name of your Notion board (the one you move cards on)");
-          const found = notion.looksLikeLink(given) ? { url: given, title: undefined } : await notion.findBoard(store, given);
-          const next = { ...engine.settings().notion, intakeBoard: found.url, intakeBoardName: found.title, intakeStatus: p.status?.trim() || "Ready for agent" };
+          const server = p.server?.trim() || undefined;
+          const found = notion.looksLikeLink(given) ? { url: given, title: undefined } : await notion.findBoard(store, given, server);
+          const next = { ...engine.settings().notion, intakeBoard: found.url, intakeBoardName: found.title, intakeServer: server, intakeStatus: p.status?.trim() || "Ready for agent" };
           engine.updateSettings({ notion: next });
           routines.update("intake-notion", { workingHours: false });
           const check = routines.run("intake-notion", { manual: true });
@@ -234,6 +237,7 @@ export const integrationsPart =
           pending: sync.pendingCount(),
           intakeBoard: engine.settings().notion.intakeBoard,
           intakeBoardName: engine.settings().notion.intakeBoardName,
+          intakeServer: engine.settings().notion.intakeServer,
           intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
         }),
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),

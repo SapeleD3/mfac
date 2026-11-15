@@ -117,6 +117,16 @@ export interface Connection {
   through?: { name: string; kind: "claude.ai" | "plugin" | "local"; target?: string; state: string };
   tools?: string[];
   lastCall?: { at: string; ok: boolean; server: string; error?: string; lastOkAt?: string };
+  workspace?: string;
+}
+
+export interface ServerChoice {
+  name: string;
+  kind: "claude.ai" | "plugin" | "local";
+  status: "connected" | "needs-auth" | "failed";
+  detail: string;
+  workspace?: string;
+  pinned: boolean;
 }
 
 export interface Routine {
@@ -182,7 +192,7 @@ export interface Settings {
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
-  notion?: { intakeBoard?: string; intakeBoardName?: string; intakeStatus?: string };
+  notion?: { intakeBoard?: string; intakeBoardName?: string; intakeServer?: string; intakeStatus?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
 

@@ -38,6 +38,8 @@ setPrintRunner(async (prompt, opts) => {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
     if (prompt.startsWith("Use the Notion tools from plugin:engineering:notion"))
       return '{"error": "No plugin:engineering:notion tools are exposed in this session, so no access check or tool listing was possible. The only Notion tools available are from the claude.ai Notion connector (mcp__claude_ai_Notion__*), which I was told not to use."}';
+    if (prompt.includes("list the exact names") && prompt.startsWith("Use the Notion tools from notion-propstrata"))
+      return JSON.stringify({ who: "Moses", workspace: "Propstrata", tools: [`${toolPrefix("notion-propstrata")}__notion-search`, `${toolPrefix("notion-propstrata")}__notion-create-pages`] });
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
@@ -236,21 +238,18 @@ test("Claude's own connector is used before a plugin's server, and a server whos
   await servers(true);
 });
 
-test("a pinned plugin server whose tools never load doesn't block Claude's own connector, even when claude mcp list leaves it out; connect without --server unpins", async () => {
+test("a pinned server is the only one used, so a call never lands in another workspace; connect without --server unpins", async () => {
   const saved = mcpList;
   const { servers, candidates, connectorSettings } = await import("../src/connectors/mcp.js");
   mcpList = "claude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nplugin:engineering:notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n";
   await servers(true);
   running.store.setSetting("connectors", { ...connectorSettings(running.store), server: { notion: "plugin:engineering:notion" }, pinned: { notion: true } });
-  assert.deepEqual(
-    (await candidates(running.store, "notion")).map((x) => x.name),
-    ["plugin:engineering:notion", "claude.ai Notion"],
+  const calls = connectorCalls.length;
+  await assert.rejects(c("intake.poll", { source: "notion" }), /plugin:engineering:notion didn't load its tools.*Pick another server/s);
+  assert.ok(
+    connectorCalls.slice(calls).every((x) => x.prompt.startsWith("Use the Notion tools from plugin:engineering:notion")),
+    "Claude's own connector isn't tried behind a pinned server",
   );
-  const r = await c<{ found?: number }>("intake.poll", { source: "notion" });
-  assert.equal(r.found, 1, "the plugin's tools didn't load, so Claude's own connector answered");
-  const notion = (await c<Connection[]>("connections.list")).find((x) => x.name === "notion")!;
-  assert.equal(notion.lastCall!.server, "claude.ai Notion");
-  assert.equal(notion.through!.kind, "claude.ai");
   const plugin = connectorCalls.filter((x) => x.prompt.includes("from plugin:engineering:notion"));
   assert.ok(plugin.length > 0 && !plugin.some((x) => /only|don't use|not use/i.test(x.prompt.split("\n")[0]!.replace("Only read", ""))), "no prompt tells the model to avoid a connector");
   await c("connections.connect", { name: "notion" });
@@ -260,9 +259,36 @@ test("a pinned plugin server whose tools never load doesn't block Claude's own c
     ["claude.ai Notion", "plugin:engineering:notion"],
     "unpinned, Claude's own connector goes ahead of a plugin's server",
   );
+  const r = await c<{ found?: number }>("intake.poll", { source: "notion" });
+  assert.equal(r.found, 1, "unpinned, a server whose tools don't load falls through to the next");
   mcpList = saved;
   await servers(true);
   assert.equal((await candidates(running.store, "notion"))[0]!.name, "claude.ai Notion");
+});
+
+test("each Notion server shows its workspace, and the board you watch can be read through a different one", async () => {
+  const saved = mcpList;
+  const { servers } = await import("../src/connectors/mcp.js");
+  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  await servers(true);
+  const choices = await c<{ name: string; workspace?: string }[]>("connections.choices", { name: "notion" });
+  assert.deepEqual(
+    choices.map((x) => x.name),
+    ["claude.ai Notion", "notion-propstrata"],
+  );
+  const checked = await c<{ workspace?: string; who: string }>("connections.check", { name: "notion", server: "notion-propstrata" });
+  assert.equal(checked.workspace, "Propstrata");
+  assert.equal((await c<{ name: string; workspace?: string }[]>("connections.choices", { name: "notion" })).find((x) => x.name === "notion-propstrata")!.workspace, "Propstrata");
+  const calls = connectorCalls.length;
+  await c("notion.intake", { board: "Custom Tools Board", server: "notion-propstrata", wait: true });
+  const used = connectorCalls.slice(calls);
+  assert.ok(used.length >= 2 && used.every((x) => x.prompt.startsWith("Use the Notion tools from notion-propstrata")), "the search and the poll both go through the server you chose");
+  assert.deepEqual(used.at(-1)!.allowed, [`${toolPrefix("notion-propstrata")}__notion-search`], "only the read tools that server listed");
+  const status = await c<{ intakeServer?: string }>("notion.status");
+  assert.equal(status.intakeServer, "notion-propstrata");
+  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  mcpList = saved;
+  await servers(true);
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {

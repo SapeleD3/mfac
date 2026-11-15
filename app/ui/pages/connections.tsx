@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { openTerminal, openUrl } from "../bridge";
 import { Brand, Btn, Ic, ago } from "../kit";
 import { act, toast, useApp, useCall } from "../store";
-import type { Connection } from "../types";
+import type { Connection, ServerChoice } from "../types";
 
 const KIND: Record<string, string> = { "claude.ai": "a connector in your Claude account", plugin: "an MCP server from a Claude Code plugin", local: "an MCP server you added to Claude Code" };
 
@@ -112,6 +112,12 @@ export function Connections() {
                         )}
                       </span>
                     </div>
+                    {c.name !== "claude" && c.name !== "github" && (
+                      <div class="cn-meta">
+                        <span class="label">Use</span>
+                        <ServerPick c={c} />
+                      </div>
+                    )}
                     {c.lastCall && (
                       <div class="cn-meta">
                         <span class="label">Last read</span>
@@ -267,6 +273,7 @@ interface NotionStatus {
   parentPageId?: string;
   intakeBoard?: string;
   intakeBoardName?: string;
+  intakeServer?: string;
   intakeStatus: string;
 }
 
@@ -341,12 +348,14 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
   const app = useApp();
   const [board, setBoard] = useState(s.intakeBoardName ?? s.intakeBoard ?? "");
   const [status, setStatus] = useState(s.intakeStatus);
+  const [server, setServer] = useState(s.intakeServer ?? "");
+  const choices = useCall<ServerChoice[]>("connections.choices", { name: "notion" });
   const [saving, setSaving] = useState(false);
   const r = app.routines.find((x) => x.id === "intake-notion");
   const checking = saving || r?.lastResult === "running";
   const save = async () => {
     setSaving(true);
-    await act("notion.intake", { board: board.trim(), status: status.trim() }, ["routines"]);
+    await act("notion.intake", { board: board.trim(), status: status.trim(), server: server || undefined }, ["routines"]);
     setSaving(false);
     reload();
   };
@@ -383,8 +392,70 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
             {checking ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}
           </Btn>
         </div>
+        {(choices.data?.length ?? 0) > 1 && (
+          <div class="row">
+            <span class="small dim">Read it through</span>
+            <select class="in xs" style={{ width: "auto" }} value={server} onChange={(e) => setServer(e.currentTarget.value)} disabled={!connected}>
+              <option value="">the same Notion as the factory board</option>
+              {choices.data!.map((x) => (
+                <option key={x.name} value={x.name}>
+                  {choiceLabel(x)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {checking ? <div class="xs dim">Reading your board through Claude's Notion connector. This takes up to a couple of minutes; you can leave this page.</div> : last}
       </div>
+    </div>
+  );
+}
+
+const choiceLabel = (x: ServerChoice) => `${x.name}${x.workspace ? ` · ${x.workspace}` : ""}${x.status === "needs-auth" ? " (needs sign-in)" : x.status === "failed" ? " (not working)" : ""}`;
+
+function ServerPick({ c }: { c: Connection }) {
+  const choices = useCall<ServerChoice[]>("connections.choices", { name: c.name }, [c.name]);
+  const [checking, setChecking] = useState<string>();
+  const list = choices.data ?? [];
+  const pinned = list.find((x) => x.pinned)?.name ?? "";
+  const pick = async (server: string) => {
+    const r = await act<Connection>("connections.connect", { name: c.name, server: server || undefined }, ["connections"]);
+    choices.reload();
+    if (r) toast(r.status === "connected" ? `${c.label}: ${r.detail ?? "connected"}` : `${c.label} is ${r.status}: ${r.detail ?? ""}`, r.status === "connected" ? "info" : "error");
+  };
+  const check = async (server: string) => {
+    setChecking(server);
+    const r = await act<ServerChoice & { who: string }>("connections.check", { name: c.name, server });
+    setChecking(undefined);
+    choices.reload();
+    if (r) toast(`${server}: ${r.who}${r.workspace ? ` in ${r.workspace}` : ""}`, "info");
+  };
+  return (
+    <div class="small">
+      {c.workspace && (
+        <div>
+          Workspace <b>{c.workspace}</b>
+        </div>
+      )}
+      <div class="row" style={{ gap: 6 }}>
+        <select class="in xs" style={{ width: "auto" }} value={pinned} onChange={(e) => void pick(e.currentTarget.value)} disabled={!list.length}>
+          <option value="">Automatic: Claude's own connector first</option>
+          {list.map((x) => (
+            <option key={x.name} value={x.name}>
+              {choiceLabel(x)}
+            </option>
+          ))}
+        </select>
+        {list
+          .filter((x) => !x.workspace && x.status === "connected")
+          .slice(0, 3)
+          .map((x) => (
+            <Btn key={x.name} kind="btn-ghost" onClick={() => check(x.name)} disabled={!!checking}>
+              {checking === x.name ? "Checking…" : `Which workspace is ${x.name}?`}
+            </Btn>
+          ))}
+      </div>
+      <div class="xs faint">A server you pick is the only one used, so work never lands in another workspace by accident.</div>
     </div>
   );
 }
