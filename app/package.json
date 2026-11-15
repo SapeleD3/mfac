@@ -1,0 +1,27 @@
+{
+  "name": "factory-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The factory's Mac app: a window onto the engine. It never changes a task itself; every button is an engine call.",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "preview": "node build.mjs && node preview.mjs",
+    "tauri": "tauri",
+    "app": "node build.mjs && tauri build --bundles app",
+    "dev": "tauri dev"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-notification": "^2.3.0",
+    "@tauri-apps/plugin-opener": "^2.5.0",
+    "preact": "^10.27.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import type { Engine } from "./engine.js";
 import { HttpError } from "./http.js";
 import * as jira from "./jira.js";
@@ -89,6 +89,15 @@ export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status">> =
 
 export type Tester = (name: ConnectionName) => Promise<string>;
 
+/** Runs a command without blocking the engine (a sync spawn would freeze every client for its duration). */
+const run = (cmd: string, args: string[]) =>
+  new Promise<{ status: number | null; stdout: string; missing: boolean }>((resolve) => {
+    execFile(cmd, args, { encoding: "utf8", timeout: 15_000 }, (err, stdout) => {
+      const e = err as (NodeJS.ErrnoException & { code?: string | number }) | null;
+      resolve({ status: e ? (typeof e.code === "number" ? e.code : 1) : 0, stdout: String(stdout ?? ""), missing: e?.code === "ENOENT" });
+    });
+  });
+
 /** One cheap call per connection; throws on failure. */
 export const realTester =
   (engine: Engine): Tester =>
@@ -101,14 +110,14 @@ export const realTester =
       case "jira":
         return jira.test(engine.store.setting("jira", {}));
       case "claude": {
-        const v = spawnSync(process.env.FACTORY_CLAUDE ?? "claude", ["--version"], { encoding: "utf8", timeout: 15_000 });
+        const v = await run(process.env.FACTORY_CLAUDE ?? "claude", ["--version"]);
         if (v.status !== 0) throw new HttpError(404, "the claude command isn't installed or isn't on PATH");
         if (process.env.ANTHROPIC_API_KEY) throw new HttpError(403, "ANTHROPIC_API_KEY is set, so sessions would bill the API instead of your subscription");
         return v.stdout.trim();
       }
       case "github": {
-        const r = spawnSync("gh", ["auth", "status"], { encoding: "utf8", timeout: 15_000 });
-        if (r.error) throw new HttpError(404, "gh isn't installed; PRs need it (branches are still pushed)");
+        const r = await run("gh", ["auth", "status"]);
+        if (r.missing) throw new HttpError(404, "gh isn't installed; PRs need it (branches are still pushed)");
         if (r.status !== 0) throw new HttpError(401, "gh isn't signed in");
         return "gh signed in";
       }

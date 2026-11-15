@@ -1,0 +1,103 @@
+/*
+ * Connections and health. Before each intake run the engine checks each connection with one cheap
+ * call, no Claude. A failure raises a sticky alert; work that needs it pauses instead of failing.
+ */
+import { useState } from "preact/hooks";
+import { openTerminal, openUrl } from "../bridge";
+import { Brand, Btn, Ic, ago } from "../kit";
+import { act, useApp, useCall } from "../store";
+import type { Connection } from "../types";
+
+const ST: Record<Connection["status"], [string, string, string]> = {
+  connected: ["dot ok", "Connected", "chip ok"],
+  expired: ["dot err", "Expired", "chip err"],
+  error: ["dot err", "Error", "chip err"],
+  missing: ["dot off", "Missing", "chip"],
+};
+
+export function Connections() {
+  const app = useApp();
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const alert = app.alerts[0];
+  const doctor = useCall<{ checks: { status: "ok" | "warn" | "err"; name: string; detail: string }[] }>("doctor.run");
+  const notion = useCall<{ ready: boolean; pending: number; rootPageId?: string }>("notion.status");
+  const fix = (c: Connection) => {
+    if (c.fix.url) void openUrl(c.fix.url);
+    if (c.name !== "claude" && c.name !== "github") void openTerminal(`factory connect ${c.name}`);
+  };
+  return (
+    <div class="pane-body">
+      <main class="main">
+        {alert && (
+          <div class="p-alert" style={{ borderRadius: 8, border: "1px solid color-mix(in srgb,var(--danger) 35%,transparent)", marginBottom: 14 }}>
+            <span class="dot err" style={{ marginTop: 4 }} />
+            <div class="grow"><b>{alert.label} is {alert.status}{alert.lastOkAt ? ` (last worked ${ago(alert.lastOkAt)})` : ""}.</b> {alert.detail} Work that needs it waits and catches up from its last cursor once fixed.</div>
+            <Btn kind="btn-primary" onClick={() => fix(alert)}><Ic n="wrench" s={14} />Fix {alert.label}</Btn>
+            <Btn kind="btn-ghost" onClick={() => act("connections.snooze", { name: alert.name, hours: 1 }, ["connections"])}>Snooze 1h</Btn>
+          </div>
+        )}
+        <div class="main-h"><h2>Connections</h2><span class="grow" /><span class="small dim">Retests every 5 min</span><Btn onClick={() => act("connections.test", {}, ["connections"])}><Ic n="heart-pulse" s={14} />Test all</Btn></div>
+        <div class="list conn">
+          <div class="cn-row cn-head"><span /><span>Connection</span><span>Used for</span><span>Status</span><span>Last worked</span><span /></div>
+          {app.connections.map((c) => {
+            const isOpen = open[c.name] ?? c.status !== "connected";
+            const st = ST[c.status];
+            return (
+              <div key={c.name} class={`cn ${isOpen ? "open" : ""} ${c.status === "connected" ? "ok" : c.status}`}>
+                <div class="cn-row" onClick={() => setOpen({ ...open, [c.name]: !isOpen })}>
+                  <Brand n={c.name} s={28} />
+                  <span><b>{c.label}</b><div class="xs faint">{c.required ? "Required" : "Optional"}</div></span>
+                  <span class="small dim">{c.neededFor}</span>
+                  <span><span class={st[2]}>{c.status === "missing" && !c.required ? "Not set up" : st[1]}</span></span>
+                  <span class="small dim">{c.lastOkAt ? ago(c.lastOkAt) : "never"}</span>
+                  <span class="cn-chev"><Ic n={isOpen ? "chevron-up" : "chevron-down"} s={16} /></span>
+                </div>
+                {isOpen && (
+                  <div class="cn-body">
+                    <div class="cn-meta"><span class="label">Connected through</span><span class="small">{c.via}</span></div>
+                    {c.status === "connected" ? (
+                      <div class="cn-meta"><span class="label">Last test</span><span class="small">{ago(c.checkedAt)}: {c.detail}</span></div>
+                    ) : (
+                      <div class="cn-meta">
+                        <span class="label">{c.status === "missing" ? "To set it up" : "To fix it"}</span>
+                        <div>
+                          {c.detail && c.status !== "missing" && <div class="small err-line" style={{ marginBottom: 4 }}>{c.detail}</div>}
+                          <ol class="fix-steps">{c.fix.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+                        </div>
+                      </div>
+                    )}
+                    <div class="row" style={{ gap: 6, marginTop: 4 }}>
+                      {c.status !== "connected" && <Btn kind="btn-primary" onClick={() => fix(c)}><Ic n="wrench" s={14} />{c.status === "missing" ? "Set up" : "Fix"}</Btn>}
+                      <Btn onClick={() => act("connections.test", { name: c.name }, ["connections"])}><Ic n="heart-pulse" s={14} />Test now</Btn>
+                      {c.status !== "connected" && <Btn kind="btn-ghost" onClick={() => act("connections.snooze", { name: c.name, hours: 4 }, ["connections"])}>Snooze 4h</Btn>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div class="grid2" style={{ marginTop: 16 }}>
+          <div class="card">
+            <div class="card-h">Setup checks <span class="faint small" style={{ fontWeight: 400 }}>factory doctor</span><span class="grow" />{doctor.data && <Btn onClick={doctor.reload}>Run again</Btn>}</div>
+            <div class="card-b layers">
+              {doctor.data ? doctor.data.checks.map((c) => <div key={c.name}><span class={`dot ${c.status === "warn" ? "needs" : c.status}`} />{c.name}<span class="grow" /><span class="faint xs">{c.detail}</span></div>) : <div class="small dim">Run <code>factory doctor</code> in a terminal for the full setup check.</div>}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h">Notion board <span class="faint small" style={{ fontWeight: 400 }}>factory notion setup</span></div>
+            <div class="card-b layers">
+              {notion.data ? (
+                <>
+                  <div><span class={`dot ${notion.data.ready ? "ok" : "off"}`} />{notion.data.ready ? "Jobs, Tickets and Reviews databases ready" : "Not set up yet"}<span class="grow" />{notion.data.rootPageId && <a href="#" onClick={(e) => (e.preventDefault(), openUrl(`https://www.notion.so/${notion.data!.rootPageId!.replace(/-/g, "")}`))} class="xs">Open</a>}</div>
+                  <div><span class={`dot ${notion.data.pending ? "needs" : "ok"}`} />{notion.data.pending ? `${notion.data.pending} changes waiting to sync` : "Everything synced"}</div>
+                  {!notion.data.ready && <div class="xs faint">Run <code>factory notion setup &lt;page link&gt;</code> with a page shared with your Factory integration.</div>}
+                </>
+              ) : <div class="small dim">{notion.error ?? "Loading…"}</div>}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

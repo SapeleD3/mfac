@@ -24,6 +24,8 @@ export interface Settings {
   usageCeiling: number;
   /** Where the factory files Notion pages (filled in on first run). */
   notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string };
+  /** How the app shows itself: the widget pill (default), the full window, or nothing (headless). */
+  ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pollMinutes: 10,
   usageCeiling: 0.85,
   notion: {},
+  ui: { mode: "widget", sound: true },
 };
 
 export interface TaskView extends Task {
@@ -65,12 +68,15 @@ export class Engine extends EventEmitter {
 
   settings(): Settings {
     const saved = this.store.setting<Partial<Settings>>("settings", {});
-    return { ...DEFAULT_SETTINGS, ...saved, models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) }, notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) } };
+    return { ...DEFAULT_SETTINGS, ...saved, models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) }, notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) }, ui: { ...DEFAULT_SETTINGS.ui, ...(saved.ui ?? {}) } };
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
     const next = { ...this.settings(), ...patch };
     if (!Number.isInteger(next.slots) || next.slots < 1 || next.slots > 8) throw new Error("slots must be a whole number from 1 to 8");
+    if (!(next.usageCeiling > 0 && next.usageCeiling <= 1)) throw new Error("the usage ceiling is a share between 0 and 1, like 0.85");
+    if (!Number.isInteger(next.pollMinutes) || next.pollMinutes < 1) throw new Error("poll minutes must be a whole number of at least 1");
+    if (!["widget", "app", "headless"].includes(next.ui.mode)) throw new Error("ui mode is widget, app or headless");
     this.store.setSetting("settings", next);
     this.emit("change", { kind: "settings", settings: next });
     return next;

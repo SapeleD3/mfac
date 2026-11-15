@@ -268,31 +268,32 @@ export const invariants: Record<string, (m: Machine, cap?: number) => boolean> =
   GatesRule: (m) => m.state !== "Done" || ["research", "plan", "pr"].every((a) => m.approved.includes(a as Approval)),
 };
 
-/** Which human-facing column a state belongs to on the kanban board. */
-export function column(state: State): string {
+/** The board's columns, left to right, as in the approved mockups. Intake states live in the Inbox, not on the board. */
+export const COLUMNS = ["Queued", "Running", "Needs you", "Parked", "PR ready", "Done"] as const;
+export type Column = (typeof COLUMNS)[number] | "Inbox";
+
+/** Which column a state belongs to on the kanban board. Every gate but PR ready is "Needs you". */
+export function column(state: State): Column {
   switch (state) {
     case "Inbox":
     case "Triage":
     case "ReplyDrafted":
-      return "Triage";
+      return "Inbox";
     case "Queued":
       return "Queued";
     case "Researching":
     case "ResearchCheck":
     case "Planning":
-      return "Research";
-    case "ResearchGate":
-      return "Research review";
-    case "PlanGate":
-      return "Plan review";
     case "Building":
     case "Reviewing":
     case "Confirming":
-      return "Build loop";
-    case "PRGate":
-      return "PR review";
+      return "Running";
+    case "ResearchGate":
+    case "PlanGate":
     case "NeedsYou":
       return "Needs you";
+    case "PRGate":
+      return "PR ready";
     case "Parked":
       return "Parked";
     default:
