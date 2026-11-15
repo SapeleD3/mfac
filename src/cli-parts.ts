@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { call } from "./client.js";
 import type { Command, Flags } from "./cli.js";
 import { connectCommands } from "./cli-connect.js";
+import { upkeepCommands } from "./cli-upkeep.js";
 import { table } from "./format.js";
 import type { TaskView } from "./engine.js";
 import type { Prompt, Stage } from "./runner.js";
@@ -146,5 +147,5 @@ export function extend(commands: Record<string, Command>) {
       },
     },
   } satisfies Record<string, Command>);
-  Object.assign(commands, connectCommands);
+  Object.assign(commands, connectCommands, upkeepCommands);
 }

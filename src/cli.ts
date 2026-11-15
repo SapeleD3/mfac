@@ -181,9 +181,9 @@ export const commands: Record<string, Command> = {
     },
   },
   engine: {
-    usage: "engine start|stop|status|run",
-    help: "Control the background engine (the launch agent normally keeps it running)",
-    async run(args) {
+    usage: "engine start|stop|restart|status|run|install [--app PATH]|uninstall",
+    help: "Control the background engine. install sets up the login agent (no admin); then macOS keeps it running",
+    async run(args, flags) {
       const sub = args[0] ?? "status";
       const alive = await isAlive(paths.socket());
       if (sub === "status") {
@@ -204,8 +204,32 @@ export const commands: Record<string, Command> = {
         });
         await new Promise(() => {});
       }
+      if (sub === "install" || sub === "uninstall") {
+        const ld = await import("./launchd.js");
+        const app = str(flags.app);
+        const files = sub === "install" ? ld.install({ app }) : ld.uninstall();
+        out(files.length ? files.map((f) => `${sub === "install" ? "Loaded" : "Removed"} ${f}`).join("\n") : "Nothing to remove");
+        return 0;
+      }
+      if (sub === "restart") {
+        const ld = await import("./launchd.js");
+        if (ld.kickstart(true)) return out("Engine: restarted by launchd");
+        if (alive) {
+          const pid = (await call<{ pid: number }>("ping")).pid;
+          process.kill(pid, "SIGTERM");
+          for (let i = 0; i < 50 && (await isAlive(paths.socket())); i++) await new Promise((r) => setTimeout(r, 100));
+        }
+        return commands.engine!.run(["start"], {});
+      }
       if (sub === "start") {
         if (alive) return out("Engine: already running");
+        const ld = await import("./launchd.js");
+        if (ld.kickstart()) {
+          for (let i = 0; i < 50; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+            if (await isAlive(paths.socket())) return out("Engine: started by launchd");
+          }
+        }
         mkdirSync(paths.home(), { recursive: true, mode: 0o700 });
         const log = openSync(paths.log(), "a");
         const child = spawn(process.execPath, ["--no-warnings=ExperimentalWarning", join(here, "factoryd.js")], { detached: true, stdio: ["ignore", log, log], env: process.env });

@@ -19,8 +19,9 @@ export function Connections() {
   const app = useApp();
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const alert = app.alerts[0];
-  const doctor = useCall<{ checks: { status: "ok" | "warn" | "err"; name: string; detail: string }[] }>("doctor.run");
+  const doctor = useCall<{ checks: { status: "ok" | "warn" | "err"; name: string; detail: string; fix?: string }[] }>("doctor.run");
   const notion = useCall<{ ready: boolean; pending: number; rootPageId?: string }>("notion.status");
+  const skills = useCall<{ name: string; description: string; status: "ok" | "missing" | "no-source"; version?: string; provides: string[] }[]>("skills.list");
   const fix = (c: Connection) => {
     if (c.fix.url) void openUrl(c.fix.url);
     if (c.name !== "claude" && c.name !== "github") void openTerminal(`factory connect ${c.name}`);
@@ -81,9 +82,20 @@ export function Connections() {
           <div class="card">
             <div class="card-h">Setup checks <span class="faint small" style={{ fontWeight: 400 }}>factory doctor</span><span class="grow" />{doctor.data && <Btn onClick={doctor.reload}>Run again</Btn>}</div>
             <div class="card-b layers">
-              {doctor.data ? doctor.data.checks.map((c) => <div key={c.name}><span class={`dot ${c.status === "warn" ? "needs" : c.status}`} />{c.name}<span class="grow" /><span class="faint xs">{c.detail}</span></div>) : <div class="small dim">Run <code>factory doctor</code> in a terminal for the full setup check.</div>}
+              {doctor.data ? doctor.data.checks.map((c) => <div key={c.name} title={c.fix ? `Fix: ${c.fix}` : undefined}><span class={`dot ${c.status === "warn" ? "needs" : c.status}`} />{c.name}<span class="grow" /><span class="faint xs">{c.detail}</span></div>) : <div class="small dim">{doctor.error ? "Running the checks…" : "Loading…"}</div>}
             </div>
           </div>
+          <div class="card">
+            <div class="card-h">Skills <span class="faint small" style={{ fontWeight: 400 }}>factory skills</span><span class="grow" />{skills.data?.some((x) => x.status === "missing") && <Btn kind="btn-primary" onClick={async () => (await act("skills.install", {}), skills.reload())}>Install missing</Btn>}</div>
+            <div class="card-b layers">
+              {(skills.data ?? []).map((k) => (
+                <div key={k.name}><span class={`dot ${k.status === "ok" ? "ok" : k.status === "missing" ? "needs" : "off"}`} /><b style={{ fontWeight: 500 }}>{k.name}</b><span class="faint xs">{k.description}</span><span class="grow" /><span class={`xs ${k.status === "ok" ? "faint" : ""}`}>{k.status === "ok" ? k.version : k.status === "missing" ? "missing" : "no source"}</span></div>
+              ))}
+              <div class="xs faint" style={{ marginTop: 4 }}>Installed into the factory's own skills folder. Your ~/.claude/skills is never touched. Add a source with <code>factory skills add NAME URL</code>.</div>
+            </div>
+          </div>
+        </div>
+        <div class="grid2" style={{ marginTop: 16 }}>
           <div class="card">
             <div class="card-h">Notion board <span class="faint small" style={{ fontWeight: 400 }}>factory notion setup</span></div>
             <div class="card-b layers">
