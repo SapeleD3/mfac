@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { deleteTranscript } from "../claude/print.js";
 import { type ConnectionName, Connections, type Tester, realTester } from "../connectors/connections.js";
@@ -8,6 +8,7 @@ import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
 import * as notion from "../connectors/notion.js";
 import { NotionSync } from "../board/notion-sync.js";
+import { Repos } from "../repo/registry.js";
 import { paths } from "../shared/paths.js";
 import { machineRoutines } from "./machine-routines.js";
 import { type Builtin, Routines } from "./routines.js";
@@ -30,6 +31,7 @@ export const integrationsPart =
     const tickets = new Tickets(store, engine);
     const sync = new NotionSync(store, engine, tickets, connections);
     const routines = new Routines(store, engine);
+    const repos = new Repos(store, engine);
     Object.assign(shared, { routines, connections, notion: sync, intake });
 
     const builtins: Builtin[] = [
@@ -40,7 +42,7 @@ export const integrationsPart =
         everySeconds: 300,
         run: async () => {
           const all = await connections.testAll();
-          const bad = all.filter((c) => c.status !== "connected" && (c.required || connections.configured(c.name)));
+          const bad = all.filter((c) => c.status !== "connected" && c.used);
           return bad.length ? `warn: ${bad.map((c) => `${c.label} ${c.status}`).join(", ")}` : "all connections working";
         },
       },
@@ -64,7 +66,7 @@ export const integrationsPart =
         everySeconds: engine.settings().pollMinutes * 60,
         workingHours: true,
         run: async () => {
-          if (!connections.configured("jira")) return "skip: no Atlassian connector in Claude (optional)";
+          if (!connections.used("jira")) return "skip: Jira isn't turned on (optional; factory connect jira turns it on)";
           const r = await intake.poll("jira");
           if (r.skipped) return `skip: ${r.skipped}`;
           const t = r.added ? await intake.triage() : { triaged: 0 };
@@ -74,13 +76,14 @@ export const integrationsPart =
       {
         id: "intake-notion",
         name: "Notion board intake",
-        description: 'Cards you move to "Ready for agent" on your own Notion board go straight to the queue; one small read through your Notion connector',
+        description: 'Cards you move to "Ready for agent" on your own Notion board go straight to the queue; one filtered query through your Notion connector, and one read per new card',
         everySeconds: 900,
-        workingHours: true,
         run: async () => {
           const r = await intake.poll("notion");
           if (r.skipped) return `skip: ${r.skipped}`;
-          return r.added ? `${r.added} card${r.added === 1 ? "" : "s"} queued` : "nothing new";
+          const status = engine.settings().notion.intakeStatus || "Ready for agent";
+          if (!r.found) return `no cards in "${status}"`;
+          return r.added ? `${r.added} card${r.added === 1 ? "" : "s"} queued` : `${r.found} card${r.found === 1 ? "" : "s"} in "${status}", all already queued`;
         },
       },
       {
@@ -201,11 +204,13 @@ export const integrationsPart =
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
-        "notion.intake": async (p: { board: string; status?: string }) => {
+        "notion.intake": async (p: { board: string; status?: string; wait?: boolean }) => {
           if (!p.board?.trim()) throw new Error("paste a link to your Notion board (the database view you move cards on)");
           const next = { ...engine.settings().notion, intakeBoard: p.board.trim(), intakeStatus: p.status?.trim() || "Ready for agent" };
           engine.updateSettings({ notion: next });
-          return { board: next.intakeBoard, status: next.intakeStatus, ...(await intake.poll("notion")) };
+          routines.update("intake-notion", { workingHours: false });
+          const check = routines.run("intake-notion", { manual: true });
+          return { board: next.intakeBoard, status: next.intakeStatus, routine: p.wait ? await check : routines.get("intake-notion") };
         },
         "intake.poll": async (p: { source: "slack" | "jira" | "notion" }) => {
           const r = await intake.poll(p.source);
@@ -233,15 +238,10 @@ export const integrationsPart =
         "routines.remove": (p: { id: string }) => routines.remove(p.id),
         "routines.history": (p: { id: string; limit?: number }) => routines.history(p.id, p.limit),
         "routines.machine": () => machineRoutines(),
-        "repo.add": (p: { path: string; name?: string; setup?: string; base?: string }) => {
-          if (!existsSync(p.path) || !statSync(p.path).isDirectory()) throw new Error(`${p.path} isn't a folder`);
-          const name = p.name ?? p.path.replace(/\/+$/, "").split("/").pop()!;
-          store.db
-            .prepare("INSERT INTO repos (name, path, base, setup) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET path = excluded.path, base = excluded.base, setup = excluded.setup")
-            .run(name, p.path, p.base ?? "main", p.setup ?? "");
-          return { name, path: p.path };
-        },
-        "repo.list": () => store.db.prepare("SELECT * FROM repos ORDER BY name").all(),
+        "repo.add": (p: { path: string; name?: string; setup?: string; base?: string; about?: string }) => repos.add(p),
+        "repo.update": (p: { name: string; about?: string; setup?: string; base?: string; isDefault?: boolean }) => repos.update(p.name, p),
+        "repo.remove": (p: { name: string }) => repos.remove(p.name),
+        "repo.list": () => repos.list(),
       },
     };
   };

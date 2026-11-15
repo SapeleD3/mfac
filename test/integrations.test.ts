@@ -39,8 +39,11 @@ setPrintRunner(async (prompt, opts) => {
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
-    if (prompt.includes('exactly "Ready for agent"'))
-      return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", text: "It takes 8s to load.", url: "https://notion.so/card1", edited: "2026-11-15T10:00:00Z" }] });
+    if (prompt.includes('status is "Ready for agent"')) {
+      assert.equal(opts.session, "factory-mcp-notion-intake", "board intake never queues behind the board sync");
+      return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
+    }
+    if (prompt.startsWith("Use only") && prompt.includes("Read the Notion page")) return JSON.stringify({ text: "It takes 8s to load." });
     if (prompt.includes("Post this exact text")) {
       posted.push(prompt);
       return '{"ok": true}';
@@ -163,15 +166,20 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   const none = await c<{ added: number; skipped?: string }>("intake.poll", { source: "notion" });
   assert.match(none.skipped!, /no Notion board to watch/);
   const before = triageCalls.length;
-  const r = await c<{ added: number; status: string }>("notion.intake", { board: "https://notion.so/my-board" });
+  const r = await c<{ status: string; routine: Routine }>("notion.intake", { board: "https://notion.so/my-board", wait: true });
   assert.equal(r.status, "Ready for agent");
-  assert.equal(r.added, 1);
+  assert.equal(r.routine.lastResult, "ok");
+  assert.equal(r.routine.lastDetail, "1 card queued");
+  assert.equal(r.routine.workingHours, false, "cards you chose are picked up at any hour");
   assert.equal(triageCalls.length, before, "you already chose it, so no triage call");
   const task = (await c<TaskView[]>("task.list", {})).find((t) => t.source === "notion")!;
   assert.equal(task.title, "Speed up the reports page");
   assert.equal(task.column, "Queued");
   assert.equal(task.sourceRef, "card-1");
+  assert.match(task.body, /8s to load/);
+  const reads = connectorCalls.length;
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the same card isn't queued twice");
+  assert.equal(connectorCalls.length, reads + 1, "a card already queued isn't read again");
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {
@@ -193,6 +201,20 @@ test("health checks read claude mcp list with no model call: signed out is expir
   const [j] = await c<Connection[]>("connections.test", { name: "jira" });
   assert.equal(j!.status, "missing", "no Atlassian connector: optional, so no alert");
   assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
+  mcpList += "claude.ai Atlassian: https://mcp.atlassian.com/v1/sse (HTTP) - ! Needs authentication\n";
+  await servers(true);
+  const [expired] = await c<Connection[]>("connections.test", { name: "jira" });
+  assert.equal(expired!.status, "expired");
+  assert.equal(expired!.used, false, "an Atlassian connector you never turned on for the factory isn't one you use");
+  assert.ok(!alerts.some((a) => /Jira/.test(a.message)));
+  assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
+  assert.doesNotMatch((await c<Routine>("routines.run", { id: "health-check" })).lastDetail ?? "", /Jira/);
+  assert.equal((await c<Connection>("connections.connect", { name: "jira" })).used, true, "factory connect jira turns it on");
+  assert.ok((await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
+  await c("connections.disconnect", { name: "jira" });
+  mcpList = mcpList.replace(/claude\.ai Atlassian.*\n/, "");
+  await servers(true);
+  await c("connections.test", { name: "jira" });
   assert.equal(connectorCalls.length + triageCalls.length, before, "no model calls, even from connect when sign-in is needed");
   assert.equal((await c<Routine>("routines.run", { id: "health-check" })).lastResult, "warn", "an expired connector is a warning, not a green check");
 });

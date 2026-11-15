@@ -324,7 +324,18 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
 const stageLine = (s?: Stage) => (s ? `${s.role.replace("_", " ")} · ${s.model}${s.round > 1 ? ` · round ${s.round}` : ""} · ${s.status === "running" ? "running" : s.status}` : "");
 
 function EventLine({ e }: { e: TaskEvent }) {
-  const d = e.data as { note?: string; reason?: string; message?: string; role?: string; event?: { type?: string }; verdict?: string; add?: string[]; remove?: string[]; error?: string };
+  const d = e.data as {
+    note?: string;
+    reason?: string;
+    message?: string;
+    role?: string;
+    event?: { type?: string };
+    verdict?: string;
+    add?: string[];
+    remove?: string[];
+    error?: string;
+    folder?: string;
+  };
   let text: preact.ComponentChildren;
   let cls = "";
   switch (e.kind) {
@@ -367,6 +378,9 @@ function EventLine({ e }: { e: TaskEvent }) {
       break;
     case "repo_setup":
       text = "Ran the repo's setup.";
+      break;
+    case "plain_folder":
+      text = `Works in ${d.folder} directly: it isn't a git repo, so there's no branch or PR.`;
       break;
     default:
       text = (

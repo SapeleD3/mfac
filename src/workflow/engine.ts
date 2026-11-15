@@ -11,6 +11,7 @@ export interface Settings {
   usageCeiling: number;
   notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string; intakeBoard?: string; intakeStatus?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
+  defaultRepo?: string;
 }
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];

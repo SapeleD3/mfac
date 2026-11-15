@@ -11,6 +11,7 @@ import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
 import { checkConfirmed, checkCoverage, checkPlanTraces } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
+import { isGitRepo } from "../repo/registry.js";
 import { stripCredits } from "../repo/rules.js";
 import { paths } from "../shared/paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
@@ -304,7 +305,10 @@ export class Runner {
 
   startTask(taskId: string) {
     let t = this.engine.get(taskId)!;
-    if (t.repo && !t.worktree) {
+    if (t.repo && !t.worktree && !isGitRepo(t.repo)) {
+      t = this.engine.update(t.id, { worktree: t.repo });
+      this.store.addEvent(t.id, "plain_folder", "engine", { folder: t.repo });
+    } else if (t.repo && !t.worktree) {
       try {
         const wt = ensureWorktree(t.repo, t.id, t.title);
         t = this.engine.update(t.id, { worktree: wt.path, branch: wt.branch });
@@ -691,7 +695,7 @@ export class Runner {
 
   private finishTask(t: TaskView, how: "done" | "dropped") {
     for (const s of this.stages(t.id).filter((x) => x.status === "running")) this.finishStage(s, "stopped");
-    if (t.repo && t.worktree && how === "done") removeWorktree(t.repo, t.worktree);
+    if (t.repo && t.worktree && t.branch && t.worktree !== t.repo && how === "done") removeWorktree(t.repo, t.worktree);
     this.engine.emit("finished", { task: t, how });
   }
 

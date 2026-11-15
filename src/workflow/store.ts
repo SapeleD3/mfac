@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS repos (
   path TEXT NOT NULL,
   base TEXT NOT NULL DEFAULT 'main',
   setup TEXT NOT NULL DEFAULT '',
+  about TEXT NOT NULL DEFAULT '',
   readiness TEXT NOT NULL DEFAULT '{}',
   escalate TEXT NOT NULL DEFAULT '[]'
 );
@@ -230,6 +231,12 @@ export class Store {
     this.db = new DatabaseSync(file);
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    this.addMissingColumns();
+  }
+
+  private addMissingColumns() {
+    const has = (table: string, col: string) => (this.db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).some((c) => c.name === col);
+    if (!has("repos", "about")) this.db.exec("ALTER TABLE repos ADD COLUMN about TEXT NOT NULL DEFAULT ''");
   }
 
   close() {

@@ -11,7 +11,10 @@ export interface PrintOptions {
   system?: string;
   allowedTools?: string[];
   session?: string;
+  timeoutMs?: number;
 }
+
+export class PrintTimeout extends Error {}
 
 export type PrintRunner = (prompt: string, opts: PrintOptions) => Promise<string>;
 
@@ -76,7 +79,7 @@ function drop(name: string) {
   writePool(pool);
 }
 
-const exec = (args: string[], prompt: string) =>
+const exec = (args: string[], prompt: string, timeoutMs = 5 * 60_000) =>
   new Promise<string>((resolve, reject) => {
     mkdirSync(paths.sessions(), { recursive: true });
     const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", args, { cwd: paths.sessions(), stdio: ["pipe", "pipe", "pipe"] });
@@ -84,11 +87,16 @@ const exec = (args: string[], prompt: string) =>
     let err = "";
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    const timer = setTimeout(() => child.kill("SIGTERM"), 5 * 60_000);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, timeoutMs);
     child.on("error", (e) => reject(new Error(`couldn't run claude: ${e.message}`)));
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve(out.trim());
+      if (timedOut) reject(new PrintTimeout(`Claude didn't answer within ${Math.round(timeoutMs / 1000)}s`));
+      else if (code === 0) resolve(out.trim());
       else reject(new Error(`claude -p exited ${code}: ${err.trim().slice(0, 300)}`));
     });
     child.stdin.end(prompt);
@@ -116,17 +124,17 @@ export const realRunner: PrintRunner = (prompt, opts) => {
     ...(opts.system ? ["--append-system-prompt", opts.system] : []),
     ...(opts.allowedTools?.length ? ["--allowedTools", ...opts.allowedTools] : []),
   ];
-  if (!opts.session) return exec(["--no-session-persistence", ...base], prompt);
+  if (!opts.session) return exec(["--no-session-persistence", ...base], prompt, opts.timeoutMs);
   const name = opts.session;
   return serial(name, async () => {
     const s = claim(name);
     const args = (x: { id: string; resume: boolean }) => [...(x.resume ? ["--resume", x.id] : ["--session-id", x.id, "--name", name]), ...base];
     try {
-      return await exec(args(s), prompt);
+      return await exec(args(s), prompt, opts.timeoutMs);
     } catch (e) {
-      if (!s.resume) throw e;
+      if (!s.resume || e instanceof PrintTimeout) throw e;
       drop(name);
-      return exec(args(claim(name)), prompt);
+      return exec(args(claim(name)), prompt, opts.timeoutMs);
     }
   });
 };

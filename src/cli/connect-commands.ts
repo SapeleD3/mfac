@@ -56,10 +56,10 @@ export const connectCommands: Record<string, Command> = {
       out(
         table([
           ["CONNECTION", "STATUS", "LAST WORKED", "NEEDED FOR", "DETAIL"],
-          ...list.map((c) => [c.label + (c.required ? "" : " (optional)"), c.status, ago(c.lastOkAt), c.neededFor, c.detail ?? ""]),
+          ...list.map((c) => [c.label + (c.required ? "" : " (optional)"), c.used ? c.status : "not used", ago(c.lastOkAt), c.neededFor, c.detail ?? ""]),
         ]),
       );
-      const bad = list.filter((c) => c.status !== "connected" && c.required);
+      const bad = list.filter((c) => c.status !== "connected" && c.used);
       if (bad.length) out(`\nFix with: ${bad.map((c) => `factory connect ${c.name}`).join(", ")}`);
     },
   },
@@ -210,22 +210,32 @@ export const connectCommands: Record<string, Command> = {
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
       if (args[0] === "intake") {
-        const r = await call<{ board: string; status: string; added: number; skipped?: string }>("notion.intake", { board: args[1], status: f.status });
-        return out(r.skipped ? `Saved. ${r.skipped}` : `Watching ${r.board}. Cards moved to "${r.status}" go to the queue; ${r.added} queued now.`);
+        const r = await call<{ board: string; status: string; routine: { lastResult?: string; lastDetail?: string } }>("notion.intake", { board: args[1], status: f.status, wait: true });
+        const { lastResult, lastDetail } = r.routine;
+        return out(lastResult === "ok" ? `Watching ${r.board}. Cards moved to "${r.status}" go to the queue. Now: ${lastDetail}.` : `Saved, but the check ${lastResult}: ${lastDetail}`);
       }
       out(JSON.stringify(await call("notion.status"), null, 2));
     },
   },
   repo: {
-    usage: 'repo add PATH [--setup "cp ../.env .env && npm ci"] [--base main] | ls',
-    help: "Register a repo the factory may work in, with its per-worktree setup step",
+    usage: 'repo add PATH [--about "what it is for"] [--setup "cp ../.env .env && npm ci"] [--base main] [--default] | about NAME TEXT | default NAME | rm NAME | ls',
+    help: "Register the repos work most likely lands in: triage matches incoming work to one by what it's for, else the default",
     async run(args, f) {
       if (args[0] === "add") {
         const { resolve } = await import("node:path");
-        return out(JSON.stringify(await call("repo.add", { path: resolve(args[1] ?? "."), setup: str(f.setup), base: str(f.base) })));
+        const r = await call<{ name: string }>("repo.add", { path: resolve(args[1] ?? "."), setup: str(f.setup), base: str(f.base), about: str(f.about) });
+        if (f.default) await call("repo.update", { name: r.name, isDefault: true });
+        return out(JSON.stringify(r));
       }
-      const repos = await call<{ name: string; path: string; base: string; setup: string }[]>("repo.list");
-      out(repos.length ? table([["NAME", "BASE", "PATH", "SETUP"], ...repos.map((r) => [r.name, r.base, r.path, r.setup])]) : "No repos yet: factory repo add ~/code/app");
+      if (args[0] === "about") return out(JSON.stringify(await call("repo.update", { name: args[1], about: args.slice(2).join(" ") })));
+      if (args[0] === "default") return out(JSON.stringify(await call("repo.update", { name: args[1], isDefault: true })));
+      if (args[0] === "rm") return out(JSON.stringify(await call("repo.remove", { name: args[1] })));
+      const repos = await call<{ name: string; path: string; base: string; about: string; isDefault: boolean }[]>("repo.list");
+      out(
+        repos.length
+          ? table([["NAME", "", "FOR", "BASE", "PATH"], ...repos.map((r) => [r.name, r.isDefault ? "default" : "", r.about || "–", r.base, r.path])])
+          : 'No repos yet: factory repo add ~/code/app --about "what it\'s for"',
+      );
     },
   },
 };

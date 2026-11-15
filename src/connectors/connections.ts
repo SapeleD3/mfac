@@ -13,6 +13,7 @@ export interface Connection {
   label: string;
   neededFor: string;
   required: boolean;
+  used: boolean;
   status: ConnectionStatus;
   detail?: string;
   via?: string;
@@ -28,7 +29,7 @@ const CONNECTOR_STEPS = (app: string, also = "") => [
   "The factory only ever uses Claude's access; it never asks for a token.",
 ];
 
-export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status">> = {
+export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "used">> = {
   slack: {
     label: "Slack",
     neededFor: "Intake, reply drafts, write-back to threads",
@@ -109,9 +110,10 @@ export const realTester =
     }
   };
 
-const toConnection = (name: ConnectionName, r?: Row): Connection => ({
+const toConnection = (name: ConnectionName, used: boolean, r?: Row): Connection => ({
   name,
   ...INFO[name],
+  used,
   status: (r?.status as ConnectionStatus) ?? "missing",
   detail: opt(r?.detail),
   checkedAt: opt(r?.checked_at),
@@ -128,7 +130,7 @@ export class Connections {
 
   list(): Connection[] {
     const rows = new Map((this.store.db.prepare("SELECT * FROM connections").all() as Row[]).map((r) => [String(r.name), r]));
-    return CONNECTIONS.map((n) => toConnection(n, rows.get(n)));
+    return CONNECTIONS.map((n) => toConnection(n, this.used(n), rows.get(n)));
   }
 
   get(name: ConnectionName): Connection {
@@ -139,9 +141,20 @@ export class Connections {
     return this.get(name).status === "connected";
   }
 
-  configured(name: ConnectionName): boolean {
-    if (name === "claude" || name === "github") return true;
-    return this.get(name).status !== "missing";
+  /**
+   * Optional connectors count only once you turn them on with factory connect: Claude's account-wide
+   * connectors show up in claude mcp list whether or not you want the factory to use them.
+   */
+  used(name: ConnectionName): boolean {
+    if (INFO[name].required || name === "github" || name === "claude") return true;
+    const chosen = connectorSettings(this.store).server?.[name];
+    if (chosen === "") return false;
+    return !!chosen || this.store.setting<string[]>("connections_enabled", []).includes(name);
+  }
+
+  private enable(name: ConnectionName, on: boolean) {
+    const now = this.store.setting<string[]>("connections_enabled", []).filter((n) => n !== name);
+    this.store.setSetting("connections_enabled", on ? [...now, name] : now);
   }
 
   async test(name: ConnectionName): Promise<Connection> {
@@ -166,8 +179,7 @@ export class Connections {
     const after = this.get(name);
     if (before.status !== after.status) {
       this.engine.emit("connection", { connection: after });
-      const needed = INFO[name].required || after.status !== "missing";
-      if (after.status !== "connected" && needed && !this.snoozed(after))
+      if (after.status !== "connected" && after.used && !this.snoozed(after))
         this.engine.emit("alert", { level: "error", sticky: true, connection: name, message: `${INFO[name].label} is ${after.status}: ${detail}. Fix: factory connect ${name}` });
       if (after.status === "connected" && before.status !== "missing") this.engine.emit("alert", { level: "info", connection: name, clear: true, message: `${INFO[name].label} is connected again.` });
     }
@@ -182,6 +194,7 @@ export class Connections {
 
   async connect(name: ConnectionName, server?: string): Promise<Connection & { server?: string }> {
     if (name === "claude" || name === "github") return this.test(name);
+    this.enable(name, true);
     if (server !== undefined) {
       const s = connectorSettings(this.store);
       this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server } });
@@ -207,6 +220,7 @@ export class Connections {
     if (name === "claude" || name === "github") throw new Error(`${INFO[name].label} uses its own sign-in; sign out there instead`);
     const s = connectorSettings(this.store);
     this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: "" } });
+    this.enable(name, false);
     return this.test(name);
   }
 
@@ -221,6 +235,6 @@ export class Connections {
   }
 
   alerts(): Connection[] {
-    return this.list().filter((c) => c.checkedAt && c.status !== "connected" && (c.required || c.status !== "missing") && !this.snoozed(c));
+    return this.list().filter((c) => c.checkedAt && c.status !== "connected" && c.used && !this.snoozed(c));
   }
 }

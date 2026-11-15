@@ -5,6 +5,7 @@ import type { Engine, TaskView } from "../workflow/engine.js";
 import * as jira from "../connectors/jira.js";
 import * as notion from "../connectors/notion.js";
 import * as slack from "../connectors/slack.js";
+import { Repos } from "../repo/registry.js";
 import { type Event, type State, initial, step } from "../workflow/statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "../workflow/store.js";
 
@@ -81,6 +82,7 @@ export class Intake {
     private store: Store,
     private engine: Engine,
     private connections: Connections,
+    private repos = new Repos(store, engine),
   ) {}
 
   items(filter: { status?: State[]; limit?: number } = {}): IntakeItem[] {
@@ -91,6 +93,10 @@ export class Intake {
   item(id: string): IntakeItem | undefined {
     const r = this.store.db.prepare("SELECT * FROM intake WHERE id = ?").get(id) as Row | undefined;
     return r ? toItem(r) : undefined;
+  }
+
+  private seen(source: Source, sourceId: string): boolean {
+    return !!this.store.db.prepare("SELECT 1 FROM intake WHERE source = ? AND source_id = ?").get(source, sourceId);
   }
 
   add(i: { source: Source; sourceId: string; author?: string; channel?: string; text: string; url?: string; meta?: Record<string, string> }): IntakeItem | undefined {
@@ -132,7 +138,7 @@ export class Intake {
     this.store.db.prepare("INSERT INTO cursors (source, cursor, at) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor, at = excluded.at").run(source, cursor, now());
   }
 
-  async poll(source: "slack" | "jira" | "notion"): Promise<{ added: number; skipped?: string }> {
+  async poll(source: "slack" | "jira" | "notion"): Promise<{ added: number; found?: number; skipped?: string }> {
     if (source === "notion") return this.pollBoard();
     const c = await this.connections.test(source);
     if (c.status !== "connected") return { added: 0, skipped: `${source} is ${c.status}; intake waits and catches up from its cursor once it's fixed` };
@@ -158,21 +164,24 @@ export class Intake {
   }
 
   /** Cards you moved to the ready column are your decision already, so they skip triage and go straight to the queue. */
-  private async pollBoard(): Promise<{ added: number; skipped?: string }> {
+  private async pollBoard(): Promise<{ added: number; found?: number; skipped?: string }> {
     const { intakeBoard, intakeStatus } = this.engine.settings().notion;
     if (!intakeBoard) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board link>)" };
     const c = await this.connections.test("notion");
     if (c.status !== "connected") return { added: 0, skipped: `Notion is ${c.status}; cards wait on the board` };
     const status = intakeStatus || "Ready for agent";
     let added = 0;
-    for (const card of await notion.readyCards(this.store, intakeBoard, status)) {
-      const item = this.add({ source: "notion", sourceId: card.pageId, channel: "Notion board", text: `${card.title}\n\n${card.text}`.trim(), url: card.url, meta: { pageId: card.pageId } });
+    const cards = await notion.readyCards(this.store, intakeBoard, status);
+    for (const card of cards) {
+      if (this.seen("notion", card.pageId)) continue;
+      const text = await notion.cardText(this.store, card.pageId).catch(() => "");
+      const item = this.add({ source: "notion", sourceId: card.pageId, channel: "Notion board", text: `${card.title}\n\n${text}`.trim(), url: card.url, meta: { pageId: card.pageId } });
       if (!item) continue;
       this.moveItem(item.id, { type: "pick" });
       await this.apply(item.id, { action: "task", why: `you moved it to ${status} on your Notion board`, title: card.title });
       added++;
     }
-    return { added };
+    return { added, found: cards.length };
   }
 
   rules(status?: TriageRule["status"]): TriageRule[] {
@@ -211,7 +220,7 @@ export class Intake {
   }
 
   private async askModel(items: IntakeItem[]) {
-    const repos = (this.store.db.prepare("SELECT name, path FROM repos").all() as Row[]).map((r) => `${r.name} (${r.path})`);
+    const repos = this.repos.forPrompt();
     const examples = (this.store.db.prepare("SELECT source, channel, author, text, triage FROM intake WHERE overridden = 1 ORDER BY received_at DESC LIMIT 10").all() as Row[]).map(
       (r) => `- [${r.source} ${r.channel ?? ""} from ${r.author ?? "?"}] "${String(r.text).slice(0, 140)}" → ${r.triage}`,
     );
@@ -222,8 +231,8 @@ export class Intake {
       "- task: it needs work (research, a bug fix, a feature, a review) and should be done soon.",
       "- backlog: it needs work, but isn't a priority now (a nice-to-have, an idea, no deadline, no one waiting).",
       "- urgent: like task, but outage words, a VIP, or due within a day.",
-      `For task, backlog and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (one of the known repos, or null).`,
-      repos.length ? `Known repos: ${repos.join("; ")}` : "No repos are registered yet; use null.",
+      `For task, backlog and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (the name of the known repo this work most likely belongs to, judged by what each repo is for and any repo, service or product named in the item; null if you can't tell).`,
+      repos.length ? `Known repos:\n${repos.join("\n")}` : "No repos are registered yet; use null.",
       examples.length ? `How they corrected triage before (follow these):\n${examples.join("\n")}` : "",
       'Answer with only a JSON array: [{"id","action","reason","title","recipe","tags","repo"}].',
       "",
@@ -252,7 +261,7 @@ export class Intake {
       const draft = await this.draftReply(item).catch(() => "");
       return this.moveItem(id, { type: "triage", as: "reply" }, { ...base, draft });
     }
-    const repoPath = d.repo ? ((this.store.db.prepare("SELECT path FROM repos WHERE name = ? OR path = ?").get(d.repo, d.repo) as Row | undefined)?.path as string | undefined) : undefined;
+    const repoPath = this.repos.resolve(d.repo) ?? this.repos.mentionedIn(item.text) ?? this.repos.defaultPath();
     const existing = this.engine.store.taskBySource(item.source, item.sourceId);
     const task: TaskView = existing
       ? this.engine.get(existing.id)!
