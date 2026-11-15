@@ -6,6 +6,7 @@ import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
+import { brokenCall } from "../connectors/mcp.js";
 import * as notion from "../connectors/notion.js";
 import { NotionSync } from "../board/notion-sync.js";
 import { Repos } from "../repo/registry.js";
@@ -42,8 +43,9 @@ export const integrationsPart =
         everySeconds: 300,
         run: async () => {
           const all = await connections.testAll();
-          const bad = all.filter((c) => c.status !== "connected" && c.used);
-          return bad.length ? `warn: ${bad.map((c) => `${c.label} ${c.status}`).join(", ")}` : "all connections working";
+          const bad = all.filter((c) => c.status !== "connected" && c.used).map((c) => `${c.label} ${c.status}`);
+          const failing = all.filter((c) => c.status === "connected" && c.used && brokenCall(c.lastCall)).map((c) => `${c.label} is listed but its last read failed (${c.lastCall!.server})`);
+          return bad.length || failing.length ? `warn: ${[...bad, ...failing].join(", ")}` : "all connections working";
         },
       },
       {
@@ -199,6 +201,7 @@ export const integrationsPart =
       api: {
         "connections.list": () => connections.list(),
         "connections.test": async (p: { name?: ConnectionName }) => (p.name ? [await connections.test(p.name)] : connections.testAll()),
+        "connections.verify": (p: { name: ConnectionName }) => connections.verify(p.name),
         "connections.connect": (p: { name: ConnectionName; server?: string }) => connections.connect(p.name, p.server),
         "connections.disconnect": (p: { name: ConnectionName }) => connections.disconnect(p.name),
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),

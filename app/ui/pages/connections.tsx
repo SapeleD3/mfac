@@ -1,8 +1,10 @@
 import { useState } from "preact/hooks";
 import { openTerminal, openUrl } from "../bridge";
 import { Brand, Btn, Ic, ago } from "../kit";
-import { act, useApp, useCall } from "../store";
+import { act, toast, useApp, useCall } from "../store";
 import type { Connection } from "../types";
+
+const KIND: Record<string, string> = { "claude.ai": "a connector in your Claude account", plugin: "an MCP server from a Claude Code plugin", local: "an MCP server you added to Claude Code" };
 
 const ST: Record<Connection["status"], [string, string, string]> = {
   connected: ["dot ok", "Connected", "chip ok"],
@@ -19,6 +21,14 @@ export function Connections() {
   const notion = useCall<NotionStatus>("notion.status");
   const notionOk = app.connections.find((c) => c.name === "notion")?.status === "connected";
   const skills = useCall<{ name: string; description: string; status: "ok" | "missing" | "no-source"; version?: string; provides: string[] }[]>("skills.list");
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const test = async (c: Connection) => {
+    setTesting((x) => ({ ...x, [c.name]: true }));
+    const r = await act<Connection & { server?: string }>("connections.verify", { name: c.name }, ["connections"]);
+    setTesting((x) => ({ ...x, [c.name]: false }));
+    setOpen((o) => ({ ...o, [c.name]: true }));
+    if (r) toast(r.status === "connected" ? `${r.label} works${r.server ? ` through ${r.server}` : ""}.` : `${r.label} is ${r.status}: ${r.detail ?? ""}`, r.status === "connected" ? "info" : "error");
+  };
   const fix = (c: Connection) => {
     if (c.fix.url) void openUrl(c.fix.url);
     if (c.name !== "claude" && c.name !== "github") void openTerminal(`factory connect ${c.name}`);
@@ -88,10 +98,52 @@ export function Connections() {
                     <div class="cn-meta">
                       <span class="label">Through</span>
                       <span class="small">
-                        {c.via}
-                        {c.name !== "claude" && c.name !== "github" ? ". The factory holds no token; it uses Claude's access." : ""}
+                        {c.through ? (
+                          <>
+                            <b>{c.through.name}</b> · {KIND[c.through.kind]}
+                            {c.through.target ? <span class="faint"> · {c.through.target}</span> : null}
+                            <div class="xs faint">Claude Code reports it as {c.through.state}. The factory holds no token; it uses Claude's access.</div>
+                          </>
+                        ) : (
+                          <>
+                            {c.via}
+                            {c.name !== "claude" && c.name !== "github" ? ". The factory holds no token; it uses Claude's access." : ""}
+                          </>
+                        )}
                       </span>
                     </div>
+                    {c.lastCall && (
+                      <div class="cn-meta">
+                        <span class="label">Last read</span>
+                        <span class="small">
+                          {c.lastCall.ok ? (
+                            <>
+                              Worked {ago(c.lastCall.at)} through {c.lastCall.server}
+                            </>
+                          ) : (
+                            <>
+                              <span class="err-line">
+                                Failed {ago(c.lastCall.at)} through {c.lastCall.server}: {c.lastCall.error}
+                              </span>
+                              <div class="xs faint">{c.lastCall.lastOkAt ? `Last worked ${ago(c.lastCall.lastOkAt)}` : "Hasn't worked yet"}</div>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {!!c.tools?.length && (
+                      <div class="cn-meta">
+                        <span class="label">Tools</span>
+                        <span class="small">
+                          <details>
+                            <summary>{c.tools.length} tools the factory may use to read</summary>
+                            <div class="xs faint" style={{ marginTop: 4 }}>
+                              {c.tools.map((t) => t.split("__").slice(2).join("__") || t).join(", ")}
+                            </div>
+                          </details>
+                        </span>
+                      </div>
+                    )}
                     {c.status === "connected" ? (
                       <div class="cn-meta">
                         <span class="label">Last test</span>
@@ -123,10 +175,11 @@ export function Connections() {
                           {!c.used ? "Turn on" : c.status === "missing" ? "Set up" : "Fix"}
                         </Btn>
                       )}
-                      <Btn onClick={() => act("connections.test", { name: c.name }, ["connections"])}>
+                      <Btn onClick={() => test(c)} disabled={!!testing[c.name]}>
                         <Ic n="heart-pulse" s={14} />
-                        Test now
+                        {testing[c.name] ? "Testing…" : "Test now"}
                       </Btn>
+                      {testing[c.name] && c.name !== "claude" && c.name !== "github" && <span class="xs dim">One small read through Claude; up to a minute.</span>}
                       {c.status !== "connected" && c.used && (
                         <Btn kind="btn-ghost" onClick={() => act("connections.snooze", { name: c.name, hours: 4 }, ["connections"])}>
                           Snooze 4h

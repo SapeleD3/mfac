@@ -111,6 +111,9 @@ export interface Connection {
   lastOkAt?: string;
   snoozedUntil?: string;
   fix: { url?: string; steps: string[] };
+  through?: { name: string; kind: "claude.ai" | "plugin" | "local"; target?: string; state: string };
+  tools?: string[];
+  lastCall?: { at: string; ok: boolean; server: string; error?: string; lastOkAt?: string };
 }
 
 export interface Routine {

@@ -36,6 +36,8 @@ const triageCalls: string[] = [];
 setPrintRunner(async (prompt, opts) => {
   if (opts.allowedTools) {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
+    if (prompt.startsWith("Use only the plugin:engineering:notion tools"))
+      return '{"error": "The plugin:engineering:notion tools are not available in this session. No tools from that server are loaded."}';
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
@@ -182,6 +184,29 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   assert.equal(connectorCalls.length, reads + 1, "a card already queued isn't read again");
 });
 
+test("Claude's own connector is used before a plugin's server, and a server whose tools don't load falls through to the next", async () => {
+  const saved = mcpList;
+  const { servers, candidates } = await import("../src/connectors/mcp.js");
+  mcpList = `plugin:engineering:notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n${saved}`;
+  await servers(true);
+  assert.deepEqual(
+    (await candidates(running.store, "notion")).map((x) => x.name),
+    ["claude.ai Notion", "plugin:engineering:notion"],
+  );
+  mcpList =
+    "claude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nplugin:engineering:notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\nnotion: npx -y @notionhq/notion-mcp-server - ✓ Connected\n";
+  await servers(true);
+  const r = await c<{ added: number; found?: number }>("intake.poll", { source: "notion" });
+  assert.equal(r.found, 1, "the plugin server's tools didn't load, so the next server answered");
+  const notion = (await c<Connection[]>("connections.list")).find((x) => x.name === "notion")!;
+  assert.equal(notion.lastCall!.ok, true);
+  assert.equal(notion.lastCall!.server, "notion");
+  assert.equal(notion.through!.name, "notion");
+  assert.equal(notion.through!.kind, "local");
+  mcpList = saved;
+  await servers(true);
+});
+
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {
   const alerts: { message: string; sticky?: boolean }[] = [];
   running.engine.on("alert", (a) => alerts.push(a));
@@ -260,9 +285,9 @@ test("small pieces: schedules, working hours, mcp list parsing, write tools, pag
       "Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nnotion: npx -y @notionhq/notion-mcp-server - ✗ Failed to connect\nclaude.ai Atlassian: https://mcp.atlassian.com/v1/sse (SSE) - ! Needs authentication",
     ),
     [
-      { name: "claude.ai Slack", status: "connected", detail: "Connected" },
-      { name: "notion", status: "failed", detail: "Failed to connect" },
-      { name: "claude.ai Atlassian", status: "needs-auth", detail: "Needs authentication" },
+      { name: "claude.ai Slack", status: "connected", detail: "Connected", kind: "claude.ai", target: "https://mcp.slack.com/mcp (HTTP)" },
+      { name: "notion", status: "failed", detail: "Failed to connect", kind: "local", target: "npx -y @notionhq/notion-mcp-server" },
+      { name: "claude.ai Atlassian", status: "needs-auth", detail: "Needs authentication", kind: "claude.ai", target: "https://mcp.atlassian.com/v1/sse (SSE)" },
     ],
   );
   assert.equal(toolPrefix("claude.ai Slack"), "mcp__claude_ai_Slack");

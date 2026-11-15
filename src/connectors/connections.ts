@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import type { Engine } from "../workflow/engine.js";
 import { HttpError } from "../shared/http.js";
-import { connectorSettings, probe, serverFor, servers } from "./mcp.js";
+import { type ConnectorCall, type ServerKind, type Service, cachedServer, connectorSettings, lastCall, probe, serverFor, servers, toolPrefix } from "./mcp.js";
 import { type Row, type Store, now, opt } from "../workflow/store.js";
 
 export const CONNECTIONS = ["slack", "notion", "jira", "claude", "github"] as const;
@@ -21,6 +21,9 @@ export interface Connection {
   lastOkAt?: string;
   snoozedUntil?: string;
   fix: { url?: string; steps: string[] };
+  through?: { name: string; kind: ServerKind; target?: string; state: string };
+  tools?: string[];
+  lastCall?: ConnectorCall;
 }
 
 const CONNECTOR_STEPS = (app: string, also = "") => [
@@ -29,7 +32,7 @@ const CONNECTOR_STEPS = (app: string, also = "") => [
   "The factory only ever uses Claude's access; it never asks for a token.",
 ];
 
-export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "used">> = {
+export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "used" | "through" | "tools" | "lastCall">> = {
   slack: {
     label: "Slack",
     neededFor: "Intake, reply drafts, write-back to threads",
@@ -130,7 +133,19 @@ export class Connections {
 
   list(): Connection[] {
     const rows = new Map((this.store.db.prepare("SELECT * FROM connections").all() as Row[]).map((r) => [String(r.name), r]));
-    return CONNECTIONS.map((n) => toConnection(n, this.used(n), rows.get(n)));
+    return CONNECTIONS.map((n) => ({ ...toConnection(n, this.used(n), rows.get(n)), ...this.details(n) }));
+  }
+
+  private details(name: ConnectionName): Pick<Connection, "through" | "tools" | "lastCall"> {
+    if (name === "claude" || name === "github") return {};
+    const svc = name as Service;
+    const server = cachedServer(this.store, svc);
+    const prefix = server ? toolPrefix(server.name) : "";
+    return {
+      through: server ? { name: server.name, kind: server.kind, target: server.target, state: server.detail } : undefined,
+      tools: (connectorSettings(this.store).tools?.[svc] ?? []).filter((t) => t.startsWith(prefix)),
+      lastCall: lastCall(this.store, svc),
+    };
   }
 
   get(name: ConnectionName): Connection {
@@ -195,13 +210,15 @@ export class Connections {
   async connect(name: ConnectionName, server?: string): Promise<Connection & { server?: string }> {
     if (name === "claude" || name === "github") return this.test(name);
     this.enable(name, true);
-    if (server !== undefined) {
-      const s = connectorSettings(this.store);
-      this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server } });
-    } else {
-      const s = connectorSettings(this.store);
-      if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
-    }
+    const s = connectorSettings(this.store);
+    if (server !== undefined) this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server }, pinned: { ...s.pinned, [name]: true } });
+    else if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
+    return this.verify(name);
+  }
+
+  /** The Test now button: the free check, then for a connector one real read through the same server the factory's calls use. */
+  async verify(name: ConnectionName): Promise<Connection & { server?: string }> {
+    if (name === "claude" || name === "github") return this.test(name);
     await servers(true);
     const found = (await serverFor(this.store, name))?.name;
     const c = await this.test(name);
@@ -209,11 +226,12 @@ export class Connections {
     try {
       const r = await probe(this.store, name);
       this.store.db.prepare("UPDATE connections SET detail = ? WHERE name = ?").run(`${r.who}, via ${r.server}`, name);
+      return { ...this.get(name), server: r.server };
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       this.store.db.prepare("UPDATE connections SET status = ?, detail = ? WHERE name = ?").run(e instanceof HttpError && e.auth ? "expired" : "error", detail, name);
+      return { ...this.get(name), server: found };
     }
-    return { ...this.get(name), server: found };
   }
 
   async disconnect(name: ConnectionName): Promise<Connection> {

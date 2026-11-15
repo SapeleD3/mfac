@@ -82,7 +82,8 @@ function drop(name: string) {
 const exec = (args: string[], prompt: string, timeoutMs = 5 * 60_000) =>
   new Promise<string>((resolve, reject) => {
     mkdirSync(paths.sessions(), { recursive: true });
-    const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", args, { cwd: paths.sessions(), stdio: ["pipe", "pipe", "pipe"] });
+    // With --tools "" there is no ToolSearch, so MCP tools Claude would defer must load up front or they never appear.
+    const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", args, { cwd: paths.sessions(), stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ENABLE_TOOL_SEARCH: "false" } });
     let out = "";
     let err = "";
     child.stdout.on("data", (d) => (out += d));
