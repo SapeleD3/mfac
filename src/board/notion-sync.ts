@@ -140,8 +140,8 @@ export class NotionSync {
     if (this.store.setting<string | undefined>(done, undefined) === `${gate}:${round}`) return t.notionReviewId;
     const md =
       gate === "Research"
-        ? [read("research.md"), "## Statechart", read("statechart.md"), "## Formal check", read("tlc-result.md"), t.tags.includes("learn") ? read("explainer.md") : ""].join("\n\n")
-        : [read("plan.md"), "## Tickets", ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`)].join("\n");
+        ? [read("requirements.md"), read("research.md"), "## Statechart", read("statechart.md"), "## Formal check", read("tlc-result.md"), t.tags.includes("learn") ? read("explainer.md") : ""].join("\n\n")
+        : [read("plan.md"), "## Requirements review", read("review-requirements.md"), "## Tickets", ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`)].join("\n");
     const intro = `> 💬 Leave a comment on every issue, on the words it's about. Then give one overall verdict in the factory app or with factory approve, send-back or drop ${t.id}.`;
     const key = `review_${t.id}_${gate}`;
     const existing = this.store.setting<string | undefined>(key, undefined);

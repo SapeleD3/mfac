@@ -209,7 +209,7 @@ function toTask(r: Row): Task {
     recipe: r.recipe as Recipe,
     tags: j(r.tags, []),
     priority: Number(r.priority),
-    machine: { ...initial(), ...j<Partial<Machine>>(r.machine, {}) },
+    machine: loadMachine(j<Partial<Machine>>(r.machine, {})),
     branch: opt(r.branch),
     worktree: opt(r.worktree),
     prUrl: opt(r.pr_url),
@@ -362,3 +362,13 @@ export class Store {
 
 export { now, j as parseJson, opt };
 export type { Row };
+
+const PAST_PLANNING: readonly State[] = ["PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"];
+
+function loadMachine(saved: Partial<Machine>): Machine {
+  const fresh = initial();
+  const m = { ...fresh, ...saved, tries: { ...fresh.tries, ...saved.tries }, loops: { ...fresh.loops, ...saved.loops } };
+  // Tasks saved before the requirements review existed were never reviewed; don't strand them.
+  if (saved.covered === undefined) m.covered = PAST_PLANNING.includes(m.state === "Parked" ? m.parkedFrom : m.state);
+  return m;
+}

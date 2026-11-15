@@ -1,6 +1,6 @@
 export type State =
   | "Inbox" | "Triage" | "Ignored" | "ReplyDrafted" | "Replied" | "Queued"
-  | "Researching" | "ResearchCheck" | "ResearchGate" | "Planning" | "PlanGate"
+  | "Researching" | "ResearchCheck" | "ResearchGate" | "Planning" | "RequirementsReview" | "PlanGate"
   | "Building" | "Reviewing" | "Confirming" | "PRGate" | "NeedsYou" | "Parked" | "Done" | "Dropped";
 export type Gate = "ResearchGate" | "PlanGate" | "PRGate" | "NeedsYou";
 export type Tag = "learn" | "urgent" | "ui" | "sensitive" | "harden";
@@ -11,9 +11,10 @@ export interface Machine {
   state: State;
   parkedFrom: State;
   tries: Record<Gate, number>;
-  loops: { check: number; review: number; confirm: number };
+  loops: { check: number; requirements: number; review: number; confirm: number };
   chart: boolean;
   proved: boolean;
+  covered: boolean;
   findings: boolean;
   confirmed: boolean;
   approved: ("research" | "plan" | "pr")[];

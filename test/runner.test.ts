@@ -56,6 +56,18 @@ after(async () => {
   rmSync(repo, { recursive: true, force: true });
 });
 
+const REQUIREMENTS = [
+  "# Requirements",
+  "### R1: Export downloads a CSV",
+  '- Source: "the export button does nothing"',
+  "- Acceptance: Given a report, when I click Export, then a CSV downloads",
+  "- Verify by: the export test",
+  "## Out of scope",
+  "None",
+  "## Open questions",
+  "None",
+].join("\n");
+
 test("a task runs from queue to PR gate, with the engine holding every rule", async () => {
   await c("settings.set", { slots: 1 });
   const t = await c<TaskView>("task.add", { title: "Fix the export button", repo, tags: ["ui"] });
@@ -80,6 +92,7 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.match(lastPaste().text, /without writing research.md/);
 
   writeFileSync(join(job(t.id), "research.md"), "# Research\nThe button posts the wrong form.");
+  writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
   writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Exporting: click\n```\n");
   writeFileSync(join(job(t.id), "Export.tla"), "---- MODULE Export ----\n====");
   writeFileSync(join(job(t.id), "Export.cfg"), "INVARIANT Safe");
@@ -106,9 +119,21 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   await coord(t.id, "run", { role: "planner" });
   const filed = await call<{ id: string; createdBy: string }>("ticket.add", { task: t.id, title: "Fix form target", createdBy: "planner", pickedUpBy: "builder", check: "export test passes" }, socket);
   assert.equal(filed.createdBy, "planner");
-  writeFileSync(join(job(t.id), "plan.md"), "# Plan");
+  writeFileSync(join(job(t.id), "plan.md"), "# Plan\nFix the form target.");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-planner-1`) });
+  assert.match(await coord(t.id, "submit-plan"), /requirements_review-1[\s\S]*never mentions R1/);
+  writeFileSync(join(job(t.id), "review-requirements.md"), "| R1 | missing |\nVERDICT: gaps");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-requirements_review-1`) });
+  assert.match(lastPaste().text, /requirements review finished/);
+  await assert.rejects(coord(t.id, "requirements", { covered: true }), /never mentions R1/);
+  assert.match(await coord(t.id, "requirements", { gaps: true }), /back to the planner \(round 1\/3\)/);
+  await coord(t.id, "run", { role: "planner", note: "trace R1" });
+  writeFileSync(join(job(t.id), "plan.md"), "# Plan\n## Traceability\n| R1 | Fix form target | export test |");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-planner-2`) });
   await coord(t.id, "submit-plan");
+  writeFileSync(join(job(t.id), "review-requirements.md"), "| R1 | covered |\nVERDICT: covered");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-requirements_review-2`) });
+  assert.match(await coord(t.id, "requirements", { covered: true }), /plan gate is open/);
   await c("task.decide", { id: t.id, verdict: "approve" });
 
   await coord(t.id, "run", { role: "builder" });
@@ -136,10 +161,10 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.match(await coord(t.id, "findings", { blocking: 0 }), /Run the confirm stage/);
 
   await coord(t.id, "run", { role: "confirm" });
-  writeFileSync(join(job(t.id), "confirm.md"), "Clicked export, got the CSV.\nVERDICT: not solved");
+  writeFileSync(join(job(t.id), "confirm.md"), "| R1 | clicked export | csv.png | FAIL |\nVERDICT: not solved");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-confirm-1`) });
-  await assert.rejects(coord(t.id, "confirm", { solved: true }), /VERDICT: solved/);
-  writeFileSync(join(job(t.id), "confirm.md"), "Clicked export, got the CSV.\nVERDICT: solved");
+  await assert.rejects(coord(t.id, "confirm", { solved: true }), /R1 failed[\s\S]*VERDICT: solved/);
+  writeFileSync(join(job(t.id), "confirm.md"), "| R1 | clicked export | csv.png | PASS |\nVERDICT: solved");
   assert.match(await coord(t.id, "confirm", { solved: true }), /PR gate is open/);
   const final = (await c<{ task: TaskView }>("task.get", { id: t.id })).task;
   assert.equal(final.machine.state, "PRGate");

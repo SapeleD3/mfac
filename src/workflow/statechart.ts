@@ -3,7 +3,7 @@ export const CAP = 3;
 export const STATES = [
   "Inbox", "Triage", "Ignored", "ReplyDrafted", "Replied", "Queued",
   "Researching", "ResearchCheck", "ResearchGate",
-  "Planning", "PlanGate",
+  "Planning", "RequirementsReview", "PlanGate",
   "Building", "Reviewing", "Confirming", "PRGate",
   "NeedsYou", "Parked", "Done", "Dropped",
 ] as const;
@@ -13,8 +13,8 @@ export const GATES = ["ResearchGate", "PlanGate", "PRGate", "NeedsYou"] as const
 export type Gate = (typeof GATES)[number];
 export const PARKABLE: readonly State[] = ["Queued", "ResearchGate", "PlanGate", "PRGate", "NeedsYou"];
 export const TERMINAL: readonly State[] = ["Ignored", "Replied", "Done", "Dropped"];
-export const RUNNING: readonly State[] = ["Researching", "Planning", "Building", "Reviewing", "Confirming"];
-export const LOOPS = ["check", "review", "confirm"] as const;
+export const RUNNING: readonly State[] = ["Researching", "Planning", "RequirementsReview", "Building", "Reviewing", "Confirming"];
+export const LOOPS = ["check", "requirements", "review", "confirm"] as const;
 export type Loop = (typeof LOOPS)[number];
 export type Approval = "research" | "plan" | "pr";
 
@@ -25,6 +25,7 @@ export interface Machine {
   loops: Record<Loop, number>;
   chart: boolean;
   proved: boolean;
+  covered: boolean;
   findings: boolean;
   confirmed: boolean;
   approved: Approval[];
@@ -40,6 +41,7 @@ export type Event =
   | { type: "research_done"; chart: boolean; proved: boolean }
   | { type: "check" }
   | { type: "plan_done" }
+  | { type: "requirements_done"; covered: boolean }
   | { type: "approve" }
   | { type: "send_back"; to: State }
   | { type: "drop" }
@@ -59,9 +61,10 @@ export function initial(state: State = "Inbox"): Machine {
     state,
     parkedFrom: "Queued",
     tries: { ResearchGate: 0, PlanGate: 0, PRGate: 0, NeedsYou: 0 },
-    loops: { check: 0, review: 0, confirm: 0 },
+    loops: { check: 0, requirements: 0, review: 0, confirm: 0 },
     chart: false,
     proved: false,
+    covered: false,
     findings: false,
     confirmed: false,
     approved: [],
@@ -116,8 +119,8 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
 
     case "research_done": {
       if (s !== "Researching") return wrong(m, "finish research", "while Researching");
-      // The engine fills chart and proved from the files the stage wrote (see research-check.ts),
-      // never from what a session says. No chart counts as a failed check.
+      // The engine fills chart and proved from the files the stage wrote, never from what a
+      // session says. No chart counts as a failed check.
       const n = go(m, "ResearchCheck");
       n.chart = e.chart;
       n.proved = e.chart && e.proved;
@@ -135,7 +138,18 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
     }
 
     case "plan_done":
-      return s === "Planning" ? ok(go(m, "PlanGate"), "Plan") : wrong(m, "finish the plan", "while Planning");
+      return s === "Planning" ? ok(go(m, "RequirementsReview"), "Plan") : wrong(m, "finish the plan", "while Planning");
+    case "requirements_done": {
+      if (s !== "RequirementsReview") return wrong(m, "finish the requirements review", "in RequirementsReview");
+      const n = clone(m);
+      n.covered = e.covered;
+      if (e.covered) n.state = "PlanGate";
+      else if (m.loops.requirements < cap) {
+        n.state = "Planning";
+        n.loops.requirements++;
+      } else n.state = "NeedsYou";
+      return ok(n, "ReqReview");
+    }
 
     case "approve": {
       const a = isGate(s) ? APPROVE[s] : undefined;
@@ -157,6 +171,7 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
         n.chart = false;
         n.proved = false;
       }
+      if (e.to === "Researching" || e.to === "Planning") n.covered = false;
       return ok(n, `SendBack(${s},${e.to})`);
     }
     case "drop":
@@ -212,7 +227,7 @@ export function allowed(m: Machine): Event[] {
     { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" },
     { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
     { type: "research_done", chart: true, proved: true }, { type: "check" }, { type: "plan_done" },
-    { type: "approve" }, { type: "drop" }, { type: "build_done" }, { type: "reviews_done", findings: false },
+    { type: "requirements_done", covered: true }, { type: "approve" }, { type: "drop" }, { type: "build_done" }, { type: "reviews_done", findings: false },
     { type: "confirm_done", confirmed: true }, { type: "interrupt" }, { type: "park" }, { type: "unpark" },
     ...STATES.map((to) => ({ type: "send_back" as const, to })),
   ];
@@ -223,7 +238,8 @@ export const invariants: Record<string, (m: Machine, cap?: number) => boolean> =
   TypeOK: (m, cap = CAP) =>
     STATES.includes(m.state) && PARKABLE.includes(m.parkedFrom) &&
     GATES.every((g) => m.tries[g] >= 0 && m.tries[g] <= cap) && LOOPS.every((l) => m.loops[l] >= 0 && m.loops[l] <= cap),
-  ResearchRule: (m) => !["ResearchGate", "Planning", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || (m.chart && m.proved),
+  ResearchRule: (m) => !["ResearchGate", "Planning", "RequirementsReview", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || (m.chart && m.proved),
+  CoverageRule: (m) => !["PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || m.covered,
   BuildRule: (m) => !["Building", "Reviewing", "Confirming", "PRGate"].includes(m.state) || (m.approved.includes("research") && m.approved.includes("plan")),
   PRRule: (m) => m.state !== "PRGate" || (!m.findings && m.confirmed),
   GatesRule: (m) => m.state !== "Done" || ["research", "plan", "pr"].every((a) => m.approved.includes(a as Approval)),
@@ -243,6 +259,7 @@ export function column(state: State): Column {
     case "Researching":
     case "ResearchCheck":
     case "Planning":
+    case "RequirementsReview":
     case "Building":
     case "Reviewing":
     case "Confirming":

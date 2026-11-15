@@ -47,6 +47,7 @@ export const RECIPE = [
   { id: "check", name: "Statechart + TLC check", auto: true },
   { id: "rgate", name: "Research gate", gate: true },
   { id: "plan", name: "Plan" },
+  { id: "requirements", name: "Requirements review", auto: true },
   { id: "pgate", name: "Plan gate", gate: true },
   { id: "build", name: "Build" },
   { id: "review", name: "Code + security review", auto: true },
@@ -56,14 +57,14 @@ export const RECIPE = [
 ] as const;
 
 const AT: Partial<Record<State, number>> = {
-  Inbox: 0, Triage: 0, ReplyDrafted: 0, Queued: 1, Researching: 1, ResearchCheck: 2, ResearchGate: 3, Planning: 4, PlanGate: 5,
-  Building: 6, Reviewing: 7, Confirming: 8, PRGate: 9, Done: 11, Dropped: 0, Ignored: 0, Replied: 0,
+  Inbox: 0, Triage: 0, ReplyDrafted: 0, Queued: 1, Researching: 1, ResearchCheck: 2, ResearchGate: 3, Planning: 4, RequirementsReview: 5, PlanGate: 6,
+  Building: 7, Reviewing: 8, Confirming: 9, PRGate: 10, Done: 12, Dropped: 0, Ignored: 0, Replied: 0,
 };
 
 export function position(m: Machine): { at: number; kind: "now" | "gate" | "fail" | "queued" | "done" | "parked" } {
   const s = m.state === "Parked" ? m.parkedFrom : m.state;
   let at = AT[s];
-  if (s === "NeedsYou") at = !m.approved.includes("research") ? (m.chart && m.proved ? 3 : 2) : !m.approved.includes("plan") ? 5 : m.findings ? 7 : 8;
+  if (s === "NeedsYou") at = !m.approved.includes("research") ? (m.chart && m.proved ? 3 : 2) : !m.approved.includes("plan") ? (m.covered ? 6 : 5) : m.findings ? 8 : 9;
   const kind = m.state === "Parked" ? "parked" : s === "NeedsYou" ? "fail" : s === "Queued" ? "queued" : s === "Done" ? "done" : ["ResearchGate", "PlanGate", "PRGate"].includes(s) ? "gate" : "now";
   return { at: at ?? 0, kind };
 }
@@ -86,7 +87,8 @@ export function doing(t: Task): string {
     case "Researching": return m.loops.check ? `Research, round ${m.loops.check + 1} (TLC check failed before)` : "Researching: reading code, writing the statechart and model";
     case "ResearchCheck": return "Checking the statechart and running TLC";
     case "ResearchGate": return "Research ready: review in Notion";
-    case "Planning": return "Planning: splitting into reviewable units";
+    case "Planning": return m.loops.requirements ? `Planning: closing requirement gaps (round ${m.loops.requirements} of ${CAP})` : "Planning: splitting into reviewable units";
+    case "RequirementsReview": return `Checking the plan against the original ask${m.loops.requirements ? ` (round ${m.loops.requirements + 1} of ${CAP})` : ""}`;
     case "PlanGate": return "Plan ready: review in Notion";
     case "Building": return m.loops.review ? `Building: fixing review findings (loop ${m.loops.review} of ${CAP})` : "Building on its branch";
     case "Reviewing": return `Code + security review${m.loops.review ? ` (loop ${m.loops.review + 1} of ${CAP})` : ""}`;

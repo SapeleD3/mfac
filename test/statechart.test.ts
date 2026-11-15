@@ -7,6 +7,7 @@ const EVENTS: Event[] = [
   { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
   { type: "research_done", chart: true, proved: true }, { type: "research_done", chart: true, proved: false },
   { type: "research_done", chart: false, proved: false }, { type: "check" }, { type: "plan_done" },
+  { type: "requirements_done", covered: true }, { type: "requirements_done", covered: false },
   { type: "approve" }, { type: "drop" }, { type: "build_done" },
   { type: "reviews_done", findings: true }, { type: "reviews_done", findings: false },
   { type: "confirm_done", confirmed: true }, { type: "confirm_done", confirmed: false },

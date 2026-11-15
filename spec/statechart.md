@@ -1,21 +1,22 @@
 # One task's life
 
-The engine enforces this chart: `src/statechart.ts` is the code copy of [`Factory.tla`](Factory.tla), and
+The engine enforces this chart: `src/workflow/statechart.ts` is the code copy of [`Factory.tla`](Factory.tla), and
 CI model-checks the spec with TLC at `Cap = 3` on every PR (`npm run tlc` does the same locally).
 
 | Rule | Invariant |
 | --- | --- |
 | Research rule | No task reaches the research gate, planning, building or done without a statechart and a passing TLC check |
+| Coverage rule | You only see a plan once an independent review has traced every requirement in the original Slack message or Jira ticket into it |
 | Build rule | Building only starts on approved research and an approved plan |
 | PR rule | You only see code once review is clean and the change is confirmed to solve the problem |
 | Gates rule | Done only after research, plan and PR are all approved |
-| Caps | At most 3 send-backs per gate, and 3 rounds per automatic loop (research check, review findings, confirm); then Needs you, also capped at 3 |
+| Caps | At most 3 send-backs per gate, and 3 rounds per automatic loop (research check, requirements review, review findings, confirm); then Needs you, also capped at 3 |
 | Ends or parked | Every task ends as Ignored, Replied, Done or Dropped, or waits in Parked because you put it there |
 
 Beyond the original design, the model adds three moves that only a person makes, so fairness never
 forces them: dismissing a drafted reply, overruling triage (an ignored item or a draft becomes a task),
 and stopping a running stage (it goes to Needs you, whose cap still applies). TLC checks every rule with
-them in: 3,572,132 distinct states, no errors.
+them in: 15,689,700 distinct states, no errors.
 
 ```mermaid
 stateDiagram-v2
@@ -31,7 +32,7 @@ stateDiagram-v2
     Queued --> Researching: slot frees, Opus coordinator starts
 
     Researching --> ResearchCheck: statechart and TLA+ model written
-    ResearchCheck --> Researching: TLC fails (max 3 retries)
+    ResearchCheck --> Researching: requirements, statechart or TLC check fails (max 3 retries)
     ResearchCheck --> ResearchGate: TLC passes, doc published to Notion
     ResearchCheck --> NeedsYou: TLC still failing after 3
 
@@ -39,7 +40,10 @@ stateDiagram-v2
     ResearchGate --> Researching: you send back (max 3)
     ResearchGate --> Dropped: you drop
 
-    Planning --> PlanGate: tickets on your Notion board
+    Planning --> RequirementsReview: plan and tickets written
+    RequirementsReview --> Planning: gaps against the original ask (max 3)
+    RequirementsReview --> PlanGate: every requirement traced, tickets on your Notion board
+    RequirementsReview --> NeedsYou: gaps remain after 3
     PlanGate --> Building: you approve
     PlanGate --> Planning: you send back (max 3)
     PlanGate --> Researching: you send back to research
@@ -72,6 +76,7 @@ stateDiagram-v2
 
     Researching --> NeedsYou: you stop it
     Planning --> NeedsYou: you stop it
+    RequirementsReview --> NeedsYou: you stop it
     Loop --> NeedsYou: you stop it
 
     Queued --> Parked: you park it

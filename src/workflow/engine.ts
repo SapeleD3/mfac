@@ -14,7 +14,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   slots: 3,
-  models: { coordinator: "opus", researcher: "sonnet", planner: "opus", builder: "sonnet", code_review: "sonnet", security_review: "sonnet", confirm: "sonnet", triage: "haiku", reply: "sonnet" },
+  models: { coordinator: "opus", researcher: "sonnet", planner: "opus", requirements_review: "opus", builder: "sonnet", code_review: "sonnet", security_review: "sonnet", confirm: "sonnet", triage: "haiku", reply: "sonnet" },
   workingHours: { start: 8, end: 19, weekends: false },
   pollMinutes: 30,
   usageCeiling: 0.85,
@@ -68,7 +68,9 @@ export class Engine extends EventEmitter {
       ? `${m.tries[s]}/3`
       : s === "Researching" || s === "ResearchCheck"
         ? `${m.loops.check}/3`
-        : s === "Building" || s === "Reviewing"
+        : s === "Planning" || s === "RequirementsReview"
+          ? `${m.loops.requirements}/3`
+          : s === "Building" || s === "Reviewing"
           ? `${m.loops.review}/3`
           : s === "Confirming"
             ? `${m.loops.confirm}/3`

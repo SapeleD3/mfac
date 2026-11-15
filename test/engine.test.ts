@@ -48,6 +48,11 @@ test("a task walks the whole line through the socket, with the engine refusing s
   await move({ type: "check" });
   await call("task.decide", { id: t.id, verdict: "approve" }, socket);
   await move({ type: "plan_done" });
+  const gaps = await move({ type: "requirements_done", covered: false });
+  assert.equal(gaps.task!.machine.state, "Planning");
+  assert.equal(gaps.task!.machine.loops.requirements, 1);
+  await move({ type: "plan_done" });
+  assert.equal((await move({ type: "requirements_done", covered: true })).task!.machine.state, "PlanGate");
   await call("task.decide", { id: t.id, verdict: "approve" }, socket);
   await move({ type: "build_done" });
   assert.equal((await move({ type: "reviews_done", findings: true })).task!.machine.state, "Building");

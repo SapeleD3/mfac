@@ -28,7 +28,7 @@ async function readStdin(): Promise<string> {
 export function extend(commands: Record<string, Command>) {
   Object.assign(commands, {
     coord: {
-      usage: "coord status|run ROLE|submit-research|submit-plan|submit-build|findings --blocking N|confirm --solved|needs-you|harden TITLE",
+      usage: "coord status|run ROLE|submit-research|submit-plan|requirements --covered|--gaps|submit-build|findings --blocking N|confirm --solved|needs-you|harden TITLE",
       help: "The coordinator's tools (used by the Opus coordinator session; the engine checks each one)",
       async run(args: string[], f: Flags) {
         const [command, ...rest] = args;

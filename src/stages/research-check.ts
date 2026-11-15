@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { checkRequirements } from "./outputs.js";
 
 export interface CheckResult {
   chart: boolean;
@@ -27,6 +28,8 @@ export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise
   const chart = existsSync(chartFile) && hasStatechart(readFileSync(chartFile, "utf8"));
   const models = existsSync(jobDir) ? readdirSync(jobDir).filter((f) => f.endsWith(".tla") && !f.includes("_TTrace_")) : [];
   if (!chart) return record(jobDir, { chart, proved: false, detail: "statechart.md is missing or has no ```mermaid stateDiagram block with transitions." });
+  const requirements = checkRequirements(jobDir);
+  if (!requirements.ok) return record(jobDir, { chart, proved: false, detail: `requirements.md isn't usable yet:\n- ${requirements.problems.join("\n- ")}` });
   if (!models.length) return record(jobDir, { chart, proved: false, detail: "No TLA+ model (*.tla) was written next to statechart.md." });
   const model = models[0]!;
   if (!existsSync(join(jobDir, model.replace(/\.tla$/, ".cfg")))) return record(jobDir, { chart, proved: false, model, detail: `${model} has no .cfg beside it naming the invariants to check.` });
