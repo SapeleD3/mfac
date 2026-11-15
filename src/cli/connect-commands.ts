@@ -79,7 +79,8 @@ export const connectCommands: Record<string, Command> = {
       };
       let c = await check();
       const connector = name !== "claude" && name !== "github";
-      if (connector && c.server && (c.status !== "connected" || f.login)) {
+      // Signing in again only helps a server that asked for it; a server whose tools don't load stays broken after a login.
+      if (connector && c.server && (c.status === "expired" || f.login)) {
         out(`\nSigning in to ${c.server} with Claude Code (claude mcp login). Finish in your browser.`);
         await mcpLogin(c.server);
         await ask("Press Enter once you've finished signing in: ");
@@ -89,7 +90,7 @@ export const connectCommands: Record<string, Command> = {
         openUrl(info.fix.url!);
         await ask(`Press Enter once ${info.label} is added: `);
         c = await check();
-        if (c.server && c.status !== "connected") {
+        if (c.server && c.status === "expired") {
           out(`\nSigning in to ${c.server} with Claude Code (claude mcp login).`);
           await mcpLogin(c.server);
           await ask("Press Enter once you've finished signing in: ");

@@ -12,6 +12,7 @@ export interface McpServer {
   detail: string;
   kind: ServerKind;
   target?: string;
+  unlisted?: boolean;
 }
 
 export type ServerKind = "claude.ai" | "plugin" | "local";
@@ -19,6 +20,7 @@ export type ServerKind = "claude.ai" | "plugin" | "local";
 export const serverKind = (name: string): ServerKind => (/^claude\.ai /i.test(name) ? "claude.ai" : /^plugin:/i.test(name) ? "plugin" : "local");
 
 const MATCH: Record<Service, RegExp> = { slack: /slack/i, notion: /notion/i, jira: /atlassian|jira/i };
+const OWN: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Atlassian" };
 
 const WRITE_VERBS = new Set("send post create update delete remove add edit move archive schedule upload reply react set write comment duplicate restore transition assign invite".split(" "));
 export const isWriteTool = (name: string) =>
@@ -100,18 +102,29 @@ export async function candidates(store: Store, service: Service, fresh = false):
   const s = connectorSettings(store);
   const chosen = s.server?.[service];
   if (chosen === "") return [];
-  const list = (await servers(fresh)).filter((x) => MATCH[service].test(x.name) || x.name === chosen);
-  const rank = (x: McpServer) => (s.pinned?.[service] && x.name === chosen ? -10 : 0) + (x.status === "connected" ? 0 : 5) + KIND_RANK[x.kind];
+  const listed = await servers(fresh);
+  const list = listed.filter((x) => MATCH[service].test(x.name) || x.name === chosen);
+  // Claude's own connector loads in background sessions even on Claude Code versions whose
+  // claude mcp list leaves claude.ai connectors out, so it's always worth one try.
+  const own = `claude.ai ${OWN[service]}`;
+  if (!listed.some((x) => x.name === own)) list.push({ name: own, status: "connected", detail: "Claude's own connector (not listed by claude mcp list)", kind: "claude.ai", unlisted: true });
+  const rank = (x: McpServer) => (s.pinned?.[service] && x.name === chosen ? -10 : 0) + (x.status === "connected" ? 0 : 5) + KIND_RANK[x.kind] + (x.unlisted ? 1.5 : 0);
   return list.sort((a, b) => rank(a) - rank(b));
 }
 
+/** The server the connection check reports: the one you pinned, else a working listed one, else the first listed. */
 export async function serverFor(store: Store, service: Service, fresh = false): Promise<McpServer | undefined> {
-  return (await candidates(store, service, fresh))[0];
+  const listed = (await candidates(store, service, fresh)).filter((x) => !x.unlisted);
+  const s = connectorSettings(store);
+  if (s.pinned?.[service] && listed[0]?.name === s.server?.[service]) return listed[0];
+  return listed.find((x) => x.status === "connected") ?? listed[0];
 }
 
 export function cachedServer(store: Store, service: Service): McpServer | undefined {
   const last = lastCall(store, service)?.server;
   const list = cache?.servers ?? [];
+  if (last && !list.some((x) => x.name === last) && last === `claude.ai ${OWN[service]}`)
+    return { name: last, status: "connected", detail: "Claude's own connector (not listed by claude mcp list)", kind: "claude.ai", unlisted: true };
   return list.find((x) => x.name === last) ?? list.find((x) => MATCH[service].test(x.name));
 }
 
@@ -136,13 +149,14 @@ export function allowedTools(store: Store, service: Service, server: string, wri
 
 const LABEL: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Jira (Atlassian)" };
 
-const TOOLS_MISSING = /not (?:available|loaded)|aren't (?:available|loaded)|no tools|isn't loaded|no such tool|can't find (?:the |any )?tools|don't have (?:access to )?(?:the |any )?tools/i;
+const TOOLS_MISSING =
+  /(?:not|n't) (?:available|loaded|exposed|present)|no (?:[\w:./-]+ )?tools|no such tool|can't find (?:the |any )?tools|don't have (?:access to )?(?:the |any )?tools|told not to use/i;
 
 class ServerUnusable extends Error {}
 
 async function askOne<T>(store: Store, service: Service, server: McpServer, task: string, opts: AskOptions): Promise<T> {
   const prompt = [
-    `Use only the ${server.name} tools. ${opts.write ? "" : "Only read: don't send, post, create, edit or delete anything."}`,
+    `Use the ${LABEL[service]} tools from ${server.name}. ${opts.write ? "" : "Only read: don't send, post, create, edit or delete anything."}`,
     task,
     'Answer with only JSON, no prose. If a tool fails or you lack access, answer {"error": "<what failed>"}.',
   ].join("\n\n");
