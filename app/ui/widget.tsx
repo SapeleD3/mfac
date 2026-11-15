@@ -336,7 +336,7 @@ function AskRow({ p }: { p: Prompt }) {
 
 function RunRow({ t, ask }: { t: Task; ask?: Prompt }) {
   const [open, setOpen] = useState(false);
-  const { at } = position(t.machine);
+  const { at } = position(t.machine, t.ended);
   return (
     <div class={`p-row ${ask ? "ask" : ""} ${open ? "open" : ""}`} onClick={() => setOpen(!open)}>
       <Avatar t={t} />
@@ -361,7 +361,7 @@ function RunRow({ t, ask }: { t: Task; ask?: Prompt }) {
 }
 
 function RunDetail({ t }: { t: Task }) {
-  const { at } = position(t.machine);
+  const { at } = position(t.machine, t.ended);
   const stages = useCall<Stage[]>("stage.list", { task: t.id }, [t.id]).data ?? [];
   const live = [...stages].reverse().find((s) => s.status === "running" && s.role !== "coordinator") ?? [...stages].reverse().find((s) => s.status === "running");
   const screen = useCall<{ screen: string }>(live ? "session.capture" : undefined, { stage: live?.id, lines: 8 }, [live?.id]).data?.screen ?? "";

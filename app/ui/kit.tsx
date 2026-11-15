@@ -136,12 +136,14 @@ const AT: Partial<Record<State, number>> = {
   Replied: 0,
 };
 
-export function position(m: Machine): { at: number; kind: "now" | "gate" | "fail" | "queued" | "done" | "parked" } {
-  const s = m.state === "Parked" ? m.parkedFrom : m.state;
+export function position(m: Machine, ended?: { from: string }): { at: number; kind: "now" | "gate" | "fail" | "queued" | "done" | "parked" | "dropped" } {
+  const dropped = m.state === "Dropped" && !!ended;
+  const s = m.state === "Parked" ? m.parkedFrom : dropped ? (ended!.from as Machine["state"]) : m.state;
   let at = AT[s];
-  if (s === "NeedsYou") at = !m.approved.includes("research") ? (m.chart && m.proved ? 3 : 2) : !m.approved.includes("plan") ? (m.covered ? 6 : 5) : m.findings ? 8 : 9;
-  const kind =
-    m.state === "Parked"
+  if (s === "NeedsYou") at = !m.approved.includes("research") ? (m.chart && m.proved ? 3 : m.chart ? 2 : 1) : !m.approved.includes("plan") ? (m.covered ? 6 : 5) : m.findings ? 8 : 9;
+  const kind = dropped
+    ? "dropped"
+    : m.state === "Parked"
       ? "parked"
       : s === "NeedsYou"
         ? "fail"
@@ -156,11 +158,11 @@ export function position(m: Machine): { at: number; kind: "now" | "gate" | "fail
 }
 
 export const MiniRail = ({ t }: { t: Task }) => {
-  const { at, kind } = position(t.machine);
+  const { at, kind } = position(t.machine, t.ended);
   return (
     <span class="mini-rail">
       {RECIPE.map((r, i) => (
-        <i key={r.id} title={r.name} class={i < at ? "done" : i === at ? (kind === "gate" ? "gate" : kind === "fail" ? "fail" : kind === "now" ? "now" : "") : ""} />
+        <i key={r.id} title={r.name} class={i < at ? "done" : i === at ? (kind === "gate" ? "gate" : kind === "fail" || kind === "dropped" ? "fail" : kind === "now" ? "now" : "") : ""} />
       ))}
     </span>
   );
@@ -226,7 +228,7 @@ export const StateChip = ({ t, asking }: { t: Task; asking?: "permission" | "que
   if (s === "Backlog") return <span class="chip">Backlog</span>;
   if (s === "Done") return <span class="chip ok">Done</span>;
   if (s === "Dropped") return <span class="chip">Dropped</span>;
-  const { at } = position(t.machine);
+  const { at } = position(t.machine, t.ended);
   return <span class="chip work">{RECIPE[at]?.name ?? s}</span>;
 };
 

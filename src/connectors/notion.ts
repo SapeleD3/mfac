@@ -152,6 +152,22 @@ export async function cardText(store: Store, pageId: string, server?: string): P
   return typeof r.text === "string" ? r.text : "";
 }
 
+/** Sets the card's status column; with only a meaning, picks the board's closest option and says which, or leaves it when none fits. */
+export async function moveCard(store: Store, pageId: string, to: { exact?: string; meaning?: string }, server?: string): Promise<{ status?: string }> {
+  const target = to.exact ? `to "${to.exact}"` : `to the existing option that means ${to.meaning}. Look at the property's options first. If no option fits, change nothing and answer {"status": ""}`;
+  const r = await ask<{ status?: string }>(
+    store,
+    "notion",
+    `On the Notion page ${pageUrl(pageId)}, set its status property (a Status or Select property, usually called Status) ${target}. Change nothing else. Answer {"status": "<the option it now has>"}.`,
+    {
+      write: true,
+      server,
+      session: "factory-mcp-notion-intake",
+    },
+  );
+  return { status: typeof r.status === "string" && r.status.trim() ? r.status.trim() : undefined };
+}
+
 export async function commentOn(store: Store, pageId: string, text: string, server?: string) {
   await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, {
     write: true,

@@ -292,7 +292,10 @@ pages are published as soon as a gate opens, and tickets you add on the board ar
 Your own Notion kanban board can be a source of work too: `factory notion intake "<board name>"` (or the
 Connections page); the name is looked up once through the Notion connector, and a link works too. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
 `--status`) go straight to the queue without triage, once each, and the factory comments on the card when
-the task finishes.
+the task finishes. The card follows its task: it moves to your board's in-progress column when work starts, to review when
+a gate or Needs you is waiting on you, and to done or dropped at the end, one move per milestone. With no
+column set, the factory picks the board's closest option the first time and reuses it (`columns` in the
+Notion settings). Jira tickets are the team's, so the factory never moves them; it tells you the move to make.
 
 **Two Notion workspaces.** Claude's own Notion connector is signed in to one workspace. To read a board in
 another, add Notion's MCP server to Claude Code under its own name and sign it in to that workspace:
