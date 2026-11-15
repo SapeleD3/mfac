@@ -30,7 +30,6 @@ export const CORE_SKILLS: SkillSpec[] = [
   { name: "ponytail", description: "Mo's working conventions", source: "https://github.com/DietrichGebert/ponytail" },
   // A Python CLI as well as a skill: setup.sh installs the CLI with uv; the skill text comes from the repo.
   { name: "graphify", description: "knowledge graphs of code and docs for research", source: "https://github.com/Graphify-Labs/graphify", skillFile: "graphify/skill.md" },
-  { name: "design-principles", description: "the design-principles knowledge base outputs cite" },
 ];
 
 export interface SkillStatus extends SkillSpec {

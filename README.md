@@ -18,13 +18,14 @@ and a pull request that has already been reviewed, fixed and confirmed to solve 
                        factoryd (Node): engine, queue, runner, intake, routines
                          │                     │                    │
                   ~/.factory/factory.db     tmux -L factory      Slack / Jira / Notion
-                  (SQLite, WAL)             (one Claude session   (outbound only)
-                                             per stage, in a git
-                                             worktree per task)
+                  (SQLite, WAL)             (one Claude session   (through Claude's own
+                                             per stage, in a git   connectors; no
+                                             worktree per task)    tokens held)
 ```
 
 - **Everything stays on the Mac.** No TCP port, no Docker. The parts meet over one Unix socket and one
-  SQLite file. The only traffic that leaves the machine is outbound: Claude itself, Slack, Jira and Notion.
+  SQLite file. The only traffic that leaves the machine is Claude itself, which also reaches Slack, Jira and
+  Notion through your connectors.
 - **The engine enforces the rules.** A task's life is a statechart ([spec/statechart.md](spec/statechart.md)),
   model-checked with TLC from [spec/Factory.tla](spec/Factory.tla). `src/statechart.ts` is its code copy,
   and the engine refuses any move it doesn't allow, whoever asks.
@@ -65,7 +66,7 @@ Sessions load the factory's own skills with `--plugin-dir ~/.factory/plugin`; `~
 | pstack (statechart, create-formal-verification, poteto-mode, the `principle-*` skills, and its two agents) | Lauren Tan's original [cursor/plugins/pstack](https://github.com/cursor/plugins/tree/main/pstack), a sparse clone of just that folder, unchanged. Its skills are plain `SKILL.md` folders, which Claude Code reads as they are; the factory's own `pstack-on-claude-code` skill ([plugin/skills](plugin/skills)) maps the Cursor tool names and paths they mention to Claude Code's |
 | ponytail | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) |
 | graphify | [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) (the CLI comes from `uv tool install graphifyy`) |
-| design-principles | yours: `factory skills add design-principles <git url or folder>` |
+| design-principles | bundled in this repo ([plugin/skills/design-principles](plugin/skills/design-principles/SKILL.md)); `factory skills add design-principles <git url or folder>` overrides it |
 
 If Claude Code already has one from the same source (a plugin under `~/.claude/plugins/cache` whose
 manifest names the same GitHub owner; for graphify, `~/.claude/skills/graphify`), the factory links to
@@ -144,33 +145,47 @@ Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `facto
 
 ## Where work comes from
 
-Routines poll Slack (DMs and @-mentions of you) and Jira (tickets assigned to you) every 10 minutes in
-working hours, newer than a saved cursor. Bots, your own messages and muted channels are dropped by plain
-rules, and the rest goes to one batched Haiku call: **ignore** (logged), **reply** (a Sonnet draft you send
-with `factory send`; nothing is ever posted as you without that), **task**, or **urgent** (outage words, a
-VIP, Jira Highest or due within a day; the engine checks these itself too). An empty poll spends no tokens.
+Every 30 minutes in working hours (Settings: 15, 30 or 60), a small Haiku call reads Slack (DMs, group DMs
+and @-mentions of you) and Jira (tickets assigned to you) since the last run, through the Slack and
+Atlassian connectors you already have in Claude. Those calls may use only the connector's read-only tools.
+Approved rules sort what they can, and the rest goes to one batched Haiku call: **ignore** (logged),
+**reply** (a Sonnet draft you send with `factory send`; nothing is ever posted as you without that),
+**task**, or **urgent** (outage words, a VIP, Jira Highest or due within a day; the engine checks these
+itself too).
 
 Overrule triage with `factory triage ID task` (or `ignore`, `reply`, `urgent`). After three of the same
 override, a rule is proposed (`factory rules`), and approved rules sort items before Haiku sees them.
 
 ## Connections and Notion
 
-`factory connections` shows Slack, Notion, Jira, Claude Code and GitHub as connected, expired or missing.
-`factory connect slack` (or `notion`, `jira`) opens the right page, prints the steps and stores the token
-in your Keychain. Each intake run tests its connection first; a failure raises a sticky alert, and the
-work that needs it waits and catches up from its cursor. `factory disconnect slack` (or `notion`, `jira`)
-deletes the token from your Keychain and prints where to revoke it at the source.
+Slack, Notion and Jira come through Claude itself: the connectors (or MCP servers) your Claude Code already
+has. The factory holds no tokens, needs no Slack app and no admin approval beyond what Claude already has.
 
-`factory connect notion` also builds your factory board on a page you share: **Jobs**, **Tickets**
+- `factory connections` shows Slack, Notion, Jira, Claude Code and GitHub as connected, expired or missing.
+  The health check reads `claude mcp list` every 5 minutes, which makes no model call. A connector that
+  needs you to sign in again shows as expired with a sticky alert, and the work that needs it waits and
+  catches up from its cursor.
+- `factory connect slack` (or `notion`, `jira`) finds the connector in `claude mcp list`, makes one small
+  Haiku call to confirm it can read, and remembers the connector's tool names. If it's missing, it opens
+  claude.ai's connector settings. With more than one match, pick with `--server "<name>"`.
+- Every factory session may use the connectors' **read-only** tools without asking, so stations can look
+  up the thread or ticket a task came from. Posting, commenting and editing still ask you, except the
+  factory's own write-back at gates and replies you press Send on.
+- `factory disconnect slack` stops the factory using a connector; Claude keeps it. Remove it in Claude's
+  connector settings to revoke access entirely.
+
+`factory connect notion` also builds your factory board on a page you pick: **Jobs**, **Tickets**
 (each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.
 At the research and plan gates the review doc is published there. Comment in Notion on every issue,
 then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every
 comment and the words it's anchored to go to the stage, and the next round lands on the same page.
+Board changes queue up and go in one batched call every 10 minutes (none when nothing changed); review
+pages are published as soon as a gate opens, and tickets you add on the board are picked up every 2 hours.
 
 ## Routines
 
 `factory routines` lists everything the factory does on a schedule, with the last run, its result and the
-next run: health check, Slack and Jira intake, triage, Notion sync, cleanup, and the post-merge watch
+next run: health check, Slack and Jira intake, triage, Notion sync and ticket pickup, cleanup, and the post-merge watch
 (phase 2, off). Add your own: `factory routines add "Weekly deps" --every 7d --command "factory add 'Update dependencies' --repo ~/code/app"`.
 
 ## The app

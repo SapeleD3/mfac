@@ -103,7 +103,7 @@ else
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-step "Skills: superpowers, pstack, ponytail, graphify (linked from Claude Code if you already have them)"
+step "Skills: superpowers, pstack, ponytail, graphify, design-principles (linked from Claude Code if you already have them)"
 factory skills install | sed 's/^/  /'
 
 if [[ $HEADLESS -eq 0 ]]; then
@@ -134,9 +134,9 @@ factory doctor || true
 cat <<'DONE'
 
 Next:
-  factory connect slack       Slack user token (opens the page; stored in your Keychain)
-  factory connect notion      Notion integration secret, then: factory notion setup <page link>
-  factory connect jira        optional
+  factory connect slack       checks the Slack connector you have in Claude (no token, no Slack app)
+  factory connect notion      same for Notion, then makes your board on a page you pick
+  factory connect jira        optional: the Atlassian connector
   factory repo add ~/code/some-repo
   factory add "Your first task" --repo some-repo
 DONE
