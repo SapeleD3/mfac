@@ -35,8 +35,8 @@ and a pull request that has already been reviewed, fixed and confirmed to solve 
 
 Built in milestones, each its own PR:
 
-1. **Engine core** (this PR): the statechart in code, SQLite store, Unix socket API, `factory` CLI, CI with TLC.
-2. Claude Code runner: tmux sessions, git worktrees, the Opus coordinator, stages and hooks.
+1. **Engine core**: the statechart in code, SQLite store, Unix socket API, `factory` CLI, CI with TLC.
+2. **Claude Code runner**: tmux sessions, git worktrees, the Opus coordinator, stages and hooks.
 3. Intake and Notion: Slack and Jira polling, Haiku triage, the Notion factory board and review sync, routines.
 4. The Tauri app: widget pill, kanban queue, gates, live session, connections, routines.
 5. `setup.sh`, the launch agent, `factory doctor`, and the self-improving loop.
@@ -60,6 +60,37 @@ factory watch             # stream every move as it happens
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),
 and `factory tag F-001 +learn -urgent`.
+
+## How a task runs
+
+Each task gets a parent Claude Code session on Opus, the coordinator. It starts each stage as its own
+session (Sonnet by default) in the task's git worktree, reads what the stage wrote, and decides the next
+step with `factory coord` commands. The engine checks every one of those against the statechart.
+
+| Stage | Writes (in `~/.factory/jobs/<task>/`) | May do without asking |
+| --- | --- | --- |
+| researcher | research.md, statechart.md, a TLA+ model + .cfg | read the repo, search the web, run TLC |
+| planner | plan.md, tickets (`factory ticket add`) | read the repo |
+| builder | build.md, commits on the task branch | edit code, run lint/types/tests, `git add`/`commit` |
+| code_review, security_review, ui_review (ui tag) | review-*.md, a ticket per blocking finding | read, run tests |
+| confirm | confirm.md ending `VERDICT: solved` or `not solved`, evidence files | run the app and tests |
+
+- **The research rule is a check, not a prompt.** `factory coord submit-research` makes the engine run
+  TLC itself on the stage's model. A failure sends research back with the counterexample (max 3).
+- **Reviews run in parallel** after each build. The coordinator compiles their findings into one list
+  and sends it back to the builder, at most 3 times.
+- **No human gate on the build.** You first see code as a PR that's been reviewed, fixed and confirmed.
+  Before the PR gate the engine rebases on the latest base, pushes and opens the PR with `gh`, with the
+  confirm evidence, statechart, TLC result and review summary in its description.
+- **Permissions:** each station has an allowlist (`src/agent.ts`). Anything else goes to the
+  PermissionRequest hook and waits for your click (`factory prompts`, `factory allow`/`deny`; the app's
+  panel in milestone 4). Pushing, merging and `sudo` are always denied. Nothing runs with permissions skipped.
+- **Watch and take over:** `factory sessions`, `factory attach F-001` (read along in your terminal),
+  `factory take-over F-001` (the coordinator waits until `--off`).
+- **Repo rules always apply:** sessions start inside the worktree, so CLAUDE.md, `.claude/settings.json`,
+  skills and hooks load exactly as if you opened the repo yourself.
+
+Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `factory pause` stops new starts.
 
 ## Develop
 
