@@ -66,11 +66,11 @@ function NeedsCard({ t }: { t: Task }) {
             <Btn key={x} kind={i === 0 ? "btn-primary" : ""} onClick={() => act("task.decide", { id: t.id, verdict: "send_back", to: x, note }, ["tasks"])}>{TO[x] ?? `Back to ${x}`}</Btn>
           ))}
           <Btn onClick={() => go(`task/${t.id}`)}>Open the task</Btn>
-          <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks"])}>Park</Btn>
+          <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks"])}>Move to bin</Btn>
           <Btn kind="btn-ghost" onClick={() => act("task.decide", { id: t.id, verdict: "drop", note }, ["tasks"])}>Drop</Btn>
         </div>
         {buildBlocked && <div class="xs faint">Retry the build is off: research and plan aren't both approved yet (build rule).</div>}
-        {used >= CAP && <div class="xs faint">No send-backs left here: drop it, or park it to come back later.</div>}
+        {used >= CAP && <div class="xs faint">No send-backs left here: drop it, or move it to the bin to come back later.</div>}
       </div>
     </div>
   );

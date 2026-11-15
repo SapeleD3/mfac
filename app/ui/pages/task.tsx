@@ -52,8 +52,10 @@ function Detail({ t }: { t: Task }) {
         {(s === "ResearchGate" || s === "PlanGate" || s === "PRGate") && <Btn kind="btn-primary" onClick={() => go(`gate/${t.id}`)}><Ic n="diamond" s={14} />Review and decide</Btn>}
         {s === "NeedsYou" && <Btn kind="btn-primary" onClick={() => go(`needs/${t.id}`)}>Decide</Btn>}
         {t.column === "Running" && <Btn kind="btn-ghost" onClick={() => act("task.interrupt", { id: t.id, note: "stopped from the app" }, ["tasks"])} title="Stops the stage and moves the task to Needs you"><Ic n="pause" s={14} />Stop</Btn>}
-        {t.allowed.includes("park") && <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks", "status"])}>Park</Btn>}
-        {s === "Parked" && <Btn kind="btn-ghost" onClick={() => act("task.unpark", { id: t.id }, ["tasks", "status"])}>Unpark</Btn>}
+        {t.allowed.includes("prioritize") && <Btn kind="btn-ghost" onClick={() => act("task.prioritize", { id: t.id }, ["tasks", "status"])}><Ic n="arrow-up" s={14} />Move to queue</Btn>}
+        {t.allowed.includes("demote") && <Btn kind="btn-ghost" onClick={() => act("task.demote", { id: t.id }, ["tasks", "status"])}><Ic n="arrow-down" s={14} />Move to backlog</Btn>}
+        {t.allowed.includes("park") && <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks", "status"])}><Ic n="trash-2" s={14} />Move to bin</Btn>}
+        {(s === "Parked" || s === "Dropped") && <Btn kind="btn-ghost" onClick={() => act("task.restore", { id: t.id }, ["tasks", "status"])}><Ic n="undo-2" s={14} />Restore</Btn>}
       </div>
       <h3 style={{ margin: "8px 0 4px", fontSize: "var(--text-xl)" }}>{t.title}</h3>
       <div class="row wrap">

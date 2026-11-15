@@ -8,8 +8,8 @@ EXTENDS Naturals
 CONSTANT Cap            \* 3: max send-backs per gate, and per automatic loop
 
 Gates == {"ResearchGate","PlanGate","PRGate","NeedsYou"}
-Parkable == {"Queued","ResearchGate","PlanGate","PRGate","NeedsYou"}
-States == {"Inbox","Triage","Ignored","ReplyDrafted","Replied","Queued",
+Parkable == {"Queued","Backlog","ResearchGate","PlanGate","PRGate","NeedsYou"}
+States == {"Inbox","Triage","Ignored","ReplyDrafted","Replied","Queued","Backlog",
            "Researching","ResearchCheck","ResearchGate",
            "Planning","RequirementsReview","PlanGate",
            "Building","Reviewing","Confirming","PRGate",
@@ -48,6 +48,11 @@ Dismiss   == st = "ReplyDrafted" /\ Go("Ignored") /\ Same
 \* You overrule triage: an ignored item or a drafted reply becomes a task
 Promote   == st \in {"Ignored","ReplyDrafted"} /\ Go("Queued") /\ Same
 TTask     == st = "Triage" /\ Go("Queued") /\ Same
+\* Worth doing, but not now: waits in the backlog and never takes a slot on its own
+TBacklog  == st = "Triage" /\ Go("Backlog") /\ Same
+\* You move work between the queue and the backlog
+Demote     == st = "Queued" /\ Go("Backlog") /\ Same
+Prioritize == st = "Backlog" /\ Go("Queued") /\ Same
 Start     == st = "Queued" /\ Go("Researching") /\ Same
 
 \* Research: must ship a statechart and a TLC-checked model
@@ -73,6 +78,7 @@ SendBack(g, back, clear) ==
     /\ IF back \in {"Researching","Planning"} THEN covered' = FALSE ELSE UNCHANGED covered
     /\ UNCHANGED <<loops,findings,confirmed,parkedFrom>>
 Drop(g) == st = g /\ Go("Dropped") /\ Same
+BDrop == Drop("Backlog")
 
 \* Research is reviewed in Notion (comments there); the app records one overall verdict
 RGate == \/ Approve("ResearchGate","Planning","research")
@@ -131,6 +137,7 @@ PDrop  == Drop("Parked")
 Finished == st \in Terminal /\ UNCHANGED vars
 
 Next == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ Dismiss \/ Promote \/ TTask \/ Start
+        \/ TBacklog \/ Demote \/ Prioritize \/ BDrop
         \/ Research \/ CheckPass \/ CheckRetry \/ CheckOut
         \/ RGate \/ Plan \/ ReqReview \/ PGate
         \/ Build \/ Rework \/ ReviewOut \/ Clean \/ Confirm \/ PRGateStep
@@ -140,7 +147,7 @@ Next == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ Dismiss \/ Promote \/ TTask
 \* and interrupting are your choice, so fairness never forces them. (Listed
 \* positively: "Next /\ ~Interrupt" would also rule out a ReviewOut step,
 \* because both move to NeedsYou with nothing else changed.)
-Progress == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ TTask \/ Start
+Progress == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ TTask \/ TBacklog \/ Start
             \/ Research \/ CheckPass \/ CheckRetry \/ CheckOut
             \/ RGate \/ Plan \/ ReqReview \/ PGate
             \/ Build \/ Rework \/ ReviewOut \/ Clean \/ Confirm \/ PRGateStep
@@ -163,6 +170,6 @@ BuildRule == st \in {"Building","Reviewing","Confirming","PRGate"}
 PRRule == st = "PRGate" => ~findings /\ confirmed
 \* Done only after research, plan and PR are all approved
 GatesRule == st = "Done" => approved = {"research","plan","pr"}
-\* Every task ends, or waits in Parked because you put it there
-EndsOrParked == <>(st \in Terminal \cup {"Parked"})
+\* Every task ends, or waits in Parked or the Backlog until you pick it up
+EndsOrParked == <>(st \in Terminal \cup {"Parked","Backlog"})
 =============================================================================

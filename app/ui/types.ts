@@ -1,5 +1,5 @@
 export type State =
-  | "Inbox" | "Triage" | "Ignored" | "ReplyDrafted" | "Replied" | "Queued"
+  | "Inbox" | "Triage" | "Ignored" | "ReplyDrafted" | "Replied" | "Queued" | "Backlog"
   | "Researching" | "ResearchCheck" | "ResearchGate" | "Planning" | "RequirementsReview" | "PlanGate"
   | "Building" | "Reviewing" | "Confirming" | "PRGate" | "NeedsYou" | "Parked" | "Done" | "Dropped";
 export type Gate = "ResearchGate" | "PlanGate" | "PRGate" | "NeedsYou";
@@ -41,7 +41,7 @@ export interface Task {
   takenOver: boolean;
   createdAt: string;
   updatedAt: string;
-  column: "Inbox" | "Queued" | "Running" | "Needs you" | "Parked" | "PR ready" | "Done";
+  column: "Inbox" | "Backlog" | "Queued" | "Running" | "Needs you" | "PR ready" | "Done" | "Bin";
   rounds?: string;
   allowed: string[];
 }
@@ -104,10 +104,23 @@ export interface Routine {
   builtin: boolean;
   command?: string;
   lastRunAt?: string;
-  lastResult?: "ok" | "failed" | "skipped" | "running";
+  lastResult?: "ok" | "warn" | "failed" | "skipped" | "running";
+  defaultEverySeconds?: number;
   lastDetail?: string;
   nextRunAt?: string;
   failures: number;
+}
+
+export interface MachineRoutine {
+  id: string;
+  kind: "launchd" | "cron" | "claude";
+  name: string;
+  schedule: string;
+  command?: string;
+  state: "running" | "loaded" | "failing" | "not loaded" | "disabled" | "scheduled";
+  detail?: string;
+  file?: string;
+  factory: boolean;
 }
 
 export interface IntakeItem {
@@ -119,7 +132,7 @@ export interface IntakeItem {
   text: string;
   url?: string;
   receivedAt: string;
-  triage?: "ignore" | "reply" | "task" | "urgent";
+  triage?: "ignore" | "reply" | "task" | "urgent" | "backlog";
   reason?: string;
   tags: Tag[];
   draft?: string;
@@ -139,9 +152,11 @@ export interface TriageRule {
 export interface Settings {
   slots: number;
   models: Record<string, string>;
+  efforts: Record<string, string>;
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
+  notion?: { intakeBoard?: string; intakeStatus?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
 

@@ -12,10 +12,11 @@ export interface Routine {
   builtin: boolean;
   command?: string;
   lastRunAt?: string;
-  lastResult?: "ok" | "failed" | "skipped" | "running";
+  lastResult?: "ok" | "warn" | "failed" | "skipped" | "running";
   lastDetail?: string;
   nextRunAt?: string;
   failures: number;
+  defaultEverySeconds?: number;
 }
 
 export interface Builtin {
@@ -78,12 +79,17 @@ export class Routines {
   }
 
   list(): Routine[] {
-    return (this.store.db.prepare("SELECT * FROM routines ORDER BY builtin DESC, name").all() as Row[]).map(toRoutine);
+    return (this.store.db.prepare("SELECT * FROM routines ORDER BY builtin DESC, name").all() as Row[]).map((r) => this.withDefault(toRoutine(r)));
   }
 
   get(id: string): Routine | undefined {
     const r = this.store.db.prepare("SELECT * FROM routines WHERE id = ?").get(id) as Row | undefined;
-    return r ? toRoutine(r) : undefined;
+    return r ? this.withDefault(toRoutine(r)) : undefined;
+  }
+
+  private withDefault(r: Routine): Routine {
+    const b = this.builtins.get(r.id);
+    return b ? { ...r, defaultEverySeconds: b.everySeconds } : r;
   }
 
   history(id: string, limit = 20) {
@@ -134,13 +140,14 @@ export class Routines {
     const runId = Number(this.store.db.prepare("INSERT INTO routine_runs (routine_id, started_at, result) VALUES (?, ?, 'running')").run(id, started).lastInsertRowid);
     this.store.db.prepare("UPDATE routines SET last_result = 'running', last_run_at = ? WHERE id = ?").run(started, id);
     this.emitChange(id);
-    let result: "ok" | "failed" | "skipped" = "ok";
+    let result: "ok" | "warn" | "failed" | "skipped" = "ok";
     let detail = "";
     try {
       detail = r.builtin ? await this.builtins.get(id)!.run() : await shell(r.command!);
-      if (detail.startsWith("skip:")) {
-        result = "skipped";
-        detail = detail.slice(5).trim();
+      const marked = detail.match(/^(skip|warn):\s*/);
+      if (marked) {
+        result = marked[1] === "skip" ? "skipped" : "warn";
+        detail = detail.slice(marked[0].length);
       }
     } catch (e) {
       result = "failed";

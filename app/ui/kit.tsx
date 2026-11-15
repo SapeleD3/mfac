@@ -57,7 +57,7 @@ export const RECIPE = [
 ] as const;
 
 const AT: Partial<Record<State, number>> = {
-  Inbox: 0, Triage: 0, ReplyDrafted: 0, Queued: 1, Researching: 1, ResearchCheck: 2, ResearchGate: 3, Planning: 4, RequirementsReview: 5, PlanGate: 6,
+  Inbox: 0, Triage: 0, ReplyDrafted: 0, Queued: 1, Backlog: 1, Researching: 1, ResearchCheck: 2, ResearchGate: 3, Planning: 4, RequirementsReview: 5, PlanGate: 6,
   Building: 7, Reviewing: 8, Confirming: 9, PRGate: 10, Done: 12, Dropped: 0, Ignored: 0, Replied: 0,
 };
 
@@ -65,7 +65,7 @@ export function position(m: Machine): { at: number; kind: "now" | "gate" | "fail
   const s = m.state === "Parked" ? m.parkedFrom : m.state;
   let at = AT[s];
   if (s === "NeedsYou") at = !m.approved.includes("research") ? (m.chart && m.proved ? 3 : 2) : !m.approved.includes("plan") ? (m.covered ? 6 : 5) : m.findings ? 8 : 9;
-  const kind = m.state === "Parked" ? "parked" : s === "NeedsYou" ? "fail" : s === "Queued" ? "queued" : s === "Done" ? "done" : ["ResearchGate", "PlanGate", "PRGate"].includes(s) ? "gate" : "now";
+  const kind = m.state === "Parked" ? "parked" : s === "NeedsYou" ? "fail" : s === "Queued" || s === "Backlog" ? "queued" : s === "Done" ? "done" : ["ResearchGate", "PlanGate", "PRGate"].includes(s) ? "gate" : "now";
   return { at: at ?? 0, kind };
 }
 
@@ -95,7 +95,8 @@ export function doing(t: Task): string {
     case "Confirming": return "Confirming it solves the problem";
     case "PRGate": return "PR ready: confirmed fixed, evidence attached";
     case "NeedsYou": return "Needs you: a loop ran out or the engine refused a step";
-    case "Parked": return "Parked by you · slot freed";
+    case "Parked": return "In the bin · parked by you, keeps its place";
+    case "Backlog": return "In the backlog · waits until you move it to the queue";
     case "Done": return t.prUrl ? "PR approved · written back" : "Done";
     case "Dropped": return "Dropped";
     default: return m.state;
@@ -118,7 +119,8 @@ export const StateChip = ({ t, asking }: { t: Task; asking?: "permission" | "que
   if (s === "PlanGate") return <span class="chip warn">At plan gate</span>;
   if (s === "NeedsYou") return <span class="chip err">Needs you</span>;
   if (s === "Queued") return <span class="chip">Queued</span>;
-  if (s === "Parked") return <span class="chip">Parked</span>;
+  if (s === "Parked") return <span class="chip">In the bin</span>;
+  if (s === "Backlog") return <span class="chip">Backlog</span>;
   if (s === "Done") return <span class="chip ok">Done</span>;
   if (s === "Dropped") return <span class="chip">Dropped</span>;
   const { at } = position(t.machine);

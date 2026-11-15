@@ -1,9 +1,9 @@
 import { useState } from "preact/hooks";
 import { Btn, Ic, IconBtn, ago, clock, every, until } from "../kit";
 import { act, useApp, useCall } from "../store";
-import type { Routine } from "../types";
+import type { MachineRoutine, Routine } from "../types";
 
-const ICON: Record<string, string> = { "health-check": "heart-pulse", "intake-slack": "inbox", "intake-jira": "inbox", triage: "list-ordered", "notion-sync": "refresh-cw", cleanup: "sparkles", "post-merge-watch": "radar", "usage-guard": "gauge", doctor: "shield-check", retro: "notebook-pen", "improve-factory": "sparkles" };
+const ICON: Record<string, string> = { "health-check": "heart-pulse", "intake-slack": "inbox", "intake-jira": "inbox", "intake-notion": "inbox", "notion-pull": "refresh-cw", triage: "list-ordered", "notion-sync": "refresh-cw", cleanup: "sparkles", "post-merge-watch": "radar", "usage-guard": "gauge", doctor: "shield-check", retro: "notebook-pen", "improve-factory": "sparkles" };
 
 export function Routines() {
   const app = useApp();
@@ -12,16 +12,17 @@ export function Routines() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string>();
   const all = app.routines;
-  const bad = (r: Routine) => r.lastResult === "failed";
+  const bad = (r: Routine) => r.lastResult === "failed" || r.lastResult === "warn";
+  const machine = useCall<MachineRoutine[]>("routines.machine").data;
   const show = all.filter((r) => f === "all" || (f === "on" && r.enabled) || (f === "paused" && !r.enabled) || (f === "fail" && bad(r)));
   const counts = { all: all.length, on: all.filter((r) => r.enabled).length, paused: all.filter((r) => !r.enabled).length, fail: all.filter(bad).length };
   const runningNow = all.find((r) => r.lastResult === "running");
   const next = all.filter((r) => r.enabled && r.nextRunAt).sort((a, b) => a.nextRunAt!.localeCompare(b.nextRunAt!))[0];
-  const groups: [string, Routine[]][] = [["Built in", show.filter((r) => r.builtin)], ["Yours", show.filter((r) => !r.builtin)]];
+  const groups: [string, Routine[]][] = [["Built in", show.filter((r) => r.builtin)], ["Added in the factory", show.filter((r) => !r.builtin)]];
   const res = (r: Routine) => {
     if (!r.lastResult) return <span class="chip">not run yet</span>;
-    const [cls, icon] = r.lastResult === "ok" ? ["ok", "circle-check"] : r.lastResult === "skipped" ? ["warn", "triangle-alert"] : r.lastResult === "running" ? ["work", "activity"] : ["err", "circle-x"];
-    return <span class={`chip ${cls}`} title={r.lastDetail}><Ic n={icon} s={12} /> {(r.lastDetail || r.lastResult).slice(0, 60)}</span>;
+    const [cls, icon] = r.lastResult === "ok" ? ["ok", "circle-check"] : r.lastResult === "warn" ? ["warn", "triangle-alert"] : r.lastResult === "skipped" ? ["", "circle-minus"] : r.lastResult === "running" ? ["work", "activity"] : ["err", "circle-x"];
+    return <span class={`chip rt-chip ${cls}`} title={r.lastDetail || r.lastResult}><Ic n={icon} s={12} /><span>{r.lastDetail || r.lastResult}</span></span>;
   };
   return (
     <div class="pane-body">
@@ -44,13 +45,18 @@ export function Routines() {
               {rs.map((r) => (
                 <div key={r.id} class={`rt-row ${bad(r) ? "bad" : ""}`}>
                   <span class="rt-ic"><Ic n={ICON[r.id] ?? "calendar-clock"} s={16} /></span>
-                  <span><b>{r.name}</b>{!r.builtin && <> <span class="chip">yours</span></>}<div class="xs dim">{r.description}</div>{r.failures >= 3 && <div class="xs" style={{ color: "var(--danger)" }}>failed {r.failures} times in a row</div>}</span>
+                  <span class="rt-name"><b>{r.name}</b><div class="xs dim rt-desc" title={r.description}>{r.description}</div>{r.failures >= 3 && <div class="xs" style={{ color: "var(--danger)" }}>failed {r.failures} times in a row</div>}</span>
                   <span class="small">
                     {editing === r.id ? (
                       <input class="in xs" style={{ width: 70 }} defaultValue={`${Math.round(r.everySeconds / 60)}m`} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { void act("routines.update", { id: r.id, every: e.currentTarget.value }, ["routines"]); setEditing(undefined); } else if (e.key === "Escape") setEditing(undefined); }} />
-                    ) : <><Ic n="calendar-clock" s={13} /> {every(r.everySeconds)}{r.workingHours ? ", working hours" : ""}</>}
+                    ) : (
+                      <>
+                        <div>{every(r.everySeconds)}{r.workingHours ? ", working hours" : ""}</div>
+                        {r.defaultEverySeconds !== undefined && <div class="xs faint">{r.defaultEverySeconds === r.everySeconds ? "default" : `changed; default ${every(r.defaultEverySeconds)}`}</div>}
+                      </>
+                    )}
                   </span>
-                  <span class="col" style={{ gap: 3, alignItems: "flex-start" }}><span class="small">{r.lastRunAt ? clock(r.lastRunAt) : "–"}</span>{res(r)}</span>
+                  <span class="col rt-last"><span class="small">{r.lastRunAt ? clock(r.lastRunAt) : "–"}</span>{res(r)}</span>
                   <span class={`small ${r.enabled ? "" : "dim"}`}>{r.enabled ? (r.nextRunAt ? `${clock(r.nextRunAt)} · ${until(r.nextRunAt) === "now" ? "due now" : `in ${until(r.nextRunAt)}`}` : "soon") : "–"}</span>
                   <span class="row" style={{ gap: 6, cursor: "pointer" }} onClick={() => act("routines.update", { id: r.id, enabled: !r.enabled }, ["routines"])}>
                     <span class={`switch ${r.enabled ? "on" : ""}`} /><span class={`small ${r.enabled ? "" : "dim"}`}>{r.enabled ? "On" : "Paused"}</span>
@@ -67,9 +73,34 @@ export function Routines() {
           ))}
         </div>
         {hist && <History id={hist} name={all.find((r) => r.id === hist)?.name ?? hist} />}
-        <p class="note"><b>Built in vs yours.</b> Built-in routines can be paused but not deleted, and caps and gates aren't routines, so they can't be switched off here. Your own routines are a shell command on a schedule, often <code>factory add …</code>. Same list in the terminal: <code>factory routines</code>.</p>
+        <OnThisMac rs={machine} />
+        <p class="note"><b>What you can change.</b> Every built-in schedule is a default: the pencil changes how often it runs, the switch pauses it, and Settings sets working hours and the intake interval. Built-ins can't be deleted, and caps and gates aren't routines, so they can't be switched off here. Routines you add are a shell command on a schedule, often <code>factory add …</code>. Same list in the terminal: <code>factory routines</code>.</p>
       </main>
       {adding && <NewRoutine close={() => setAdding(false)} />}
+    </div>
+  );
+}
+
+const MSTATE: Record<MachineRoutine["state"], string> = { running: "work", loaded: "ok", failing: "err", "not loaded": "", disabled: "", scheduled: "ok" };
+const KIND: Record<MachineRoutine["kind"], string> = { launchd: "Launch agent", cron: "crontab", claude: "Claude scheduled task" };
+
+function OnThisMac({ rs }: { rs?: MachineRoutine[] }) {
+  return (
+    <div class="list rt" style={{ marginTop: 16 }}>
+      <div class="rt-group">On this Mac · read-only</div>
+      {rs === undefined && <div class="rt-row"><span /><span class="small dim">Looking…</span></div>}
+      {rs?.length === 0 && <div class="small dim" style={{ padding: "10px 12px" }}>No launch agents in ~/Library/LaunchAgents, no crontab entries and no Claude scheduled tasks were found for your user.</div>}
+      {rs?.map((r) => (
+        <div key={r.id} class={`rt-row ${r.state === "failing" ? "bad" : ""}`}>
+          <span class="rt-ic"><Ic n={r.kind === "cron" ? "clock" : r.kind === "claude" ? "sparkles" : "laptop"} s={16} /></span>
+          <span class="rt-name"><b title={r.name}>{r.name}</b><div class="xs dim rt-desc" title={r.command}>{KIND[r.kind]}{r.factory ? " · the factory's own" : ""}{r.command ? ` · ${r.command}` : ""}</div></span>
+          <span class="small">{r.schedule}</span>
+          <span class="col rt-last"><span class={`chip rt-chip ${MSTATE[r.state]}`} title={r.detail}><span>{r.state}{r.detail ? ` · ${r.detail}` : ""}</span></span></span>
+          <span />
+          <span />
+          <span />
+        </div>
+      ))}
     </div>
   );
 }

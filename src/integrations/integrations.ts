@@ -6,9 +6,10 @@ import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
-import { pageUrl as notionPageUrl } from "../connectors/notion.js";
+import * as notion from "../connectors/notion.js";
 import { NotionSync } from "../board/notion-sync.js";
 import { paths } from "../shared/paths.js";
+import { machineRoutines } from "./machine-routines.js";
 import { type Builtin, Routines } from "./routines.js";
 import * as slack from "../connectors/slack.js";
 import type { Tag } from "../workflow/store.js";
@@ -40,7 +41,7 @@ export const integrationsPart =
         run: async () => {
           const all = await connections.testAll();
           const bad = all.filter((c) => c.status !== "connected" && (c.required || connections.configured(c.name)));
-          return bad.length ? `${bad.map((c) => `${c.label} ${c.status}`).join(", ")}` : "all connections working";
+          return bad.length ? `warn: ${bad.map((c) => `${c.label} ${c.status}`).join(", ")}` : "all connections working";
         },
       },
       {
@@ -68,6 +69,18 @@ export const integrationsPart =
           if (r.skipped) return `skip: ${r.skipped}`;
           const t = r.added ? await intake.triage() : { triaged: 0 };
           return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new";
+        },
+      },
+      {
+        id: "intake-notion",
+        name: "Notion board intake",
+        description: "Cards you move to \"Ready for agent\" on your own Notion board go straight to the queue; one small read through your Notion connector",
+        everySeconds: 900,
+        workingHours: true,
+        run: async () => {
+          const r = await intake.poll("notion");
+          if (r.skipped) return `skip: ${r.skipped}`;
+          return r.added ? `${r.added} card${r.added === 1 ? "" : "s"} queued` : "nothing new";
         },
       },
       {
@@ -138,9 +151,10 @@ export const integrationsPart =
     ];
 
     const writeBack = async (t: TaskView, text: string) => {
-      const cfg = store.setting<{ slack?: boolean; jira?: boolean }>("write_back", { slack: true, jira: true });
+      const cfg = store.setting<{ slack?: boolean; jira?: boolean; notion?: boolean }>("write_back", { slack: true, jira: true, notion: true });
       const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
       if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
+      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, t.sourceRef, text);
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
@@ -161,7 +175,7 @@ export const integrationsPart =
           : t.machine.state === "Dropped"
             ? `Dropped this one${d.note ? `: ${d.note}` : "."}`
             : d.verdict === "approve" && t.machine.state === "Planning" && t.tags.includes("learn") && t.notionReviewId
-              ? `Research write-up (statechart and formal check included): ${notionPageUrl(t.notionReviewId)}`
+              ? `Research write-up (statechart and formal check included): ${notion.pageUrl(t.notionReviewId)}`
               : "";
       if (text) void writeBack(t, text).catch((e) => engine.emit("alert", { level: "warn", taskId: t.id, message: `Couldn't write back to ${t.source}: ${e instanceof Error ? e.message : e}` }));
     };
@@ -187,7 +201,13 @@ export const integrationsPart =
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
-        "intake.poll": async (p: { source: "slack" | "jira" }) => {
+        "notion.intake": async (p: { board: string; status?: string }) => {
+          if (!p.board?.trim()) throw new Error("paste a link to your Notion board (the database view you move cards on)");
+          const next = { ...engine.settings().notion, intakeBoard: p.board.trim(), intakeStatus: p.status?.trim() || "Ready for agent" };
+          engine.updateSettings({ notion: next });
+          return { board: next.intakeBoard, status: next.intakeStatus, ...(await intake.poll("notion")) };
+        },
+        "intake.poll": async (p: { source: "slack" | "jira" | "notion" }) => {
           const r = await intake.poll(p.source);
           return { ...r, ...(r.added ? await intake.triage() : {}) };
         },
@@ -197,7 +217,7 @@ export const integrationsPart =
         "rules.list": () => intake.rules(),
         "rules.set": (p: { id: string; status: "active" | "rejected" | "proposed" }) => intake.setRule(p.id, p.status),
         "notion.setup": (p: { page: string }) => sync.setup(p.page),
-        "notion.status": () => ({ ...sync.ids(), ready: sync.ready(), pending: sync.pendingCount() }),
+        "notion.status": () => ({ ...sync.ids(), ready: sync.ready(), pending: sync.pendingCount(), intakeBoard: engine.settings().notion.intakeBoard, intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent" }),
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
         "review.summary": (p: { id: string }) => sync.summary(p.id),
         "routines.list": () => routines.list(),
@@ -206,6 +226,7 @@ export const integrationsPart =
         "routines.add": (p: { name: string; every: string; command: string; workingHours?: boolean }) => routines.add(p),
         "routines.remove": (p: { id: string }) => routines.remove(p.id),
         "routines.history": (p: { id: string; limit?: number }) => routines.history(p.id, p.limit),
+        "routines.machine": () => machineRoutines(),
         "repo.add": (p: { path: string; name?: string; setup?: string; base?: string }) => {
           if (!existsSync(p.path) || !statSync(p.path).isDirectory()) throw new Error(`${p.path} isn't a folder`);
           const name = p.name ?? p.path.replace(/\/+$/, "").split("/").pop()!;

@@ -9,15 +9,12 @@ const COLS: [Task["column"], string, string][] = [
   ["Queued", "queued", "Waiting for a free slot"],
   ["Running", "running", "On its own; no gate until PR ready"],
   ["Needs you", "needs", "Gates, questions, permissions, caps run out"],
-  ["Parked", "parked", "Set aside by you. Keeps its worktree and Notion page; frees its slot"],
   ["PR ready", "pr", "Confirmed fixed; your first look at code"],
-  ["Done", "done", "Written back to Slack or Jira"],
+  ["Done", "done", "Written back to where it came from"],
 ];
 
 function refusal(from: Task["column"], to: Task["column"]): string | undefined {
   if (from === to) return undefined;
-  if (to === "Parked") return from === "Done" ? "Finished tasks can't be parked" : undefined;
-  if (from === "Parked") return to === "Running" || to === "Done" ? "Unparking returns a card to where it was" : undefined;
   if (to === "PR ready") return "Only a confirmed fix reaches PR ready";
   if (to === "Done") return "Done only after you approve the PR";
   if (to === "Running") return "Runs when a slot frees";
@@ -31,7 +28,10 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
   const [adding, setAdding] = useState(route.query.get("new") === "1");
   const [refused, setRefused] = useState<{ col: string; why: string }>();
   const [over, setOver] = useState<string>();
-  const tasks = app.tasks.filter((t) => t.column !== "Inbox" && (!tag || t.tags.includes(tag)) && (!only || t.column === only));
+  const tasks = app.tasks.filter((t) => !["Inbox", "Backlog", "Bin"].includes(t.column) && (!tag || t.tags.includes(tag)) && (!only || t.column === only));
+  const backlog = app.tasks.filter((t) => t.column === "Backlog").length;
+  const binned = app.tasks.filter((t) => t.column === "Bin").length;
+  const waiting = app.intake.filter((i) => i.status === "Inbox" || i.status === "Triage" || i.status === "ReplyDrafted").length;
   const askOf = (t: Task) => app.prompts.find((p) => p.taskId === t.id)?.kind;
 
   const drop = async (id: string, to: Task["column"]) => {
@@ -42,16 +42,6 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
       setRefused({ col: to, why });
       setTimeout(() => setRefused(undefined), 1400);
       return;
-    }
-    if (to === "Parked") {
-      if (t.column === "Running") {
-        const r = await act<{ ok: boolean }>("task.interrupt", { id, note: "parked from the board" });
-        if (!r?.ok) return;
-      }
-      await act("task.park", { id }, ["tasks", "status"]);
-    } else {
-      const r = await act<{ ok: boolean; task?: Task }>("task.unpark", { id }, ["tasks", "status"]);
-      if (r?.ok && r.task && r.task.column !== to) toast(`${id} went back to ${r.task.column}, where it was when you parked it.`);
     }
   };
 
@@ -67,6 +57,8 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
         <button class={!tag ? "on" : ""} onClick={() => setTag("")}>All tags</button>
         {TAGS.map((t) => <button key={t} class={tag === t ? "on" : ""} onClick={() => setTag(t)}>{t}</button>)}
       </div>
+      {!only && <Btn onClick={() => go("backlog")}><Ic n="archive" s={14} />Backlog {backlog}</Btn>}
+      {!only && <Btn onClick={() => go("bin")}><Ic n="trash-2" s={14} />Bin {binned}</Btn>}
       <Btn kind="btn-primary" onClick={() => setAdding(true)}><Ic n="plus" s={14} />New task</Btn>
     </div>
   );
@@ -97,14 +89,13 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
                   {t.tags.length > 0 && <div class="row wrap" style={{ gap: 4, marginTop: 6 }}><Tags ts={t.tags} /></div>}
                 </div>
               ))}
-              {col === "Parked" && cards.length === 0 && <div class="kb-drop">Drag a card here to park it</div>}
             </div>
           );
         })}
       </div>
     );
   } else {
-    const groups = (only ? [only] : (["Needs you", "Running", "PR ready", "Parked", "Queued", "Done"] as const)).map((g) => [g, tasks.filter((t) => t.column === g)] as const).filter(([, ts]) => ts.length);
+    const groups = (only ? [only] : (["Needs you", "Running", "PR ready", "Queued", "Done"] as const)).map((g) => [g, tasks.filter((t) => t.column === g)] as const).filter(([, ts]) => ts.length);
     body = groups.length ? (
       groups.map(([g, ts]) => (
         <div key={g}>
@@ -113,7 +104,14 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
         </div>
       ))
     ) : (
-      <div class="empty">{only === "Running" ? "Nothing is running." : only === "Done" ? "Nothing finished yet." : "No tasks yet. Add one, or wait for intake."}</div>
+      <div class="empty">
+        {only === "Running" ? "Nothing is running." : only === "Done" ? "Nothing finished yet." : "No active tasks."}
+        {!only && (backlog > 0 || waiting > 0 || binned > 0) && (
+          <div class="small dim" style={{ marginTop: 6 }}>
+            {[waiting && <a href="#inbox">{waiting} waiting in the inbox</a>, backlog && <a href="#backlog">{backlog} in the backlog</a>, binned && <a href="#bin">{binned} in the bin</a>].filter(Boolean).map((x, i) => <span key={i}>{i ? " · " : ""}{x}</span>)}
+          </div>
+        )}
+      </div>
     );
   }
   return (

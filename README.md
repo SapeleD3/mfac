@@ -105,7 +105,9 @@ factory watch             # stream every move as it happens
 
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),
-and `factory tag F-001 +learn -urgent`.
+and `factory tag F-001 +learn -urgent`. `factory add --backlog`, `factory backlog F-001` and
+`factory prioritize F-001` move work between the backlog and the queue; `factory restore F-001` takes a
+task out of the bin (parked work goes back where it was, dropped work comes back as a new backlog task).
 
 ## How a task runs
 
@@ -207,11 +209,20 @@ comment and the words it's anchored to go to the stage, and the next round lands
 Board changes queue up and go in one batched call every 10 minutes (none when nothing changed); review
 pages are published as soon as a gate opens, and tickets you add on the board are picked up every 2 hours.
 
+Your own Notion kanban board can be a source of work too: `factory notion intake <board link>` (or the
+Connections page). Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
+`--status`) go straight to the queue without triage, once each, and the factory comments on the card when
+the task finishes.
+
 ## Routines
 
 `factory routines` lists everything the factory does on a schedule, with the last run, its result and the
-next run: health check, Slack and Jira intake, triage, Notion sync and ticket pickup, cleanup, and the post-merge watch
-(phase 2, off). Add your own: `factory routines add "Weekly deps" --every 7d --command "factory add 'Update dependencies' --repo ~/code/app"`.
+next run: health check, Slack, Jira and Notion board intake, triage, Notion sync and ticket pickup, cleanup, and the post-merge watch
+(phase 2, off). Every built-in schedule is a default you can change (`factory routines set ID --every 1h`, or the
+pencil in the app) or pause. A run ends ok, warn (it ran but found something to fix, like an expired connector),
+skipped or failed. Add your own: `factory routines add "Weekly deps" --every 7d --command "factory add 'Update dependencies' --repo ~/code/app"`.
+The app also lists your Mac's own scheduled jobs, read-only: launch agents in `~/Library/LaunchAgents` with
+their `launchctl` state, and your crontab.
 
 ## The app
 
@@ -221,8 +232,8 @@ by Rust, and engine events stream back to both windows.
 
 - **Widget (default)**: a pill at the top right that opens into Needs you, Running and Up next. Gates
   can be approved or dropped right there; questions and permission prompts are answered there too.
-- **Full app**: the board (drag a card to Parked and back; the engine refuses anything else, with the
-  reason), each task's rail with its caps, the research and plan gates (read the summary, review in
+- **Full app**: the board (the engine refuses moves it doesn't allow, with the reason), the backlog and
+  the bin, each task's rail with its caps, the research and plan gates (read the summary, review in
   Notion, then one overall verdict), PR ready, Needs you, the live session (watch, take over, or open
   it in Terminal), inbox and triage, connections, routines, rules and learning, settings.
 - **Headless**: Settings → How it runs → Headless. The app quits at launch; the engine keeps running.

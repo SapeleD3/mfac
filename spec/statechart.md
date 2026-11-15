@@ -11,12 +11,13 @@ CI model-checks the spec with TLC at `Cap = 3` on every PR (`npm run tlc` does t
 | PR rule | You only see code once review is clean and the change is confirmed to solve the problem |
 | Gates rule | Done only after research, plan and PR are all approved |
 | Caps | At most 3 send-backs per gate, and 3 rounds per automatic loop (research check, requirements review, review findings, confirm); then Needs you, also capped at 3 |
-| Ends or parked | Every task ends as Ignored, Replied, Done or Dropped, or waits in Parked because you put it there |
+| Ends or parked | Every task ends as Ignored, Replied, Done or Dropped, or waits in Parked or the Backlog because you or triage put it there |
 
 Beyond the original design, the model adds three moves that only a person makes, so fairness never
 forces them: dismissing a drafted reply, overruling triage (an ignored item or a draft becomes a task),
-and stopping a running stage (it goes to Needs you, whose cap still applies). TLC checks every rule with
-them in: 15,689,700 distinct states, no errors.
+and stopping a running stage (it goes to Needs you, whose cap still applies). The Backlog holds work that is
+real but not a priority: triage can send it there, you move it to the queue and back, and it never takes a
+slot on its own. TLC checks every rule with all of it in: 18,790,243 distinct states, no errors.
 
 ```mermaid
 stateDiagram-v2
@@ -29,6 +30,10 @@ stateDiagram-v2
     ReplyDrafted --> Queued: you turn it into a task
     Ignored --> Queued: you overrule triage
     Triage --> Queued: needs work
+    Triage --> Backlog: needs work, not now
+    Backlog --> Queued: you move it to the queue
+    Queued --> Backlog: you move it to the backlog
+    Backlog --> Dropped: you drop
     Queued --> Researching: slot frees, Opus coordinator starts
 
     Researching --> ResearchCheck: statechart and TLA+ model written
@@ -80,6 +85,7 @@ stateDiagram-v2
     Loop --> NeedsYou: you stop it
 
     Queued --> Parked: you park it
+    Backlog --> Parked: you park it
     ResearchGate --> Parked: you park it
     PlanGate --> Parked: you park it
     PRGate --> Parked: you park it
