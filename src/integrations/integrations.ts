@@ -4,6 +4,7 @@ import { deleteTranscript } from "../claude/print.js";
 import { type ConnectionName, Connections, type Tester, realTester } from "../connectors/connections.js";
 import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
+import { meetingsSince, saveMeetings } from "../memory/meetings.js";
 import { CardMoves } from "./card-moves.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
@@ -121,6 +122,22 @@ export const integrationsPart =
           if (!sync.ready()) return "skip: the Notion board isn't set up";
           if (!connections.ok("notion")) return "skip: Notion isn't connected";
           return `${await sync.pullTickets()} tickets picked up from Notion`;
+        },
+      },
+      {
+        id: "meetings",
+        name: "Notion meetings",
+        description: "Keeps the summaries of new Notion meeting notes on this Mac, so tasks can be matched to the meetings that discussed them; transcripts stay in Notion",
+        everySeconds: 4 * 3600,
+        workingHours: true,
+        run: async () => {
+          const s = engine.settings().notion;
+          if (s.meetings === false) return "skip: turned off (factory notion meetings --on)";
+          if (!connections.ok("notion")) return "skip: Notion isn't connected";
+          const server = s.meetingsServer ?? s.intakeServer;
+          const notes = await notion.meetingNotes(store, meetingsSince(store), server);
+          const added = await saveMeetings(store, notes, server);
+          return `${added} new meeting${added === 1 ? "" : "s"} remembered (${notes.length} read)`;
         },
       },
       {
@@ -243,6 +260,11 @@ export const integrationsPart =
           intakeServer: engine.settings().notion.intakeServer,
           intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
         }),
+        "notion.meetings": async (p: { server?: string; on?: boolean }) => {
+          const cur = engine.settings().notion;
+          engine.updateSettings({ notion: { ...cur, ...(p.server !== undefined ? { meetingsServer: p.server || undefined } : {}), ...(p.on !== undefined ? { meetings: p.on } : {}) } });
+          return routines.run("meetings", { manual: true });
+        },
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
         "review.summary": (p: { id: string }) => sync.summary(p.id),
         "routines.list": () => routines.list(),

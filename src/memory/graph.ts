@@ -1,7 +1,7 @@
 import type { Row, Store } from "../workflow/store.js";
 import type { Digest } from "./digest.js";
 
-export type Node = `${"task" | "file" | "area" | "pr" | "ticket" | "thread" | "repo"}:${string}`;
+export type Node = `${"task" | "file" | "area" | "pr" | "ticket" | "thread" | "repo" | "meeting"}:${string}`;
 
 const JIRA_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d+\b/g;
 

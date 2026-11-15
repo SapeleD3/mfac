@@ -19,6 +19,8 @@ export interface Settings {
     intakeServer?: string;
     intakeStatus?: string;
     columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
+    meetings?: boolean;
+    meetingsServer?: string;
   };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
   defaultRepo?: string;

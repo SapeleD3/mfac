@@ -1,7 +1,7 @@
 import type { Row, Store } from "../workflow/store.js";
 import { type Embedder, cosine, textHash } from "./embed.js";
 
-export type VectorKind = "digest" | "task";
+export type VectorKind = "digest" | "task" | "meeting";
 
 export interface Item {
   kind: VectorKind;

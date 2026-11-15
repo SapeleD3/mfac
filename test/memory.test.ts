@@ -11,6 +11,7 @@ import { Intake } from "../src/integrations/intake.js";
 import { areaOf, buildDigest, digest, saveDigest } from "../src/memory/digest.js";
 import { type Embedder, setEmbedder } from "../src/memory/embed.js";
 import { linkDigest } from "../src/memory/graph.js";
+import { relatedMeetings, saveMeetings } from "../src/memory/meetings.js";
 import { memoryPart } from "../src/memory/memory.js";
 import type { Project, ProjectSummary } from "../src/memory/projects.js";
 import { matchTask, recall } from "../src/memory/recall.js";
@@ -238,5 +239,38 @@ test("a finished task is summarised once by the cheap model without a saved sess
   assert.equal(p.tasks.find((t) => t.id === a.id)!.area, "packages/billing");
   assert.equal(p.tasks.find((t) => t.id === b.id)!.area, "packages/billing", "an unfinished task's area is guessed from the areas its repo already has");
   await running.stop();
+  setEmbedder(undefined);
+});
+
+test("meeting summaries are kept on this machine and the right ones reach a task's history; transcripts are fetched only as excerpts", async () => {
+  const { store, engine } = world();
+  setEmbedder(fakeEmbedder);
+  const added = await saveMeetings(store, [
+    {
+      id: "m-1",
+      title: "Payments sync",
+      date: "2026-11-10T10:00:00Z",
+      attendees: ["Dana", "Mo"],
+      summary: "Agreed card payment retries back off exponentially, capped at five tries. PAY-42 owns it.",
+    },
+    { id: "m-2", title: "Design review", date: "2026-11-12T10:00:00Z", attendees: ["Lee"], summary: "New onboarding illustrations and colour palette for the marketing site." },
+  ]);
+  assert.equal(added, 2);
+  assert.equal(
+    await saveMeetings(store, [{ id: "m-1", title: "Payments sync", attendees: [], summary: "Agreed card payment retries back off. PAY-42 owns it." }]),
+    0,
+    "a meeting seen again is updated, not added",
+  );
+  const byTicket = engine.add({ title: "Do PAY-42", body: "see the ticket" });
+  const [hit] = await relatedMeetings(store, store.task(byTicket.id)!);
+  assert.equal(hit?.meeting.id, "m-1");
+  assert.match(hit!.why, /names PAY-42/);
+  const byWords = engine.add({ title: "Card payment retries keep failing", body: "Retries of card payment fail after the backoff" });
+  const r = await recall(store, store.task(byWords.id)!, 300);
+  assert.match(r.markdown, /## Meetings that may matter/);
+  assert.match(r.markdown, /Meeting m-1 "Payments sync" \(2026-11-10\)/);
+  assert.doesNotMatch(r.markdown, /Design review/, "an unrelated meeting stays out");
+  assert.ok(r.markdown.length <= 300 * 4);
+  assert.match(r.markdown, /factory memory meeting <id> "<what to look for>"/);
   setEmbedder(undefined);
 });

@@ -229,6 +229,13 @@ place. It's built to spend as few tokens as possible.
   progress there, capped at 600 tokens (`memory_budget_tokens`). Stages pull more only when a line matters,
   with `factory memory show F-012` (about 300 tokens), `factory memory search "words"` and
   `factory memory file path/to/file.ts`.
+- **Meetings**: every 4 hours in working hours, the summaries of new Notion meeting notes are read (one
+  Haiku call, at most 15 meetings, never the transcripts), embedded on this Mac and linked to the tickets
+  they name. A starting task whose ask or ticket matches one gets up to two meeting lines in `history.md`,
+  inside the same budget. `factory memory meeting <id> "<what to look for>"` returns only the transcript
+  lines about that (at most 1,500 characters), read in the connector's own session.
+  `factory notion meetings --server NAME` picks the workspace (it defaults to the board you watch), and
+  `--off` stops it. `factory memory meetings` lists what's kept.
 - **Without the embedder** everything still works from the graph and keywords; `factory memory status`
   says which is in use.
 
