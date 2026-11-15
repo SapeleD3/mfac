@@ -206,7 +206,7 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: 'notion setup PAGE_LINK | intake BOARD_LINK [--status "Ready for agent"] | status',
+    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] | status',
     help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake watches your own board and queues cards moved to the ready column",
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));

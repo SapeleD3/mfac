@@ -266,6 +266,7 @@ interface NotionStatus {
   pending: number;
   parentPageId?: string;
   intakeBoard?: string;
+  intakeBoardName?: string;
   intakeStatus: string;
 }
 
@@ -338,7 +339,7 @@ function FactoryBoard({ s, connected, reload }: { s: NotionStatus; connected: bo
 
 function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boolean; reload: () => void }) {
   const app = useApp();
-  const [board, setBoard] = useState(s.intakeBoard ?? "");
+  const [board, setBoard] = useState(s.intakeBoardName ?? s.intakeBoard ?? "");
   const [status, setStatus] = useState(s.intakeStatus);
   const [saving, setSaving] = useState(false);
   const r = app.routines.find((x) => x.id === "intake-notion");
@@ -369,13 +370,14 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
           Connect Notion in Claude
         </Step>
         <Step n={2} done={!!s.intakeBoard}>
-          Open your personal kanban board in Notion, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one, and copy the board's link
+          In your personal kanban board in Notion, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one
         </Step>
         <Step n={3} done={!!s.intakeBoard}>
-          Paste it here. Every 15 minutes, cards in that column go straight to the queue (you already chose them, so they skip triage); when the task finishes, the factory comments on the card
+          Type the board's name here, as it shows in Notion. The factory finds it through the connector. Every 15 minutes, cards in that column go straight to the queue (you already chose them, so
+          they skip triage); when the task finishes, the factory comments on the card
         </Step>
         <div class="row">
-          <input class="in" placeholder="Board link" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
+          <input class="in" placeholder="Board name" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
           <input class="in" style={{ width: 160 }} placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected} />
           <Btn kind="btn-primary" onClick={save} disabled={!connected || !board.trim() || checking}>
             {checking ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}
