@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../shared/paths.js";
@@ -41,6 +41,28 @@ const writePool = (pool: Record<string, Pooled>) => {
 };
 
 export const pooledSessions = () => readPool();
+
+export function transcriptPath(sessionId: string, claudeDir = process.env.FACTORY_CLAUDE_DIR ?? join(homedir(), ".claude")): string | undefined {
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return undefined;
+  const projects = join(claudeDir, "projects");
+  if (!existsSync(projects)) return undefined;
+  for (const dir of readdirSync(projects)) {
+    const f = join(projects, dir, `${sessionId}.jsonl`);
+    if (existsSync(f)) return f;
+  }
+  return undefined;
+}
+
+/** The session most recently written in a folder: the chat that is running a command there right now. */
+export function latestSessionIn(cwd: string, claudeDir = process.env.FACTORY_CLAUDE_DIR ?? join(homedir(), ".claude")): string | undefined {
+  const dir = join(claudeDir, "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"));
+  if (!existsSync(dir)) return undefined;
+  const newest = readdirSync(dir)
+    .filter((f) => /^[0-9a-f-]{36}\.jsonl$/i.test(f))
+    .map((f) => ({ f, at: statSync(join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.at - a.at)[0];
+  return newest?.f.replace(/\.jsonl$/, "");
+}
 
 export function deleteTranscript(sessionId: string, claudeDir = process.env.FACTORY_CLAUDE_DIR ?? join(homedir(), ".claude")): boolean {
   if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return false;

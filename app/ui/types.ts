@@ -28,6 +28,7 @@ export const CAP = 3;
 export interface Machine {
   state: State;
   parkedFrom: State;
+  kind?: "change" | "research";
   tries: Record<Gate, number>;
   loops: { check: number; requirements: number; review: number; confirm: number };
   chart: boolean;
@@ -42,7 +43,7 @@ export interface Task {
   id: string;
   title: string;
   body: string;
-  source: "slack" | "jira" | "notion" | "manual" | "factory";
+  source: "slack" | "jira" | "notion" | "manual" | "factory" | "chat";
   sourceRef?: string;
   sourceUrl?: string;
   repo?: string;
@@ -55,6 +56,8 @@ export interface Task {
   prUrl?: string;
   notionJobId?: string;
   notionReviewId?: string;
+  parent?: string;
+  chat?: string;
   tokens: number;
   takenOver: boolean;
   createdAt: string;
@@ -161,6 +164,7 @@ export interface IntakeItem {
   status: State;
   taskId?: string;
   overridden: boolean;
+  meta: Record<string, string>;
 }
 
 export interface TriageRule {

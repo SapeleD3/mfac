@@ -97,6 +97,20 @@ function Item({ i }: { i: IntakeItem }) {
             </>
           )}
         </div>
+        {i.meta.relatedTask && i.meta.relatedTask !== i.taskId && (
+          <div class="row" style={{ marginTop: 6, gap: 6 }}>
+            <span class="xs dim">
+              Looks like more for{" "}
+              <a href={`#task/${i.meta.relatedTask}`}>
+                <b>{i.meta.relatedTask}</b>
+              </a>
+              {i.taskId ? `, not a new task (${i.taskId})` : ""}.
+            </span>
+            <Btn kind="btn-ghost" onClick={() => act("intake.attach", { id: i.id, task: i.meta.relatedTask }, ["intake", "tasks"])}>
+              Add it to {i.meta.relatedTask}
+            </Btn>
+          </div>
+        )}
         {i.status === "ReplyDrafted" && (
           <div class="coord" style={{ marginTop: 6 }}>
             <div class="label" style={{ marginBottom: 4 }}>

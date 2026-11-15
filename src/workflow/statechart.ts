@@ -33,9 +33,12 @@ export const RUNNING: readonly State[] = ["Researching", "Planning", "Requiremen
 export const LOOPS = ["check", "requirements", "review", "confirm"] as const;
 export type Loop = (typeof LOOPS)[number];
 export type Approval = "research" | "plan" | "pr";
+export const KINDS = ["change", "research"] as const;
+export type Kind = (typeof KINDS)[number];
 
 export interface Machine {
   state: State;
+  kind: Kind;
   parkedFrom: State;
   tries: Record<Gate, number>;
   loops: Record<Loop, number>;
@@ -74,9 +77,10 @@ export type EventType = Event["type"];
 
 export type Step = { ok: true; machine: Machine; action: string } | { ok: false; reason: string };
 
-export function initial(state: State = "Inbox"): Machine {
+export function initial(state: State = "Inbox", kind: Kind = "change"): Machine {
   return {
     state,
+    kind,
     parkedFrom: "Queued",
     tries: { ResearchGate: 0, PlanGate: 0, PRGate: 0, NeedsYou: 0 },
     loops: { check: 0, requirements: 0, review: 0, confirm: 0 },
@@ -111,8 +115,9 @@ const APPROVE: Partial<Record<Gate, { to: State; adds: Approval }>> = {
   PRGate: { to: "Done", adds: "pr" },
 };
 
+const research = (m: Machine) => m.kind === "research";
 const isGate = (s: State): s is Gate => (GATES as readonly string[]).includes(s);
-const clone = (m: Machine): Machine => ({ ...m, tries: { ...m.tries }, loops: { ...m.loops }, approved: [...m.approved] });
+const clone = (m: Machine): Machine => ({ ...m, kind: m.kind ?? "change", tries: { ...m.tries }, loops: { ...m.loops }, approved: [...m.approved] });
 const go = (m: Machine, to: State): Machine => ({ ...clone(m), state: to });
 const ok = (machine: Machine, action: string): Step => ({ ok: true, machine, action });
 const no = (reason: string): Step => ({ ok: false, reason });
@@ -152,7 +157,7 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
     }
     case "check": {
       if (s !== "ResearchCheck") return wrong(m, "check research", "in ResearchCheck");
-      if (m.chart && m.proved) return ok(go(m, "ResearchGate"), "CheckPass");
+      if (m.chart && m.proved) return ok(go(m, research(m) ? "RequirementsReview" : "ResearchGate"), "CheckPass");
       if (m.loops.check < cap) {
         const n = go(m, "Researching");
         n.loops.check++;
@@ -167,9 +172,9 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
       if (s !== "RequirementsReview") return wrong(m, "finish the requirements review", "in RequirementsReview");
       const n = clone(m);
       n.covered = e.covered;
-      if (e.covered) n.state = "PlanGate";
+      if (e.covered) n.state = research(m) ? "ResearchGate" : "PlanGate";
       else if (m.loops.requirements < cap) {
-        n.state = "Planning";
+        n.state = research(m) ? "Researching" : "Planning";
         n.loops.requirements++;
       } else n.state = "NeedsYou";
       return ok(n, "ReqReview");
@@ -178,13 +183,13 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
     case "approve": {
       const a = isGate(s) ? APPROVE[s] : undefined;
       if (!a) return wrong(m, "approve", "at the research, plan or PR gate");
-      const n = go(m, a.to);
+      const n = go(m, research(m) && s === "ResearchGate" ? "Done" : a.to);
       if (!n.approved.includes(a.adds)) n.approved.push(a.adds);
       return ok(n, `Approve(${s})`);
     }
     case "send_back": {
       if (!isGate(s)) return wrong(m, "send back", "at a gate or Needs you");
-      const route = SEND_BACK[s].find((r) => r.to === e.to);
+      const route = SEND_BACK[s].find((r) => r.to === e.to && !(research(m) && r.to !== "Researching"));
       if (!route) return no(`${s} can send back to ${SEND_BACK[s].map((r) => r.to).join(" or ")}, not ${e.to}`);
       if (m.tries[s] >= cap) return no(`${s} has used all ${cap} send-backs; only approve or drop remain`);
       if (route.needs && !route.needs.every((a) => m.approved.includes(a))) return no(`sending back to ${e.to} needs ${route.needs.join(" and ")} approved first`);
@@ -282,10 +287,10 @@ export const invariants: Record<string, (m: Machine, cap?: number) => boolean> =
   TypeOK: (m, cap = CAP) =>
     STATES.includes(m.state) && PARKABLE.includes(m.parkedFrom) && GATES.every((g) => m.tries[g] >= 0 && m.tries[g] <= cap) && LOOPS.every((l) => m.loops[l] >= 0 && m.loops[l] <= cap),
   ResearchRule: (m) => !["ResearchGate", "Planning", "RequirementsReview", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || (m.chart && m.proved),
-  CoverageRule: (m) => !["PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || m.covered,
+  CoverageRule: (m) => !(["PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || (research(m) && m.state === "ResearchGate")) || m.covered,
   BuildRule: (m) => !["Building", "Reviewing", "Confirming", "PRGate"].includes(m.state) || (m.approved.includes("research") && m.approved.includes("plan")),
   PRRule: (m) => m.state !== "PRGate" || (!m.findings && m.confirmed),
-  GatesRule: (m) => m.state !== "Done" || ["research", "plan", "pr"].every((a) => m.approved.includes(a as Approval)),
+  GatesRule: (m) => m.state !== "Done" || (research(m) ? ["research"] : ["research", "plan", "pr"]).every((a) => m.approved.includes(a as Approval)),
 };
 
 export const COLUMNS = ["Backlog", "Queued", "Running", "Needs you", "PR ready", "Done", "Bin"] as const;

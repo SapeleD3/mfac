@@ -1,6 +1,7 @@
 #!/usr/bin/env -S node --no-warnings=ExperimentalWarning
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { latestSessionIn } from "../claude/print.js";
 import { Client, call } from "../daemon/client.js";
 import type { TaskView } from "../workflow/engine.js";
 import { restartEngine, startEngine } from "./engine-control.js";
@@ -28,12 +29,19 @@ export function parse(argv: string[]): { args: string[]; flags: Flags } {
     if (a.startsWith("--")) {
       const [k, inline] = a.slice(2).split("=", 2) as [string, string | undefined];
       const next = argv[i + 1];
-      const value = inline ?? (next !== undefined && !next.startsWith("--") && !["json", "all", "follow", "headless", "yes"].includes(k) ? (i++, next) : true);
+      const value = inline ?? (next !== undefined && !next.startsWith("--") && !["json", "all", "follow", "headless", "yes", "research", "backlog", "default", "new"].includes(k) ? (i++, next) : true);
       const prev = flags[k];
       flags[k] = prev === undefined ? value : ([] as string[]).concat(prev as string | string[], String(value));
     } else args.push(a);
   }
   return { args, flags };
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
@@ -73,6 +81,51 @@ export const commands: Record<string, Command> = {
       const t = await call<TaskView>("task.add", { title, body: str(f.body), repo: repo ? resolve(repo) : undefined, recipe: str(f.recipe), tags: list(f.tag), backlog: !!f.backlog });
       if (f.json) return out(JSON.stringify(t));
       out(`${f.backlog ? "Backlogged" : "Queued"} ${bold(t.id)}: ${t.title}`);
+    },
+  },
+  chat: {
+    usage: 'chat "title" [--chat SESSION_ID] [--repo PATH] [--research] [--to TASK | --new] < brief.md',
+    help: "What /mfactory runs: hands a Claude Code chat to the factory as a task, or as context for the task that chat already started",
+    async run(args, f) {
+      const title = args.join(" ").trim();
+      if (!title) throw new Error('give the task a title: factory chat "Build the export"');
+      const body = (await readStdin()).trim();
+      if (!body) throw new Error("pipe the handoff brief in on stdin");
+      const repo = resolve(str(f.repo) ?? process.cwd());
+      const given = str(f.chat);
+      const chat = given && /^[0-9a-f-]{36}$/i.test(given) ? given : latestSessionIn(repo);
+      if (!chat) throw new Error("couldn't tell which Claude Code chat this is; pass --chat <session id>");
+      const r = await call<{ task: TaskView; how: string; followUp?: TaskView }>("task.fromChat", {
+        chat,
+        title,
+        body,
+        repo,
+        recipe: f.research ? "research" : undefined,
+        to: str(f.to),
+        fresh: !!f.new,
+      });
+      const t = r.followUp ?? r.task;
+      if (f.json) return out(JSON.stringify(r));
+      const what =
+        r.how === "new"
+          ? `New ${t.machine.kind === "research" ? "research " : ""}task ${bold(t.id)} in ${t.repo ?? "no folder"}: ${t.title}. It starts when a slot frees.`
+          : r.how === "followup"
+            ? `${r.task.id} had finished, so this became follow-up ${bold(t.id)}: ${t.title}.`
+            : r.how === "brief"
+              ? `Added to ${bold(t.id)}'s brief; it hasn't started yet.`
+              : `Sent to ${bold(t.id)}'s coordinator as new context; it reads it at its next step.`;
+      out(`${what}\nWatch it in the Factory app or with: factory show ${t.id}`);
+    },
+  },
+  context: {
+    usage: 'context TASK "text" [--from WHO] [--url URL]',
+    help: "Adds new context to a task: into its brief if it hasn't started, to its coordinator if it's running, or as a follow-up task if it finished",
+    async run(args, f) {
+      const [id, ...rest] = args;
+      const text = rest.join(" ").trim() || (await readStdin()).trim();
+      if (!id || !text) throw new Error('factory context F-012 "what changed"');
+      const r = await call<{ how: string; followUp?: TaskView }>("task.context", { id, text, from: str(f.from) ?? "you", url: str(f.url) });
+      out(r.followUp ? `${id} had finished, so this became follow-up ${bold(r.followUp.id)}.` : r.how === "brief" ? `Added to ${id}'s brief.` : `Sent to ${id}'s coordinator.`);
     },
   },
   ls: {

@@ -44,6 +44,13 @@ on later rounds tlc-result.md and any review notes or send-back reasons.
    with `factory tlc <Name>.tla` until it passes. State each invariant in plain words in research.md
    and the requirement it protects.
 
+## Research tasks
+
+When brief.md says "Kind: research only", research.md is the deliverable the person reads: answer
+every R-id in it by name, with the evidence (code paths, docs, measurements, links) and a clear
+recommendation where the ask wants one. The statechart and model still describe the behaviour the
+research is about.
+
 ## Acceptance criteria
 
 - Every statement of need in the source maps to an R-id, or is listed under Out of scope with why.

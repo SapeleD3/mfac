@@ -8,6 +8,7 @@ import { type Check, doctor } from "../upkeep/doctor.js";
 import { paths } from "../shared/paths.js";
 import { isAlive } from "../daemon/server.js";
 import { type SkillStatus, install as installSkills, status as skillStatus } from "../skills/skills.js";
+import { installChatCommand } from "../skills/chat-command.js";
 import type { Retro } from "../upkeep/upkeep.js";
 import { factoryRepo } from "../upkeep/upkeep.js";
 import { relaunchApp } from "../upkeep/launchd.js";
@@ -31,6 +32,14 @@ export const upkeepCommands: Record<string, Command> = {
       const bad = checks.filter((c) => c.status === "err").length;
       out(bad ? `\n${bad} thing${bad === 1 ? "" : "s"} to fix.` : "\nReady.");
       return bad ? 1 : 0;
+    },
+  },
+  plugin: {
+    usage: "plugin install",
+    help: "Installs or refreshes /mfactory in Claude Code (through claude plugin, from this checkout)",
+    async run(args) {
+      if (args[0] !== "install") throw new Error("factory plugin install");
+      for (const l of installChatCommand(factoryRepo())) out(l);
     },
   },
   skills: {
@@ -97,6 +106,12 @@ export const upkeepCommands: Record<string, Command> = {
       step("git pull", "git", ["pull", "--ff-only"]);
       step("npm ci", "npm", ["ci", "--no-audit", "--no-fund"]);
       step("build", "npm", ["run", "build"]);
+      out("→ /mfactory in Claude Code");
+      try {
+        for (const l of installChatCommand(repo)) out(`  ${l}`);
+      } catch (e) {
+        out(`  ${e instanceof Error ? e.message : e}`);
+      }
       const app = join(homedir(), "Applications", "Factory.app");
       const withApp = !flags.headless && process.platform === "darwin" && existsSync(join(repo, "app"));
       if (withApp) {

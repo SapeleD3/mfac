@@ -211,3 +211,32 @@ test("taking over holds the coordinator's messages until you hand back", async (
   await c("session.takeover", { task: t.id, on: false });
   assert.match(lastPaste().text, /researcher-1 finished/);
 });
+
+test("a research task reads its repo in place, gets its research reviewed, and ends when you approve it", async () => {
+  await c("settings.set", { slots: 8 });
+  const t = await c<TaskView>("task.add", { title: "Which queue should events use", repo, recipe: "research" });
+  await c("factory.tick");
+  const now = (await c<{ task: TaskView }>("task.get", { id: t.id })).task;
+  assert.equal(now.machine.state, "Researching");
+  assert.equal(now.worktree, repo, "no branch for research");
+  assert.equal(now.branch, undefined);
+
+  await coord(t.id, "run", { role: "researcher" });
+  writeFileSync(join(job(t.id), "research.md"), "# Research\nR1: SQS, because the events need no ordering.");
+  writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
+  writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Sent: publish\n```\n");
+  writeFileSync(join(job(t.id), "Queue.tla"), "---- MODULE Queue ----\n====");
+  writeFileSync(join(job(t.id), "Queue.cfg"), "INVARIANT Safe");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-1`) });
+  assert.match(await coord(t.id, "submit-research"), /research task[\s\S]*review/);
+  assert.ok(started.some((s) => s.id === `${t.id}-requirements_review-1`));
+
+  writeFileSync(join(job(t.id), "review-requirements.md"), "R1 is answered with evidence.\nVERDICT: covered");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-requirements_review-1`) });
+  assert.match(await coord(t.id, "requirements", { covered: true }), /research gate is open/);
+  await c("task.decide", { id: t.id, verdict: "approve" });
+  await new Promise((r) => setTimeout(r, 30));
+  const done = (await c<{ task: TaskView }>("task.get", { id: t.id })).task;
+  assert.equal(done.machine.state, "Done");
+  assert.deepEqual(done.machine.approved, ["research"]);
+});

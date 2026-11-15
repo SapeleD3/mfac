@@ -47,10 +47,10 @@ export const Tags = ({ ts }: { ts: string[] }) => (
   </>
 );
 
-const SRC: Record<string, string> = { slack: "Slack", jira: "Jira", notion: "Notion", manual: "You", factory: "Factory", claude: "Claude Code" };
+const SRC: Record<string, string> = { slack: "Slack", jira: "Jira", notion: "Notion", manual: "You", factory: "Factory", claude: "Claude Code", chat: "Your Claude chat" };
 export const Src = ({ s, label }: { s: string; label?: string }) => (
   <span class="src">
-    <Brand n={s === "manual" ? "you" : s} s={16} />
+    <Brand n={s === "manual" ? "you" : s === "chat" ? "claude" : s} s={16} />
     {label ?? SRC[s] ?? s}
   </span>
 );

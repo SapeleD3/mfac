@@ -42,6 +42,10 @@ stateDiagram-v2
     ResearchCheck --> NeedsYou: TLC still failing after 3
 
     ResearchGate --> Planning: you approve (comments in Notion)
+    ResearchCheck --> RequirementsReview: research task, TLC passes
+    RequirementsReview --> Researching: research task, gaps against the original ask (max 3)
+    RequirementsReview --> ResearchGate: research task, every requirement answered
+    ResearchGate --> Done: research task, you approve
     ResearchGate --> Researching: you send back (max 3)
     ResearchGate --> Dropped: you drop
 

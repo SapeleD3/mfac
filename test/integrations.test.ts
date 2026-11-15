@@ -24,7 +24,7 @@ process.env.FACTORY_SOCKET = socket;
 let mcpList = "Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nclaude.ai Notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n";
 setMcpLister(async () => mcpList);
 const SLACK = toolPrefix("claude.ai Slack");
-const slackItems = [
+const slackItems: { channelId: string; ts: string; threadTs?: string; channel: string; author: string; text: string; url?: string }[] = [
   { channelId: "C1", ts: "1800000001.000100", channel: "#incidents", author: "dana", text: "checkout is down for EU users!", url: "https://s/1" },
   { channelId: "C2", ts: "1800000002.000100", channel: "#product", author: "lee", text: "can you add a CSV export to reports?", url: "https://s/2" },
   { channelId: "D1", ts: "1800000005.000100", channel: "DM", author: "sam", text: "quick q: is the release tomorrow?" },
@@ -118,6 +118,21 @@ test("Slack intake reads through the connector with read-only tools, and triage 
   const again = await c<{ added: number }>("intake.poll", { source: "slack" });
   assert.equal(again.added, 0);
   assert.equal(triageCalls.filter((m) => m === "haiku").length, 1);
+});
+
+test("a reply in the thread a task came from becomes context for that task, with no triage call", async () => {
+  const csv = (await c<IntakeItem[]>("intake.list", {})).find((i) => i.text.includes("CSV export"))!;
+  const calls = triageCalls.length;
+  slackItems.push({ channelId: "C2", ts: "1800000009.000100", threadTs: "1800000002.000100", channel: "#product", author: "lee", text: "also include the date column please" });
+  const r = await c<{ added: number; attached?: number }>("intake.poll", { source: "slack" });
+  assert.equal(r.added, 1);
+  assert.equal(r.attached, 1);
+  assert.equal(triageCalls.length, calls, "the thread decides it, not the model");
+  const item = (await c<IntakeItem[]>("intake.list", {})).find((i) => i.text.includes("date column"))!;
+  assert.equal(item.taskId, csv.taskId);
+  const t = (await c<{ task: TaskView }>("task.get", { id: csv.taskId })).task;
+  assert.match(t.body, /More context, from Slack #product, lee[\s\S]*date column/, "it hasn't started, so the brief takes it");
+  slackItems.pop();
 });
 
 test("a drafted reply is only posted when you press Send, and only that call may use Slack's write tools", async () => {

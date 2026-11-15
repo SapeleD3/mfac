@@ -1,0 +1,8 @@
+{
+  "name": "mfactory",
+  "version": "0.1.0",
+  "description": "/mfactory hands the current Claude Code conversation and folder to the factory as a task, or as more context for the task this chat already started.",
+  "author": {
+    "name": "factory"
+  }
+}

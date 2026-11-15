@@ -28,6 +28,20 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
 - `factory coord needs-you --note "..."`: escalate to the person.
 - `factory coord harden "<title>" --note "<what check would have caught it>"`: queue a hardening task.
 
+## Research tasks
+
+When brief.md says "Kind: research only", the task is the research itself: there is no plan, build
+or PR. After `submit-research` passes its check, the requirements review of the research starts on
+its own. `requirements --covered` then opens the research gate, and the person's approval ends the
+task. `--gaps` sends the work back to the researcher (max 3), then to the person.
+
+## New context
+
+A message starting "[factory] New context" means more input arrived for this task: a reply in its
+Slack thread, a Jira comment, or a note from the person's chat. It is saved in context.md. Read it,
+log it in decision.md, and fold it into the next stage's note. If it changes what an earlier,
+already-approved stage decided, say so and escalate with `needs-you` rather than quietly redoing it.
+
 ## How to work
 
 1. Read {{jobDir}}/brief.md and conventions.md, then any earlier files in the job folder.

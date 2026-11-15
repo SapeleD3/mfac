@@ -7,7 +7,7 @@ export const TAGS = ["learn", "urgent", "ui", "sensitive", "harden"] as const;
 export type Tag = (typeof TAGS)[number];
 export const RECIPES = ["feature", "bugfix", "research", "review", "harden"] as const;
 export type Recipe = (typeof RECIPES)[number];
-export type Source = "slack" | "jira" | "notion" | "manual" | "factory";
+export type Source = "slack" | "jira" | "notion" | "manual" | "factory" | "chat";
 
 export interface Task {
   id: string;
@@ -26,6 +26,8 @@ export interface Task {
   prUrl?: string;
   notionJobId?: string;
   notionReviewId?: string;
+  parent?: string;
+  chat?: string;
   tokens: number;
   takenOver: boolean;
   createdAt: string;
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   branch TEXT, worktree TEXT, pr_url TEXT, notion_job_id TEXT, notion_review_id TEXT,
   tokens INTEGER NOT NULL DEFAULT 0,
   taken_over INTEGER NOT NULL DEFAULT 0,
+  parent TEXT, chat TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -216,6 +219,8 @@ function toTask(r: Row): Task {
     prUrl: opt(r.pr_url),
     notionJobId: opt(r.notion_job_id),
     notionReviewId: opt(r.notion_review_id),
+    parent: opt(r.parent),
+    chat: opt(r.chat),
     tokens: Number(r.tokens ?? 0),
     takenOver: Number(r.taken_over ?? 0) === 1,
     createdAt: String(r.created_at),
@@ -237,6 +242,8 @@ export class Store {
   private addMissingColumns() {
     const has = (table: string, col: string) => (this.db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).some((c) => c.name === col);
     if (!has("repos", "about")) this.db.exec("ALTER TABLE repos ADD COLUMN about TEXT NOT NULL DEFAULT ''");
+    if (!has("tasks", "parent")) this.db.exec("ALTER TABLE tasks ADD COLUMN parent TEXT");
+    if (!has("tasks", "chat")) this.db.exec("ALTER TABLE tasks ADD COLUMN chat TEXT");
   }
 
   close() {
@@ -262,15 +269,28 @@ export class Store {
     return `F-${String(n).padStart(3, "0")}`;
   }
 
-  createTask(input: { title: string; body?: string; source: Source; sourceRef?: string; sourceUrl?: string; repo?: string; recipe?: Recipe; tags?: Tag[]; priority?: number; state?: State }): Task {
+  createTask(input: {
+    title: string;
+    body?: string;
+    source: Source;
+    sourceRef?: string;
+    sourceUrl?: string;
+    repo?: string;
+    recipe?: Recipe;
+    tags?: Tag[];
+    priority?: number;
+    state?: State;
+    parent?: string;
+    chat?: string;
+  }): Task {
     return this.tx(() => {
       const id = this.nextTaskId();
-      const m = initial(input.state ?? "Queued");
+      const m = initial(input.state ?? "Queued", input.recipe === "research" ? "research" : "change");
       const t = now();
       this.db
         .prepare(
-          `INSERT INTO tasks (id, title, body, source, source_ref, source_url, repo, recipe, tags, priority, state, machine, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO tasks (id, title, body, source, source_ref, source_url, repo, recipe, tags, priority, state, machine, parent, chat, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -285,6 +305,8 @@ export class Store {
           input.priority ?? 0,
           m.state,
           JSON.stringify(m),
+          input.parent ?? null,
+          input.chat ?? null,
           t,
           t,
         );
@@ -295,6 +317,11 @@ export class Store {
 
   task(id: string): Task | undefined {
     const r = this.db.prepare("SELECT * FROM tasks WHERE id = ? COLLATE NOCASE").get(id) as Row | undefined;
+    return r ? toTask(r) : undefined;
+  }
+
+  taskByChat(chat: string): Task | undefined {
+    const r = this.db.prepare("SELECT * FROM tasks WHERE chat = ? ORDER BY created_at DESC LIMIT 1").get(chat) as Row | undefined;
     return r ? toTask(r) : undefined;
   }
 

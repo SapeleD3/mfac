@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openTerminal, openUrl } from "../bridge";
 import { Btn, Ic, Pips, RECIPE, StateChip, StateDot, TagChip, Tags, clock, doing, position, taskSource, tokens } from "../kit";
-import { act, useApp, useCall } from "../store";
+import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
 
 const notionUrl = (id?: string) => (id ? `https://www.notion.so/${id.replace(/-/g, "")}` : undefined);
@@ -136,6 +136,21 @@ function Detail({ t }: { t: Task }) {
           {t.body}
         </p>
       )}
+      {(t.machine.kind === "research" || t.parent) && (
+        <div class="xs dim" style={{ marginTop: 4 }}>
+          {t.machine.kind === "research" ? "Research only: it ends when you approve the research. " : ""}
+          {t.parent && (
+            <>
+              Follow-up to{" "}
+              <a href={`#task/${t.parent}`}>
+                <b>{t.parent}</b>
+              </a>
+              .
+            </>
+          )}
+        </div>
+      )}
+      {!["Ignored", "Replied"].includes(s) && <AddContext t={t} />}
       <div class="grid2" style={{ marginTop: 12, gridTemplateColumns: "1.15fr 1fr" }}>
         <div>
           <Rail t={t} stages={stages} files={files.map((f) => f.name)} onFile={setFile} />
@@ -335,6 +350,10 @@ function EventLine({ e }: { e: TaskEvent }) {
     remove?: string[];
     error?: string;
     folder?: string;
+    research?: boolean;
+    from?: string;
+    text?: string;
+    as?: string;
   };
   let text: preact.ComponentChildren;
   let cls = "";
@@ -380,7 +399,13 @@ function EventLine({ e }: { e: TaskEvent }) {
       text = "Ran the repo's setup.";
       break;
     case "plain_folder":
-      text = `Works in ${d.folder} directly: it isn't a git repo, so there's no branch or PR.`;
+      text = d.research ? `Reads ${d.folder} in place: a research task makes no branch.` : `Works in ${d.folder} directly: it isn't a git repo, so there's no branch or PR.`;
+      break;
+    case "context_added":
+      text = `New context from ${d.from}: ${(d.text ?? "").slice(0, 160)}`;
+      break;
+    case "followed_up":
+      text = `Continued as follow-up ${d.as}.`;
       break;
     default:
       text = (
@@ -427,3 +452,50 @@ export function FileView({ id, name }: { id: string; name: string }) {
 }
 
 export { Tags };
+
+function AddContext({ t }: { t: Task }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const finished = t.machine.state === "Done" || t.machine.state === "Dropped";
+  const send = async () => {
+    setBusy(true);
+    const r = await act<{ how: string; followUp?: Task }>("task.context", { id: t.id, text }, ["tasks"]);
+    setBusy(false);
+    if (!r) return;
+    setText("");
+    setOpen(false);
+    if (r.followUp) {
+      toast(`${t.id} had finished, so this became follow-up ${r.followUp.id}.`);
+      go(`task/${r.followUp.id}`);
+    } else toast(r.how === "brief" ? `Added to ${t.id}'s brief.` : `Sent to ${t.id}'s coordinator; it picks it up at its next step.`);
+  };
+  if (!open)
+    return (
+      <div style={{ marginTop: 6 }}>
+        <Btn kind="btn-ghost" onClick={() => setOpen(true)}>
+          <Ic n="plus" s={14} />
+          {finished ? "Follow up with more context" : "Add context"}
+        </Btn>
+      </div>
+    );
+  return (
+    <div class="col" style={{ marginTop: 6, gap: 6 }}>
+      <textarea
+        class="in"
+        rows={3}
+        placeholder={finished ? "What's new? This starts a follow-up task from where this one ended." : "A correction, a detail, a link. The coordinator reads it at its next step."}
+        value={text}
+        onInput={(e) => setText(e.currentTarget.value)}
+      />
+      <div class="row">
+        <Btn kind="btn-primary" onClick={send} disabled={!text.trim() || busy}>
+          {busy ? "Sending…" : finished ? "Start follow-up" : "Add"}
+        </Btn>
+        <Btn kind="btn-ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </Btn>
+      </div>
+    </div>
+  );
+}

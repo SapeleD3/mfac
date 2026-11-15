@@ -124,3 +124,41 @@ test("the CLI talks to the same engine", async () => {
   assert.match(lines.join(""), /Queued F-\d+: Write the docs/);
   assert.match(lines.join(""), /COLUMN/);
 });
+
+test("a chat hands its work to one task: new context goes to that task, and once it's done to a follow-up", async () => {
+  const chat = "11111111-2222-3333-4444-555555555555";
+  const first = await call<{ task: TaskView; how: string }>(
+    "task.fromChat",
+    { chat, title: "Which queue should we use", body: "Compare SQS and Kafka for the events.", recipe: "research", repo: dir },
+    socket,
+  );
+  assert.equal(first.how, "new");
+  assert.equal(first.task.source, "chat");
+  assert.equal(first.task.machine.kind, "research");
+  const id = first.task.id;
+
+  const more = await call<{ how: string; task: TaskView }>("task.fromChat", { chat, title: "Also cost", body: "Include monthly cost at 10k events/s." }, socket);
+  assert.equal(more.how, "brief");
+  assert.match(more.task.body, /More context, from your Claude Code chat[\s\S]*monthly cost/);
+
+  const heard: { text: string }[] = [];
+  running.engine.on("context", (c) => heard.push(c));
+  const step = (event: object, actor = "coordinator") => running.engine.move(id, event as never, actor as never);
+  step({ type: "start" }, "engine");
+  await call("task.context", { id, text: "Latency matters more than cost." }, socket);
+  assert.equal(heard.length, 1, "a running task's coordinator hears it at its next step");
+
+  step({ type: "research_done", chart: true, proved: true }, "engine");
+  step({ type: "check" }, "engine");
+  step({ type: "requirements_done", covered: true });
+  assert.equal(running.engine.decide(id, "approve").task?.machine.state, "Done");
+
+  const after = await call<{ how: string; followUp: TaskView }>("task.fromChat", { chat, title: "Now build it", body: "Go with SQS." }, socket);
+  assert.equal(after.how, "followup");
+  assert.equal(after.followUp.parent, id);
+  assert.equal(after.followUp.chat, chat);
+  const next = await call<{ how: string; task: TaskView }>("task.fromChat", { chat, title: "One more thing", body: "Use FIFO queues." }, socket);
+  assert.equal(next.task.id, after.followUp.id, "the chat now continues the follow-up");
+  const fresh = await call<{ how: string; task: TaskView }>("task.fromChat", { chat, title: "Unrelated", body: "Rename the logger.", fresh: true }, socket);
+  assert.equal(fresh.how, "new");
+});
