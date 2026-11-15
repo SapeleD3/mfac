@@ -88,6 +88,7 @@ export interface Launch {
   sessionId: string;
   resume: boolean;
   model: string;
+  effort?: string;
   name: string;
   role: Role;
   jobDir: string;
@@ -106,6 +107,7 @@ export function claudeCommand(l: Launch): string[] {
     process.env.FACTORY_CLAUDE ?? "claude",
     ...(l.resume ? ["--resume", l.sessionId] : ["--session-id", l.sessionId]),
     "--model", l.model,
+    ...(l.effort ? ["--effort", l.effort] : []),
     "--name", l.name,
     "--settings", settingsFile,
     "--append-system-prompt-file", l.systemPromptFile,

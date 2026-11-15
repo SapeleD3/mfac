@@ -207,11 +207,13 @@ export class Runner {
     const id = opts.resume?.id ?? `${t.id}-${role}-${round}`;
     const sessionId = opts.resume?.sessionId ?? randomUUID();
     const model = this.engine.settings().models[role] ?? "sonnet";
+    const effort = this.engine.settings().efforts[role];
     const cwd = t.worktree && existsSync(t.worktree) ? t.worktree : this.jobDir(t.id);
     const command = claudeCommand({
       sessionId,
       resume: !!opts.resume,
       model,
+      effort,
       name: sessionName(t.id, role, round),
       role,
       jobDir: this.jobDir(t.id),

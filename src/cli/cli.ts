@@ -67,15 +67,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 export const commands: Record<string, Command> = {
   add: {
-    usage: 'add "title" [--repo PATH] [--recipe feature|bugfix|research|review] [--tag TAG]... [--body TEXT]',
-    help: "Queue a task by hand (most work arrives from Slack and Jira)",
+    usage: 'add "title" [--repo PATH] [--recipe feature|bugfix|research|review] [--tag TAG]... [--body TEXT] [--backlog]',
+    help: "Queue a task by hand, or put it in the backlog (most work arrives from Slack, Jira and your Notion board)",
     async run(args, f) {
       const title = args.join(" ").trim();
       if (!title) throw new Error('give the task a title: factory add "Fix the export button"');
       const repo = str(f.repo);
-      const t = await call<TaskView>("task.add", { title, body: str(f.body), repo: repo ? resolve(repo) : undefined, recipe: str(f.recipe), tags: list(f.tag) });
+      const t = await call<TaskView>("task.add", { title, body: str(f.body), repo: repo ? resolve(repo) : undefined, recipe: str(f.recipe), tags: list(f.tag), backlog: !!f.backlog });
       if (f.json) return out(JSON.stringify(t));
-      out(`Queued ${bold(t.id)}: ${t.title}`);
+      out(`${f.backlog ? "Backlogged" : "Queued"} ${bold(t.id)}: ${t.title}`);
     },
   },
   ls: {
@@ -123,6 +123,9 @@ export const commands: Record<string, Command> = {
   },
   park: { usage: "park ID", help: "Park a card: it stops taking a slot and keeps its state", run: async (a) => moveResult(await call("task.park", { id: need(a[0]) })) },
   unpark: { usage: "unpark ID", help: "Put a parked card back exactly where it was", run: async (a) => moveResult(await call("task.unpark", { id: need(a[0]) })) },
+  backlog: { usage: "backlog ID", help: "Move a queued task to the backlog: it waits and never takes a slot on its own", run: async (a) => moveResult(await call("task.demote", { id: need(a[0]) })) },
+  prioritize: { usage: "prioritize ID", help: "Move a backlog task into the queue", run: async (a) => moveResult(await call("task.prioritize", { id: need(a[0]) })) },
+  restore: { usage: "restore ID", help: "Take a task out of the bin: a parked one goes back where it was, a dropped one comes back as a new backlog task", run: async (a) => out(`Restored as ${(await call<TaskView>("task.restore", { id: need(a[0]) })).id}`) },
   stop: {
     usage: "stop ID [--note TEXT]",
     help: "Stop a running stage; the task goes to Needs you",
@@ -156,7 +159,7 @@ export const commands: Record<string, Command> = {
   },
   settings: {
     usage: "settings [KEY=VALUE]...",
-    help: "Show or change settings (slots, pollMinutes, usageCeiling, models.builder=opus)",
+    help: "Show or change settings (slots, pollMinutes, usageCeiling, models.builder=opus, efforts.planner=high)",
     async run(args) {
       if (!args.length) return out(JSON.stringify(await call("settings.get"), null, 2));
       const current = await call<Record<string, unknown>>("settings.get");

@@ -1,6 +1,7 @@
 mod engine;
 
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
@@ -8,6 +9,8 @@ use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow, Wi
 const WIDGET_W: f64 = 420.0;
 const WIDGET_OPEN_H: f64 = 640.0;
 const WIDGET_CLOSED_H: f64 = 52.0;
+
+static WIDGET_WANTED: AtomicBool = AtomicBool::new(true);
 
 #[tauri::command]
 async fn engine_call(method: String, params: Option<Value>) -> Result<Value, String> {
@@ -58,6 +61,23 @@ fn open_main(app: &AppHandle, route: &str) {
     let _ = w.unminimize();
     let _ = w.show();
     let _ = w.set_focus();
+    sync_widget(app);
+}
+
+fn main_on_screen(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .map(|m| m.is_visible().unwrap_or(false) && !m.is_minimized().unwrap_or(false))
+        .unwrap_or(false)
+}
+
+// The widget stands in for the main window, so it only shows while main is closed or minimized.
+fn sync_widget(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("widget") else { return };
+    if main_on_screen(app) {
+        let _ = w.hide();
+    } else if WIDGET_WANTED.load(Ordering::Relaxed) && !w.is_visible().unwrap_or(false) {
+        show_widget(&w);
+    }
 }
 
 fn show_widget(w: &WebviewWindow) {
@@ -92,11 +112,10 @@ pub fn run() {
             if mode == "widget" {
                 handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
-            if let Some(w) = app.get_webview_window("widget") {
-                show_widget(&w);
-            }
             if mode == "app" {
                 open_main(&handle, "queue");
+            } else {
+                sync_widget(&handle);
             }
 
             let open = MenuItem::with_id(app, "open", "Open Factory", true, None::<&str>)?;
@@ -113,10 +132,12 @@ pub fn run() {
                 "needs" => open_main(app, "needs"),
                 "widget" => {
                     if let Some(w) = app.get_webview_window("widget") {
-                        if w.is_visible().unwrap_or(false) {
-                            let _ = w.hide();
-                        } else {
+                        let show = !w.is_visible().unwrap_or(false);
+                        WIDGET_WANTED.store(show, Ordering::Relaxed);
+                        if show {
                             show_widget(&w);
+                        } else {
+                            let _ = w.hide();
                         }
                     }
                 }
@@ -127,13 +148,19 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+            if window.label() != "main" {
+                return;
+            }
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
                     let _ = window.hide();
                     #[cfg(target_os = "macos")]
                     let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    sync_widget(window.app_handle());
                 }
+                WindowEvent::Resized(_) | WindowEvent::Focused(_) => sync_widget(window.app_handle()),
+                _ => {}
             }
         })
         .run(tauri::generate_context!())

@@ -5,7 +5,7 @@ import { Btn, Ic, Src, Tags, ago } from "../kit";
 import { act, useApp } from "../store";
 import type { IntakeItem } from "../types";
 
-const V: Record<string, string> = { urgent: "chip err", task: "chip work", reply: "chip warn", ignore: "chip" };
+const V: Record<string, string> = { urgent: "chip err", task: "chip work", backlog: "chip", reply: "chip warn", ignore: "chip" };
 
 export function Inbox() {
   const app = useApp();
@@ -16,6 +16,7 @@ export function Inbox() {
   const poll = async () => {
     await act("intake.poll", { source: "slack" }, ["intake", "tasks"]);
     if (app.connections.find((c) => c.name === "jira")?.status === "connected") await act("intake.poll", { source: "jira" }, ["intake", "tasks"]);
+    if (app.settings?.notion?.intakeBoard) await act("intake.poll", { source: "notion" }, ["intake", "tasks"]);
   };
   return (
     <div class="pane-body">
@@ -28,7 +29,7 @@ export function Inbox() {
         </div>
         <div class="list">
           {items.map((i) => <Item key={i.id} i={i} />)}
-          {items.length === 0 && <div class="empty">{filter === "open" ? "Nothing waiting. New Slack messages to you and Jira tickets assigned to you land here." : "Nothing taken in yet."}</div>}
+          {items.length === 0 && <div class="empty">{filter === "open" ? "Nothing waiting. New Slack messages to you, Jira tickets assigned to you and cards you move to Ready for agent on your Notion board land here." : "Nothing taken in yet."}</div>}
         </div>
         <p class="note" style={{ marginTop: 12 }}><b>Overrides teach triage.</b> Changing a verdict here is logged; the same correction three times becomes a rule you approve on Rules and learning. It never posts as you without a click.</p>
       </main>
@@ -67,7 +68,7 @@ function Item({ i }: { i: IntakeItem }) {
         {!i.taskId && i.status !== "Replied" && (
           <select class="in xs" style={{ width: "auto", padding: "2px 4px" }} value="" onChange={(e) => e.currentTarget.value && act("intake.override", { id: i.id, action: e.currentTarget.value }, ["intake", "tasks", "rules"])}>
             <option value="">Change…</option>
-            {["ignore", "reply", "task", "urgent"].filter((x) => x !== i.triage).map((x) => <option key={x} value={x}>{x}</option>)}
+            {["ignore", "reply", "backlog", "task", "urgent"].filter((x) => x !== i.triage).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         )}
         {i.taskId && <Btn kind="btn-ghost" onClick={() => go(`task/${i.taskId}`)}>Open</Btn>}

@@ -156,13 +156,19 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   routines: {
-    usage: 'routines [run|pause|resume|history|rm ID] [add NAME --every 1d --command "factory add ..."]',
+    usage: 'routines [run|pause|resume|history|rm ID] [set ID --every 1h] [add NAME --every 1d --command "factory add ..."] [mac]',
     help: "Everything the factory does on a schedule: last run, result, next run, on or paused",
     async run(args, f) {
       const [sub, id] = args;
       if (sub === "run") return out(`${(await call<Routine>("routines.run", { id })).lastResult}: ${(await call<Routine[]>("routines.list")).find((r) => r.id === id)?.lastDetail ?? ""}`);
       if (sub === "pause" || sub === "resume") return out(`${id}: ${(await call<Routine>("routines.update", { id, enabled: sub === "resume" })).enabled ? "on" : "paused"}`);
       if (sub === "rm") return out(JSON.stringify(await call("routines.remove", { id })));
+      if (sub === "set") return out(`${id}: every ${(await call<Routine>("routines.update", { id, every: str(f.every) })).everySeconds}s`);
+      if (sub === "mac") {
+        const rs = await call<{ kind: string; name: string; schedule: string; state: string; detail?: string }[]>("routines.machine");
+        if (!rs.length) return out("No launch agents, crontab entries or Claude scheduled tasks for your user.");
+        return out(table([["KIND", "NAME", "SCHEDULE", "STATE"], ...rs.map((r) => [r.kind, r.name, r.schedule, r.state + (r.detail ? ` (${r.detail})` : "")])]));
+      }
       if (sub === "add") return out(`Added ${(await call<Routine>("routines.add", { name: args.slice(1).join(" "), every: str(f.every) ?? "1d", command: str(f.command) ?? "" })).id}`);
       if (sub === "history") {
         const rows = await call<{ started_at: string; result: string; detail: string }[]>("routines.history", { id });
@@ -174,10 +180,14 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: "notion setup PAGE_LINK | status",
-    help: "Create your factory board (Jobs, Tickets, Reviews) on a Notion page you can edit",
-    async run(args) {
+    usage: 'notion setup PAGE_LINK | intake BOARD_LINK [--status "Ready for agent"] | status',
+    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake watches your own board and queues cards moved to the ready column",
+    async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
+      if (args[0] === "intake") {
+        const r = await call<{ board: string; status: string; added: number; skipped?: string }>("notion.intake", { board: args[1], status: f.status });
+        return out(r.skipped ? `Saved. ${r.skipped}` : `Watching ${r.board}. Cards moved to "${r.status}" go to the queue; ${r.added} queued now.`);
+      }
       out(JSON.stringify(await call("notion.status"), null, 2));
     },
   },

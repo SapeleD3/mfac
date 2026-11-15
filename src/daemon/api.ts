@@ -19,13 +19,16 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
     "task.move": (p: { id: string; event: Event; actor?: Actor; data?: Record<string, unknown> }) => {
       // Sessions may only report their own work; verdicts at gates are reserved for people.
       const actor = p.actor ?? "coordinator";
-      if (actor !== "human" && ["approve", "drop", "park", "unpark", "promote", "dismiss", "send_reply"].includes(p.event.type))
+      if (actor !== "human" && ["approve", "drop", "park", "unpark", "promote", "dismiss", "send_reply", "demote", "prioritize"].includes(p.event.type))
         throw new Error(`${p.event.type} is a person's decision; the ${actor} can't make it`);
       return engine.move(p.id, p.event, actor, p.data);
     },
     "task.decide": (p: { id: string; verdict: "approve" | "send_back" | "drop"; to?: State; note?: string }) => engine.decide(p.id, p.verdict, p),
     "task.park": (p: { id: string }) => engine.move(p.id, { type: "park" }, "human"),
     "task.unpark": (p: { id: string }) => engine.move(p.id, { type: "unpark" }, "human"),
+    "task.demote": (p: { id: string }) => engine.move(p.id, { type: "demote" }, "human"),
+    "task.prioritize": (p: { id: string }) => engine.move(p.id, { type: "prioritize" }, "human"),
+    "task.restore": (p: { id: string }) => engine.restore(p.id),
     "task.interrupt": (p: { id: string; note?: string }) => engine.move(p.id, { type: "interrupt" }, "human", { note: p.note ?? "" }),
     "task.tag": (p: { id: string; add?: string[]; remove?: string[] }) => engine.tag(p.id, p.add, p.remove),
     "task.update": (p: { id: string; patch: Record<string, unknown> }) => {

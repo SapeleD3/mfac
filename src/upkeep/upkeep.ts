@@ -102,7 +102,7 @@ ${retros.map(retroMarkdown).join("\n---\n\n")}`;
       const routines = shared.routines;
       if (!routines) return;
       routines.register({ id: "usage-guard", name: "Usage guard", description: "Reads Claude Code's own usage logs; pauses new work above the ceiling", everySeconds: 120, run: async () => guard(engine, store) });
-      routines.register({ id: "improve-factory", name: "improve-factory", description: "Weekly: Opus reads the retros and proposes changes to the factory itself, as a sensitive task", everySeconds: 7 * 86_400, run: improve });
+      routines.register({ id: "improve-factory", name: "Improve the factory", description: "Weekly: Opus reads the retros and proposes changes to the factory itself, as a sensitive task", everySeconds: 7 * 86_400, run: improve });
       routines.register({
         id: "doctor",
         name: "Setup checks",
@@ -111,7 +111,7 @@ ${retros.map(retroMarkdown).join("\n---\n\n")}`;
         run: async () => {
           const checks = await doctor({ engineUp: true, connections: shared.connections?.list(), savedSkills: savedSkills() });
           const bad = checks.filter((c) => c.status !== "ok");
-          return bad.length ? `${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : "all checks pass";
+          return bad.length ? `warn: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : "all checks pass";
         },
       });
     },

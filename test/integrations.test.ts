@@ -28,6 +28,7 @@ const slackItems = [
   { channelId: "C1", ts: "1800000001.000100", channel: "#incidents", author: "dana", text: "checkout is down for EU users!", url: "https://s/1" },
   { channelId: "C2", ts: "1800000002.000100", channel: "#product", author: "lee", text: "can you add a CSV export to reports?", url: "https://s/2" },
   { channelId: "D1", ts: "1800000005.000100", channel: "DM", author: "sam", text: "quick q: is the release tomorrow?" },
+  { channelId: "C2", ts: "1800000006.000100", channel: "#product", author: "lee", text: "someday we should rename the dashboard tabs", url: "https://s/3" },
 ];
 const connectorCalls: { prompt: string; allowed: string[] }[] = [];
 const posted: string[] = [];
@@ -37,6 +38,7 @@ setPrintRunner(async (prompt, opts) => {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
     if (prompt.includes("list the exact names")) return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
+    if (prompt.includes('exactly "Ready for agent"')) return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", text: "It takes 8s to load.", url: "https://notion.so/card1", edited: "2026-11-15T10:00:00Z" }] });
     if (prompt.includes("Post this exact text")) {
       posted.push(prompt);
       return '{"ok": true}';
@@ -51,6 +53,7 @@ setPrintRunner(async (prompt, opts) => {
     ids.map((id) => {
       const t = text(id!);
       if (t.includes("release")) return { id, action: "reply", reason: "a yes/no question" };
+      if (t.includes("someday")) return { id, action: "backlog", reason: "real but not now", title: "Rename the dashboard tabs", recipe: "feature", tags: [] };
       if (t.includes("checkout")) return { id, action: "task", reason: "outage", title: "Fix EU checkout", recipe: "bugfix", tags: [] };
       return { id, action: "task", reason: "feature", title: "Add CSV export to reports", recipe: "feature", tags: ["ui"] };
     }),
@@ -82,7 +85,7 @@ test("connect finds Claude's Slack connector, checks it with one call, and remem
 
 test("Slack intake reads through the connector with read-only tools, and triage sorts it in one call", async () => {
   const r = await c<{ added: number; triaged: number }>("intake.poll", { source: "slack" });
-  assert.equal(r.added, 3);
+  assert.equal(r.added, 4);
   const read = connectorCalls.at(-1)!;
   assert.deepEqual(read.allowed, [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`], "intake can't post");
   assert.match(read.prompt, /Only read/);
@@ -99,6 +102,8 @@ test("Slack intake reads through the connector with read-only tools, and triage 
   const reply = items.find((i) => i.text.includes("release"))!;
   assert.equal(reply.status, "ReplyDrafted");
   assert.equal(reply.draft, "Yes, it ships tomorrow at 10.");
+  const later = items.find((i) => i.text.includes("someday"))!;
+  assert.equal(tasks.find((t) => t.id === later.taskId)?.column, "Backlog", "backlog work never takes a queue slot");
 
   const again = await c<{ added: number }>("intake.poll", { source: "slack" });
   assert.equal(again.added, 0);
@@ -143,6 +148,21 @@ test("an ignored item can be promoted to a task, and the statechart refuses the 
   assert.ok(promoted.taskId);
 });
 
+test("cards moved to Ready for agent on your own Notion board go straight to the queue, once", async () => {
+  const none = await c<{ added: number; skipped?: string }>("intake.poll", { source: "notion" });
+  assert.match(none.skipped!, /no Notion board to watch/);
+  const before = triageCalls.length;
+  const r = await c<{ added: number; status: string }>("notion.intake", { board: "https://notion.so/my-board" });
+  assert.equal(r.status, "Ready for agent");
+  assert.equal(r.added, 1);
+  assert.equal(triageCalls.length, before, "you already chose it, so no triage call");
+  const task = (await c<TaskView[]>("task.list", {})).find((t) => t.source === "notion")!;
+  assert.equal(task.title, "Speed up the reports page");
+  assert.equal(task.column, "Queued");
+  assert.equal(task.sourceRef, "card-1");
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the same card isn't queued twice");
+});
+
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {
   const alerts: { message: string; sticky?: boolean }[] = [];
   running.engine.on("alert", (a) => alerts.push(a));
@@ -163,6 +183,7 @@ test("health checks read claude mcp list with no model call: signed out is expir
   assert.equal(j!.status, "missing", "no Atlassian connector: optional, so no alert");
   assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
   assert.equal(connectorCalls.length + triageCalls.length, before, "no model calls, even from connect when sign-in is needed");
+  assert.equal((await c<Routine>("routines.run", { id: "health-check" })).lastResult, "warn", "an expired connector is a warning, not a green check");
 });
 
 test("disconnect stops the factory using a connector until you connect again; Claude Code and GitHub refuse", async () => {
@@ -177,7 +198,7 @@ test("disconnect stops the factory using a connector until you connect again; Cl
 
 test("routines show schedule, last result and next run, and your own run as shell commands", async () => {
   const list = await c<Routine[]>("routines.list");
-  for (const id of ["health-check", "intake-slack", "intake-jira", "triage", "notion-sync", "notion-pull", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);
+  for (const id of ["health-check", "intake-slack", "intake-jira", "intake-notion", "triage", "notion-sync", "notion-pull", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);
   const ran = await c<Routine>("routines.run", { id: "notion-sync" });
   assert.equal(ran.lastResult, "skipped");
   const mine = await c<Routine>("routines.add", { name: "Nightly deps check", every: "1d", command: "echo all good" });

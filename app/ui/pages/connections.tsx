@@ -16,7 +16,8 @@ export function Connections() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const alert = app.alerts[0];
   const doctor = useCall<{ checks: { status: "ok" | "warn" | "err"; name: string; detail: string; fix?: string }[] }>("doctor.run");
-  const notion = useCall<{ ready: boolean; pending: number; parentPageId?: string }>("notion.status");
+  const notion = useCall<NotionStatus>("notion.status");
+  const notionOk = app.connections.find((c) => c.name === "notion")?.status === "connected";
   const skills = useCall<{ name: string; description: string; status: "ok" | "missing" | "no-source"; version?: string; provides: string[] }[]>("skills.list");
   const fix = (c: Connection) => {
     if (c.fix.url) void openUrl(c.fix.url);
@@ -92,20 +93,78 @@ export function Connections() {
           </div>
         </div>
         <div class="grid2" style={{ marginTop: 16 }}>
-          <div class="card">
-            <div class="card-h">Notion board <span class="faint small" style={{ fontWeight: 400 }}>factory notion setup</span></div>
-            <div class="card-b layers">
-              {notion.data ? (
-                <>
-                  <div><span class={`dot ${notion.data.ready ? "ok" : "off"}`} />{notion.data.ready ? "Jobs, Tickets and Reviews databases ready" : "Not set up yet"}<span class="grow" />{notion.data.parentPageId && <a href="#" onClick={(e) => (e.preventDefault(), openUrl(`https://www.notion.so/${notion.data!.parentPageId!.replace(/-/g, "")}`))} class="xs">Open</a>}</div>
-                  <div><span class={`dot ${notion.data.pending ? "needs" : "ok"}`} />{notion.data.pending ? `${notion.data.pending} changes waiting to sync` : "Everything synced"}</div>
-                  {!notion.data.ready && <div class="xs faint">Run <code>factory connect notion</code> (or <code>factory notion setup &lt;page link&gt;</code>) with a Notion page you can edit.</div>}
-                </>
-              ) : <div class="small dim">{notion.error ?? "Loading…"}</div>}
-            </div>
-          </div>
+          {notion.data ? <><FactoryBoard s={notion.data} connected={notionOk} reload={notion.reload} /><IntakeBoard s={notion.data} connected={notionOk} reload={notion.reload} /></> : <div class="small dim">{notion.error ?? "Loading…"}</div>}
         </div>
       </main>
+    </div>
+  );
+}
+
+interface NotionStatus {
+  ready: boolean;
+  pending: number;
+  parentPageId?: string;
+  intakeBoard?: string;
+  intakeStatus: string;
+}
+
+const Step = ({ done, n, children }: { done: boolean; n: number; children: preact.ComponentChildren }) => (
+  <div class="row" style={{ alignItems: "flex-start", gap: 8 }}><span class={`dot ${done ? "ok" : "off"}`} style={{ marginTop: 6 }} /><span><b style={{ fontWeight: 500 }}>{n}.</b> {children}</span></div>
+);
+
+function FactoryBoard({ s, connected, reload }: { s: NotionStatus; connected: boolean; reload: () => void }) {
+  const [page, setPage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const create = async () => {
+    setBusy(true);
+    if (await act("notion.setup", { page: page.trim() })) reload();
+    setBusy(false);
+  };
+  return (
+    <div class="card">
+      <div class="card-h">Factory board <span class="faint small" style={{ fontWeight: 400 }}>where research and plans are reviewed</span><span class="grow" />{s.parentPageId && <a href="#" class="xs" onClick={(e) => (e.preventDefault(), openUrl(`https://www.notion.so/${s.parentPageId!.replace(/-/g, "")}`))}>Open</a>}</div>
+      <div class="card-b layers">
+        <Step n={1} done={connected}>Connect Notion in Claude {connected ? "" : <>(the Notion row above, or <code>factory connect notion</code>)</>}</Step>
+        <Step n={2} done={s.ready}>In Notion, make an empty page you can edit, for example "Factory", and copy its link (⋯ menu, Copy link)</Step>
+        <Step n={3} done={s.ready}>{s.ready ? "Jobs, Tickets and Reviews were created on it" : "Paste the link here. The factory creates three databases on it: Jobs, Tickets and Reviews"}</Step>
+        {!s.ready && (
+          <div class="row">
+            <input class="in" placeholder="https://www.notion.so/…" value={page} onInput={(e) => setPage(e.currentTarget.value)} disabled={!connected} />
+            <Btn kind="btn-primary" onClick={create} disabled={!connected || !page.trim() || busy}>{busy ? "Creating…" : "Create board"}</Btn>
+          </div>
+        )}
+        {s.ready && <div><span class={`dot ${s.pending ? "needs" : "ok"}`} />{s.pending ? `${s.pending} changes waiting to sync` : "Everything synced"}</div>}
+      </div>
+    </div>
+  );
+}
+
+function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boolean; reload: () => void }) {
+  const [board, setBoard] = useState(s.intakeBoard ?? "");
+  const [status, setStatus] = useState(s.intakeStatus);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string>();
+  const save = async () => {
+    setBusy(true);
+    const r = await act<{ added: number; skipped?: string; status: string }>("notion.intake", { board: board.trim(), status: status.trim() }, ["tasks", "intake", "routines"]);
+    if (r) setResult(r.skipped ? `Saved. ${r.skipped}` : `Checked: ${r.added} card${r.added === 1 ? "" : "s"} in "${r.status}" queued.`);
+    setBusy(false);
+    reload();
+  };
+  return (
+    <div class="card">
+      <div class="card-h">Your Notion board <span class="faint small" style={{ fontWeight: 400 }}>a source of work, like Slack and Jira</span></div>
+      <div class="card-b layers">
+        <Step n={1} done={connected}>Connect Notion in Claude</Step>
+        <Step n={2} done={!!s.intakeBoard}>Open your personal kanban board in Notion, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one, and copy the board's link</Step>
+        <Step n={3} done={!!s.intakeBoard}>Paste it here. Every 15 minutes in working hours, cards in that column go straight to the queue (you already chose them, so they skip triage); when the task finishes, the factory comments on the card</Step>
+        <div class="row">
+          <input class="in" placeholder="Board link" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
+          <input class="in" style={{ width: 160 }} placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected} />
+          <Btn kind="btn-primary" onClick={save} disabled={!connected || !board.trim() || busy}>{busy ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}</Btn>
+        </div>
+        {result && <div class="xs dim">{result}</div>}
+      </div>
     </div>
   );
 }

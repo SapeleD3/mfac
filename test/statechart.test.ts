@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { CAP, type Event, type Machine, STATES, TERMINAL, initial, invariants, step } from "../src/workflow/statechart.js";
 
 const EVENTS: Event[] = [
-  { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" },
+  { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" }, { type: "triage", as: "backlog" }, { type: "demote" }, { type: "prioritize" },
   { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
   { type: "research_done", chart: true, proved: true }, { type: "research_done", chart: true, proved: false },
   { type: "research_done", chart: false, proved: false }, { type: "check" }, { type: "plan_done" },
@@ -56,7 +56,7 @@ test("every task ends or waits in Parked: without parking moves the graph has no
   const visit = (k: string): void => {
     color.set(k, 1);
     const m = seen.get(k)!;
-    const out = edges.get(k)!.filter((e) => e.action !== "Park" && e.action !== "Unpark");
+    const out = edges.get(k)!.filter((e) => !["Park", "Unpark", "Demote", "Prioritize"].includes(e.action));
     if (!TERMINAL.includes(m.state) && m.state !== "Parked") assert.ok(out.length > 0, `dead end in ${k}`);
     for (const e of out) {
       const c = color.get(e.to);

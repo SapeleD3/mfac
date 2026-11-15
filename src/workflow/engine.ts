@@ -5,16 +5,20 @@ import { type Actor, type Recipe, type Source, Store, TAGS, type Tag, type Task 
 export interface Settings {
   slots: number;
   models: Record<string, string>;
+  efforts: Record<string, string>;
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
-  notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string };
+  notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string; intakeBoard?: string; intakeStatus?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
+
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 export const DEFAULT_SETTINGS: Settings = {
   slots: 3,
   models: { coordinator: "opus", researcher: "sonnet", planner: "opus", requirements_review: "opus", builder: "sonnet", code_review: "sonnet", security_review: "sonnet", confirm: "sonnet", triage: "haiku", reply: "sonnet" },
+  efforts: {},
   workingHours: { start: 8, end: 19, weekends: false },
   pollMinutes: 30,
   usageCeiling: 0.85,
@@ -47,7 +51,7 @@ export class Engine extends EventEmitter {
 
   settings(): Settings {
     const saved = this.store.setting<Partial<Settings>>("settings", {});
-    return { ...DEFAULT_SETTINGS, ...saved, models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) }, notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) }, ui: { ...DEFAULT_SETTINGS.ui, ...(saved.ui ?? {}) } };
+    return { ...DEFAULT_SETTINGS, ...saved, models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) }, efforts: { ...DEFAULT_SETTINGS.efforts, ...(saved.efforts ?? {}) }, notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) }, ui: { ...DEFAULT_SETTINGS.ui, ...(saved.ui ?? {}) } };
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
@@ -56,6 +60,8 @@ export class Engine extends EventEmitter {
     if (!(next.usageCeiling > 0 && next.usageCeiling <= 1)) throw new Error("the usage ceiling is a share between 0 and 1, like 0.85");
     if (!Number.isInteger(next.pollMinutes) || next.pollMinutes < 1) throw new Error("poll minutes must be a whole number of at least 1");
     if (!["widget", "app", "headless"].includes(next.ui.mode)) throw new Error("ui mode is widget, app or headless");
+    for (const [role, e] of Object.entries(next.efforts)) if (e && !EFFORTS.includes(e)) throw new Error(`effort for ${role} is one of ${EFFORTS.join(", ")} (or empty for the model's default)`);
+    next.efforts = Object.fromEntries(Object.entries(next.efforts).filter(([, e]) => e));
     this.store.setSetting("settings", next);
     this.emit("change", { kind: "settings", settings: next });
     return next;
@@ -79,10 +85,11 @@ export class Engine extends EventEmitter {
     return { ...t, column: column(s), rounds, allowed: [...new Set(moves)] };
   }
 
-  add(input: { title: string; body?: string; repo?: string; recipe?: Recipe; tags?: Tag[]; priority?: number; source?: Source; sourceRef?: string; sourceUrl?: string }): TaskView {
+  add(input: { title: string; body?: string; repo?: string; recipe?: Recipe; tags?: Tag[]; priority?: number; source?: Source; sourceRef?: string; sourceUrl?: string; backlog?: boolean }): TaskView {
     if (!input.title?.trim()) throw new Error("a task needs a title");
     const tags = (input.tags ?? []).filter((t) => (TAGS as readonly string[]).includes(t));
-    const task = this.store.createTask({ ...input, title: input.title.trim(), source: input.source ?? "manual", tags, priority: input.priority ?? (tags.includes("urgent") ? 10 : 0) });
+    const { backlog, ...rest } = input;
+    const task = this.store.createTask({ ...rest, title: input.title.trim(), source: input.source ?? "manual", tags, priority: input.priority ?? (tags.includes("urgent") ? 10 : 0), state: backlog ? "Backlog" : "Queued" });
     const v = this.view(task);
     this.emit("change", { kind: "task", task: v });
     return v;
@@ -129,6 +136,20 @@ export class Engine extends EventEmitter {
     const r = this.move(id, event, "human", { verdict, note: opts.note ?? "" });
     if (r.ok) this.emit("decision", { task: r.task, verdict, to: opts.to, note: opts.note ?? "" } satisfies Decision);
     return r;
+  }
+
+  restore(id: string): TaskView {
+    const t = this.store.task(id);
+    if (!t) throw new Error(`no task ${id}`);
+    if (t.machine.state === "Parked") {
+      const r = this.move(id, { type: "unpark" }, "human");
+      if (!r.ok) throw new Error(r.reason);
+      return r.task!;
+    }
+    if (t.machine.state !== "Dropped") throw new Error(`${id} isn't in the bin`);
+    const copy = this.add({ title: t.title, body: `${t.body}\n\nRestored from ${t.id}, which was dropped.`.trim(), repo: t.repo, recipe: t.recipe, tags: t.tags, priority: t.priority, source: t.source, sourceUrl: t.sourceUrl, backlog: true });
+    this.store.addEvent(t.id, "restored", "human", { as: copy.id });
+    return copy;
   }
 
   tag(id: string, add: string[] = [], remove: string[] = []): TaskView {

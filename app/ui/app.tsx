@@ -9,6 +9,7 @@ import { Queue } from "./pages/queue";
 import { Routines } from "./pages/routines";
 import { Session } from "./pages/session";
 import { SettingsPage } from "./pages/settings";
+import { Backlog, Bin } from "./pages/shelves";
 import { TaskPage } from "./pages/task";
 import { useApp } from "./store";
 
@@ -49,6 +50,8 @@ export function App() {
     needs: ["Needs you", () => <NeedsYou id={route.id} />],
     session: [`${route.id} · live session`, () => <Session id={route.id!} stage={route.query.get("stage") ?? undefined} />],
     inbox: ["Inbox", () => <Inbox />],
+    backlog: ["Backlog", () => <Backlog />],
+    bin: ["Bin", () => <Bin />],
     connections: ["Connections", () => <Connections />],
     routines: ["Routines", () => <Routines />],
     improve: ["Rules and learning", () => <Improve />],
@@ -73,7 +76,7 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
   const needs = t.filter((x) => x.column === "Needs you" || x.column === "PR ready").length + app.prompts.length;
   const running = t.filter((x) => x.column === "Running").length;
   const slots = app.status?.slots ?? app.settings?.slots ?? 3;
-  const failing = app.routines.filter((r) => r.lastResult === "failed").length;
+  const failing = app.routines.filter((r) => r.lastResult === "failed" || r.lastResult === "warn").length;
   const g = app.status?.guard;
   const share = g?.share !== undefined ? Math.round(g.share * 100) : undefined;
   const weekly = g?.weekly !== undefined ? Math.round(g.weekly * 100) : undefined;
@@ -94,7 +97,9 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
       {link("running", "activity", "Running", min ? running : `${running} of ${slots}`)}
       {link("queue", "square-kanban", "Queue", t.filter((x) => x.column === "Queued").length)}
       {link("inbox", "inbox", "Inbox and triage", app.intake.filter((i) => i.status === "Inbox" || i.status === "Triage" || i.status === "ReplyDrafted").length)}
+      {link("backlog", "archive", "Backlog", t.filter((x) => x.column === "Backlog").length)}
       {link("done", "circle-check", "Done", t.filter((x) => x.column === "Done").length)}
+      {link("bin", "trash-2", "Bin", t.filter((x) => x.column === "Bin").length)}
       <div class="sg"><span class="lbl">Factory</span></div>
       {link("connections", "plug", "Connections", app.alerts.length || undefined, "red")}
       {link("routines", "calendar-clock", "Routines", failing || undefined, "red")}

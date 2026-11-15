@@ -80,6 +80,27 @@ test("subscribers hear every change", async () => {
   assert.deepEqual(heard, ["change:Queued", "change:Parked"]);
 });
 
+test("the backlog holds work off the queue and the bin gives it back", async () => {
+  const t = await call<TaskView>("task.add", { title: "Tidy the settings copy", backlog: true }, socket);
+  assert.equal(t.column, "Backlog");
+  const queued = await call<{ ok: boolean; task: TaskView }>("task.prioritize", { id: t.id }, socket);
+  assert.equal(queued.task.column, "Queued");
+  assert.equal((await call<{ task: TaskView }>("task.demote", { id: t.id }, socket)).task.column, "Backlog");
+  await assert.rejects(call("task.move", { id: t.id, event: { type: "prioritize" }, actor: "coordinator" }, socket), /person's decision/);
+
+  assert.equal((await call<{ task: TaskView }>("task.park", { id: t.id }, socket)).task.column, "Bin");
+  const back = await call<TaskView>("task.restore", { id: t.id }, socket);
+  assert.equal(back.machine.state, "Backlog");
+
+  await call("task.move", { id: t.id, event: { type: "drop" }, actor: "human" }, socket);
+  const dropped = await call<{ task: TaskView }>("task.get", { id: t.id }, socket);
+  assert.equal(dropped.task.column, "Bin");
+  const copy = await call<TaskView>("task.restore", { id: t.id }, socket);
+  assert.notEqual(copy.id, t.id);
+  assert.equal(copy.column, "Backlog");
+  assert.match(copy.body, new RegExp(`Restored from ${t.id}`));
+});
+
 test("tags are checked and urgent jumps the queue", async () => {
   const t = await call<TaskView>("task.add", { title: "Checkout is down" }, socket);
   const tagged = await call<TaskView>("task.tag", { id: t.id, add: ["urgent"] }, socket);

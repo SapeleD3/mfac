@@ -361,7 +361,7 @@ textarea.in { resize: vertical; }
 .p-pill.amber { border-color: var(--accent); }
 .pill-wrap .panel { position: static; }
 
-.kb { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.kb { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; align-items: start; }
 .kb-col { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px; min-height: 420px; display: flex; flex-direction: column; gap: 8px; position: relative; }
 .kb-col.needs { border-color: color-mix(in srgb, var(--needs-you) 45%, var(--border)); }
 .kb-col.pr { border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
@@ -416,7 +416,13 @@ textarea.in { resize: vertical; }
 .n-views span { display: inline-flex; gap: 5px; align-items: center; }
 .tag.add { gap: 2px; }
 
-.rt-row { display: grid; grid-template-columns: 28px 1.6fr 1.1fr 1fr 0.9fr 0.95fr 90px; gap: 10px; align-items: start; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.rt-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 170px 220px 150px 96px 104px; gap: 12px; align-items: start; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.rt-row > * { min-width: 0; }
+.rt-name b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rt-last { gap: 3px; align-items: flex-start; }
+.rt-chip { max-width: 100%; }
+.rt-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rt-row.bad { background: color-mix(in srgb, var(--danger) 7%, transparent); }
 .rt-head { font-size: var(--text-xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 6px 12px; }
 .rt-group { padding: 8px 12px 4px; font-size: var(--text-xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; background: var(--bg); border-bottom: 1px solid var(--border); }

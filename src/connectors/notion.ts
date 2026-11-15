@@ -95,3 +95,27 @@ export async function ticketRows(store: Store, ids: BoardIds): Promise<{ pageId:
   );
   return (r.rows ?? []).filter((x) => x.pageId);
 }
+
+export interface BoardCard {
+  pageId: string;
+  title: string;
+  text: string;
+  url?: string;
+  edited: string;
+}
+
+export async function readyCards(store: Store, board: string, status: string): Promise<BoardCard[]> {
+  const r = await ask<{ cards?: Partial<BoardCard>[] }>(
+    store,
+    "notion",
+    [
+      `Open the Notion database or board ${pageUrl(board)}. Find its status column (a Status or Select property, often called Status) and list every card whose value is exactly "${status}".`,
+      'At most 30. For each, read the page. Answer {"cards": [{"pageId", "title", "text" (the page content as plain text, at most 3000 characters), "url", "edited" (last edited, ISO time)}]}. If none, {"cards": []}.',
+    ].join("\n"),
+  );
+  return (r.cards ?? []).filter((c) => c.pageId && c.title).map((c) => ({ pageId: c.pageId!, title: c.title!, text: c.text ?? "", url: c.url ?? pageUrl(c.pageId!), edited: c.edited ?? "" }));
+}
+
+export async function commentOn(store: Store, pageId: string, text: string) {
+  await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, { write: true });
+}

@@ -1,7 +1,7 @@
 export const CAP = 3;
 
 export const STATES = [
-  "Inbox", "Triage", "Ignored", "ReplyDrafted", "Replied", "Queued",
+  "Inbox", "Triage", "Ignored", "ReplyDrafted", "Replied", "Queued", "Backlog",
   "Researching", "ResearchCheck", "ResearchGate",
   "Planning", "RequirementsReview", "PlanGate",
   "Building", "Reviewing", "Confirming", "PRGate",
@@ -11,7 +11,7 @@ export type State = (typeof STATES)[number];
 
 export const GATES = ["ResearchGate", "PlanGate", "PRGate", "NeedsYou"] as const;
 export type Gate = (typeof GATES)[number];
-export const PARKABLE: readonly State[] = ["Queued", "ResearchGate", "PlanGate", "PRGate", "NeedsYou"];
+export const PARKABLE: readonly State[] = ["Queued", "Backlog", "ResearchGate", "PlanGate", "PRGate", "NeedsYou"];
 export const TERMINAL: readonly State[] = ["Ignored", "Replied", "Done", "Dropped"];
 export const RUNNING: readonly State[] = ["Researching", "Planning", "RequirementsReview", "Building", "Reviewing", "Confirming"];
 export const LOOPS = ["check", "requirements", "review", "confirm"] as const;
@@ -33,7 +33,9 @@ export interface Machine {
 
 export type Event =
   | { type: "pick" }
-  | { type: "triage"; as: "ignore" | "reply" | "task" }
+  | { type: "triage"; as: "ignore" | "reply" | "task" | "backlog" }
+  | { type: "demote" }
+  | { type: "prioritize" }
   | { type: "send_reply" }
   | { type: "dismiss" }
   | { type: "promote" }
@@ -105,9 +107,15 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
   switch (e.type) {
     case "pick":
       return s === "Inbox" ? ok(go(m, "Triage"), "Pick") : wrong(m, "pick", "from Inbox");
-    case "triage":
+    case "triage": {
       if (s !== "Triage") return wrong(m, "triage", "from Triage");
-      return ok(go(m, e.as === "ignore" ? "Ignored" : e.as === "reply" ? "ReplyDrafted" : "Queued"), e.as === "ignore" ? "TIgnore" : e.as === "reply" ? "TReply" : "TTask");
+      const to = ({ ignore: ["Ignored", "TIgnore"], reply: ["ReplyDrafted", "TReply"], task: ["Queued", "TTask"], backlog: ["Backlog", "TBacklog"] } as const)[e.as];
+      return ok(go(m, to[0]), to[1]);
+    }
+    case "demote":
+      return s === "Queued" ? ok(go(m, "Backlog"), "Demote") : wrong(m, "move to the backlog", "from Queued");
+    case "prioritize":
+      return s === "Backlog" ? ok(go(m, "Queued"), "Prioritize") : wrong(m, "move to the queue", "from the Backlog");
     case "send_reply":
       return s === "ReplyDrafted" ? ok(go(m, "Replied"), "SendReply") : wrong(m, "send a reply", "from ReplyDrafted");
     case "dismiss":
@@ -175,7 +183,9 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
       return ok(n, `SendBack(${s},${e.to})`);
     }
     case "drop":
-      return isGate(s) || s === "Parked" ? ok(go(m, "Dropped"), s === "Parked" ? "PDrop" : `Drop(${s})`) : wrong(m, "drop", "at a gate, Needs you or Parked");
+      if (s === "Parked") return ok(go(m, "Dropped"), "PDrop");
+      if (s === "Backlog") return ok(go(m, "Dropped"), "BDrop");
+      return isGate(s) ? ok(go(m, "Dropped"), `Drop(${s})`) : wrong(m, "drop", "at a gate, Needs you, the Backlog or Parked");
 
     case "build_done": {
       if (s !== "Building") return wrong(m, "finish a build", "while Building");
@@ -224,8 +234,8 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
 
 export function allowed(m: Machine): Event[] {
   const candidates: Event[] = [
-    { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" },
-    { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
+    { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" }, { type: "triage", as: "backlog" },
+    { type: "demote" }, { type: "prioritize" }, { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
     { type: "research_done", chart: true, proved: true }, { type: "check" }, { type: "plan_done" },
     { type: "requirements_done", covered: true }, { type: "approve" }, { type: "drop" }, { type: "build_done" }, { type: "reviews_done", findings: false },
     { type: "confirm_done", confirmed: true }, { type: "interrupt" }, { type: "park" }, { type: "unpark" },
@@ -245,7 +255,7 @@ export const invariants: Record<string, (m: Machine, cap?: number) => boolean> =
   GatesRule: (m) => m.state !== "Done" || ["research", "plan", "pr"].every((a) => m.approved.includes(a as Approval)),
 };
 
-export const COLUMNS = ["Queued", "Running", "Needs you", "Parked", "PR ready", "Done"] as const;
+export const COLUMNS = ["Backlog", "Queued", "Running", "Needs you", "PR ready", "Done", "Bin"] as const;
 export type Column = (typeof COLUMNS)[number] | "Inbox";
 
 export function column(state: State): Column {
@@ -256,6 +266,8 @@ export function column(state: State): Column {
       return "Inbox";
     case "Queued":
       return "Queued";
+    case "Backlog":
+      return "Backlog";
     case "Researching":
     case "ResearchCheck":
     case "Planning":
@@ -271,7 +283,8 @@ export function column(state: State): Column {
     case "PRGate":
       return "PR ready";
     case "Parked":
-      return "Parked";
+    case "Dropped":
+      return "Bin";
     default:
       return "Done";
   }

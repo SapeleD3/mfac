@@ -69,7 +69,8 @@ const REQUIREMENTS = [
 ].join("\n");
 
 test("a task runs from queue to PR gate, with the engine holding every rule", async () => {
-  await c("settings.set", { slots: 1 });
+  await c("settings.set", { slots: 1, efforts: { coordinator: "high" } });
+  await assert.rejects(c("settings.set", { efforts: { builder: "extreme" } }), /effort for builder/);
   const t = await c<TaskView>("task.add", { title: "Fix the export button", repo, tags: ["ui"] });
   const other = await c<TaskView>("task.add", { title: "Second task waits for a slot" });
   await c("factory.tick");
@@ -80,6 +81,7 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
 
   const coordStart = started.find((s) => s.id === `${t.id}-coordinator-1`)!;
   assert.ok(coordStart.command.includes("opus"));
+  assert.equal(coordStart.command[coordStart.command.indexOf("--effort") + 1], "high", "the stage's effort setting reaches claude");
   assert.ok(coordStart.command.includes("--settings"));
   assert.equal(coordStart.env.FACTORY_TASK, t.id);
   assert.equal(coordStart.cwd, now.task.worktree);

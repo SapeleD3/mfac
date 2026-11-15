@@ -10,7 +10,9 @@ const TAG_INFO: [string, string, string][] = [
   ["sensitive", "Auth, payments, data, security", "Always stops at every gate; never auto-approved"],
   ["harden", "A send-back a check could have caught", "Turns the correction into a lint rule, type or test"],
 ];
-const ROLES: [string, string][] = [["coordinator", "Coordinator (one per task)"], ["triage", "Triage"], ["researcher", "Research"], ["planner", "Plan"], ["builder", "Build"], ["code_review", "Code review"], ["security_review", "Security review"], ["confirm", "Confirm"], ["reply", "Reply drafts"]];
+const ROLES: [string, string][] = [["coordinator", "Coordinator (one per task)"], ["triage", "Triage"], ["researcher", "Research"], ["planner", "Plan"], ["requirements_review", "Plan vs requirements"], ["builder", "Build"], ["code_review", "Code review"], ["security_review", "Security review"], ["confirm", "Confirm"], ["reply", "Reply drafts"]];
+
+const EFFORT: [string, string][] = [["", "Default"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["xhigh", "Extra high"], ["max", "Max"]];
 
 export function SettingsPage() {
   const app = useApp();
@@ -47,15 +49,23 @@ export function SettingsPage() {
             </td></tr>
             <tr><td>Sound on urgent and gates</td><td style={{ textAlign: "right", cursor: "pointer" }} onClick={() => save({ ui: { ...s.ui, sound: !s.ui.sound } })}><span class={`switch ${s.ui.sound ? "on" : ""}`} /></td></tr>
           </table></div></div>
-          <div class="card"><div class="card-h">Models per stage</div><div class="card-b"><table class="tbl">
+          <div class="card"><div class="card-h">Model and effort per stage</div><div class="card-b"><table class="tbl">
+            <tr><th>Stage</th><th style={{ textAlign: "right" }}>Model</th><th style={{ textAlign: "right" }}>Effort</th></tr>
             {ROLES.map(([k, label]) => (
-              <tr key={k}><td>{label}</td><td style={{ textAlign: "right" }}>
-                <select class="in xs" style={{ width: "auto" }} value={s.models[k]} onChange={(e) => save({ models: { ...s.models, [k]: e.currentTarget.value } })}>
-                  {["opus", "sonnet", "haiku"].map((m) => <option key={m} value={m}>{m[0]!.toUpperCase() + m.slice(1)}</option>)}
-                </select>
-              </td></tr>
+              <tr key={k}><td>{label}</td>
+                <td style={{ textAlign: "right" }}>
+                  <select class="in xs" style={{ width: "auto" }} value={s.models[k]} onChange={(e) => save({ models: { ...s.models, [k]: e.currentTarget.value } })}>
+                    {["opus", "sonnet", "haiku"].map((m) => <option key={m} value={m}>{m[0]!.toUpperCase() + m.slice(1)}</option>)}
+                  </select>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <select class="in xs" style={{ width: "auto" }} value={s.efforts[k] ?? ""} onChange={(e) => save({ efforts: { ...s.efforts, [k]: e.currentTarget.value } })}>
+                    {EFFORT.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                  </select>
+                </td>
+              </tr>
             ))}
-            <tr><td colSpan={2} class="xs faint">Claude Code on your subscription. Other agents can come later behind the same adapter.</td></tr>
+            <tr><td colSpan={3} class="xs faint">Claude Code on your subscription. Effort is passed as <code>--effort</code>; higher effort thinks longer and uses more of the plan. Default leaves it to the model.</td></tr>
           </table></div></div>
         </div>
         <div class="card" style={{ marginTop: 16 }}><div class="card-h">Gates and caps <span class="lock">engine rules</span></div><div class="card-b"><table class="tbl">

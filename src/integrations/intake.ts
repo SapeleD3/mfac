@@ -3,11 +3,12 @@ import { extractJson, runner as claudePrint } from "../claude/print.js";
 import type { Connections } from "../connectors/connections.js";
 import type { Engine, TaskView } from "../workflow/engine.js";
 import * as jira from "../connectors/jira.js";
+import * as notion from "../connectors/notion.js";
 import * as slack from "../connectors/slack.js";
 import { type Event, type State, initial, step } from "../workflow/statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "../workflow/store.js";
 
-export type TriageAction = "ignore" | "reply" | "task" | "urgent";
+export type TriageAction = "ignore" | "reply" | "task" | "urgent" | "backlog";
 
 export interface IntakeItem {
   id: string;
@@ -122,7 +123,8 @@ export class Intake {
     this.store.db.prepare("INSERT INTO cursors (source, cursor, at) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor, at = excluded.at").run(source, cursor, now());
   }
 
-  async poll(source: "slack" | "jira"): Promise<{ added: number; skipped?: string }> {
+  async poll(source: "slack" | "jira" | "notion"): Promise<{ added: number; skipped?: string }> {
+    if (source === "notion") return this.pollBoard();
     const c = await this.connections.test(source);
     if (c.status !== "connected") return { added: 0, skipped: `${source} is ${c.status}; intake waits and catches up from its cursor once it's fixed` };
     // The next run looks back a little before this one started, so nothing sent mid-run is missed;
@@ -142,6 +144,24 @@ export class Intake {
       }
     }
     this.setCursor(source, started);
+    return { added };
+  }
+
+  /** Cards you moved to the ready column are your decision already, so they skip triage and go straight to the queue. */
+  private async pollBoard(): Promise<{ added: number; skipped?: string }> {
+    const { intakeBoard, intakeStatus } = this.engine.settings().notion;
+    if (!intakeBoard) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board link>)" };
+    const c = await this.connections.test("notion");
+    if (c.status !== "connected") return { added: 0, skipped: `Notion is ${c.status}; cards wait on the board` };
+    const status = intakeStatus || "Ready for agent";
+    let added = 0;
+    for (const card of await notion.readyCards(this.store, intakeBoard, status)) {
+      const item = this.add({ source: "notion", sourceId: card.pageId, channel: "Notion board", text: `${card.title}\n\n${card.text}`.trim(), url: card.url, meta: { pageId: card.pageId } });
+      if (!item) continue;
+      this.moveItem(item.id, { type: "pick" });
+      await this.apply(item.id, { action: "task", why: `you moved it to ${status} on your Notion board`, title: card.title });
+      added++;
+    }
     return { added };
   }
 
@@ -189,9 +209,10 @@ export class Intake {
       "Sort each incoming item for a software engineer. Actions:",
       "- ignore: FYI, noise, nothing needed from them.",
       "- reply: they need to answer, but no code or investigation.",
-      "- task: it needs work (research, a bug fix, a feature, a review).",
+      "- task: it needs work (research, a bug fix, a feature, a review) and should be done soon.",
+      "- backlog: it needs work, but isn't a priority now (a nice-to-have, an idea, no deadline, no one waiting).",
       "- urgent: like task, but outage words, a VIP, or due within a day.",
-      `For task and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (one of the known repos, or null).`,
+      `For task, backlog and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (one of the known repos, or null).`,
       repos.length ? `Known repos: ${repos.join("; ")}` : "No repos are registered yet; use null.",
       examples.length ? `How they corrected triage before (follow these):\n${examples.join("\n")}` : "",
       'Answer with only a JSON array: [{"id","action","reason","title","recipe","tags","repo"}].',
@@ -203,9 +224,9 @@ export class Intake {
       .join("\n");
     const model = this.engine.settings().models.triage ?? "haiku";
     try {
-      const reply = await claudePrint(prompt, { model, session: "factory-triage" });
+      const reply = await claudePrint(prompt, { model, effort: this.engine.settings().efforts.triage, session: "factory-triage" });
       const parsed = extractJson<{ id: string; action: TriageAction; reason?: string; title?: string; recipe?: Recipe; tags?: Tag[]; repo?: string | null }[]>(reply);
-      return parsed.filter((d) => ["ignore", "reply", "task", "urgent"].includes(d.action));
+      return parsed.filter((d) => ["ignore", "reply", "task", "urgent", "backlog"].includes(d.action));
     } catch (e) {
       this.engine.emit("alert", { level: "warn", message: `Triage couldn't run (${e instanceof Error ? e.message : e}); new items were queued as tasks for you to sort.` });
       return [];
@@ -224,8 +245,8 @@ export class Intake {
     const repoPath = d.repo ? ((this.store.db.prepare("SELECT path FROM repos WHERE name = ? OR path = ?").get(d.repo, d.repo) as Row | undefined)?.path as string | undefined) : undefined;
     const existing = this.engine.store.taskBySource(item.source, item.sourceId);
     const task: TaskView =
-      existing ? this.engine.get(existing.id)! : this.engine.add({ title: d.title || firstLine(item.text), body: `${item.text}${item.url ? `\n\nSource: ${item.url}` : ""}`, source: item.source, sourceRef: item.sourceId, sourceUrl: item.url, tags, recipe: d.recipe, repo: repoPath });
-    const event: Event = item.status === "Triage" ? { type: "triage", as: "task" } : { type: "promote" };
+      existing ? this.engine.get(existing.id)! : this.engine.add({ title: d.title || firstLine(item.text), body: `${item.text}${item.url ? `\n\nSource: ${item.url}` : ""}`, source: item.source, sourceRef: item.sourceId, sourceUrl: item.url, tags, recipe: d.recipe, repo: repoPath, backlog: d.action === "backlog" });
+    const event: Event = item.status === "Triage" ? { type: "triage", as: d.action === "backlog" ? "backlog" : "task" } : { type: "promote" };
     return this.moveItem(id, event, { ...base, taskId: task.id });
   }
 
@@ -263,7 +284,7 @@ export class Intake {
     const model = this.engine.settings().models.reply ?? "sonnet";
     return claudePrint(
       `Draft a short reply from me to this ${item.source} message. Plain, friendly, specific; no greeting fluff; under 80 words. If you can't answer from the message alone, ask the one question that unblocks it. Reply with only the text.\n\nFrom ${item.author ?? "someone"} in ${item.channel ?? item.source}:\n${item.text}`,
-      { model, session: "factory-replies" },
+      { model, effort: this.engine.settings().efforts.reply, session: "factory-replies" },
     );
   }
 
