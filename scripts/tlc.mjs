@@ -4,7 +4,7 @@
 //   node scripts/tlc.mjs [spec/Factory.tla]
 //
 // Downloads a pinned tla2tools.jar once (checksum-verified) into ~/.factory/tools. Needs Java 11+.
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -33,16 +33,26 @@ const sha = (b) => createHash("sha256").update(b).digest("hex");
 export async function check(spec, { workers = "auto" } = {}) {
   await ensureJar();
   const file = resolve(spec);
-  const r = spawnSync("java", ["-XX:+UseParallelGC", "-cp", jar, "tlc2.TLC", "-workers", String(workers), "-cleanup", basename(file, ".tla")], {
-    cwd: dirname(file),
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
+  // Asynchronous on purpose: the engine calls this, and a long TLC run must not freeze it.
+  const r = await new Promise((done) => {
+    const child = spawn("java", ["-XX:+UseParallelGC", "-cp", jar, "tlc2.TLC", "-workers", String(workers), "-cleanup", basename(file, ".tla")], { cwd: dirname(file) });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("error", (e) => done({ status: 127, stdout, stderr: stderr + String(e) }));
+    child.on("close", (status) => done({ status, stdout, stderr }));
   });
   const output = `${r.stdout ?? ""}${r.stderr ?? ""}`.split("\n").filter((l) => !l.startsWith("Picked up JAVA_TOOL_OPTIONS")).join("\n");
   const ok = r.status === 0 && /Model checking completed\. No error has been found\./.test(output);
   const found = [...output.matchAll(/([\d,]+) distinct states found/g)].pop();
   const states = Number((found?.[1] ?? "0").replace(/,/g, ""));
   return { ok, states, output };
+}
+
+if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === "--fetch") {
+  console.log(`TLC ${TLA_VERSION} ready at ${await ensureJar()}`);
+  process.exit(0);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

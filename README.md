@@ -39,7 +39,52 @@ Built in milestones, each its own PR:
 2. **Claude Code runner**: tmux sessions, git worktrees, the Opus coordinator, stages and hooks.
 3. **Intake and Notion**: Slack and Jira polling, Haiku triage, the Notion factory board and review sync, routines.
 4. **The Mac app**: widget pill, kanban queue, task rail, review gates routed to Notion, PR ready, live session with take-over, inbox, connections, routines, rules, settings.
-5. `setup.sh`, the launch agent, `factory doctor`, and the self-improving loop.
+5. **Setup and upkeep**: `setup.sh`, the launch agents, `factory doctor`, the factory's skills, the usage
+   guard, retros and the self-improving loop.
+
+## Set it up on a Mac
+
+```sh
+./setup.sh              # engine, CLI, login agents, skills and the app in ~/Applications
+./setup.sh --headless   # no Rust, no app
+```
+
+It is safe to run again: each step checks first and installs only what's missing. Only installing
+Homebrew (if you don't have it) asks for your password. It installs node, tmux, git, gh, Java (for
+TLC), Claude Code, Rust, uv and the graphify CLI, builds and links `factory`, fetches TLC, installs the
+skills, builds the app, and registers two login agents (`com.sapeled3.factoryd` keeps the engine
+running; `com.sapeled3.factory.app` opens the app). It ends with `factory doctor`.
+
+### Skills
+
+Sessions load the factory's own skills with `--plugin-dir ~/.factory/plugin`; `~/.claude` is never written.
+
+| Skill | Source |
+| --- | --- |
+| superpowers | [obra/superpowers](https://github.com/obra/superpowers) |
+| pstack (statechart, create-formal-verification, poteto-mode, the `principle-*` skills, and its two agents) | Lauren Tan's original [cursor/plugins/pstack](https://github.com/cursor/plugins/tree/main/pstack), a sparse clone of just that folder, unchanged. Its skills are plain `SKILL.md` folders, which Claude Code reads as they are; the factory's own `pstack-on-claude-code` skill ([plugin/skills](plugin/skills)) maps the Cursor tool names and paths they mention to Claude Code's |
+| ponytail | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) |
+| graphify | [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) (the CLI comes from `uv tool install graphifyy`) |
+| design-principles | yours: `factory skills add design-principles <git url or folder>` |
+
+If Claude Code already has one from the same source (a plugin under `~/.claude/plugins/cache` whose
+manifest names the same GitHub owner; for graphify, `~/.claude/skills/graphify`), the factory links to
+that copy instead of cloning it again. A fork or port is never taken for the original. A source can be
+`<git url>#<folder>` to take one folder of a larger repo, and if a skill's source changes, the next
+install replaces the factory's old copy. `factory skills` lists them,
+`factory skills update` pulls new versions, and `factory skills add NAME SOURCE` adds or overrides one.
+
+### Upkeep
+
+- `factory doctor` checks tools, Claude Code (and warns if `ANTHROPIC_API_KEY` would bill the API), the
+  engine, the login agent, tmux, TLC, connections, skills and the app. It also runs daily.
+- **Usage guard**: reads Claude Code's own usage logs every two minutes and holds new stages when the
+  factory's share of the current 5-hour window passes the ceiling in Settings. Set limits with
+  `factory usage --limit-5h N --limit-week N`, or let it estimate from your busiest window in 14 days.
+- **Retros**: every task that ends writes `retro.md` (send-backs at each gate, review loops, tokens, minutes, times it needed you).
+  `factory retro` lists them. Weekly, once there are at least 3 new retros, the improve-factory routine
+  opens a task against this repo proposing changes to prompts, rules and skills, gated like any other.
+- `factory update` pulls this repo, rebuilds (the app too, unless headless) and restarts the engine.
 
 ## Try the engine
 
@@ -50,7 +95,7 @@ npm install
 npm run build
 npm link                  # puts `factory` on your PATH
 
-factory engine start      # the launch agent does this at login once setup.sh exists
+factory engine start      # setup.sh's login agent does this for you
 factory add "Fix the Safari export button" --repo ~/code/web --tag ui
 factory ls
 factory show F-001
