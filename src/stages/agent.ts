@@ -3,13 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "../shared/paths.js";
 
-export const ROLES = ["coordinator", "researcher", "planner", "builder", "code_review", "security_review", "ui_review", "confirm"] as const;
+export const ROLES = ["coordinator", "researcher", "planner", "requirements_review", "builder", "code_review", "security_review", "ui_review", "confirm"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const OUTPUT: Record<Role, string> = {
   coordinator: "decision.md",
   researcher: "research.md",
   planner: "plan.md",
+  requirements_review: "review-requirements.md",
   builder: "build.md",
   code_review: "review-code.md",
   security_review: "review-security.md",
@@ -35,9 +36,11 @@ const ALWAYS_DENY = [
   "Bash(rm -rf /:*)", "Bash(sudo:*)", "Bash(curl:*|*sh)", "Read(~/.ssh/**)", "Read(~/.aws/**)",
 ];
 
-export function permissionsFor(role: Role, jobDir: string, reads: string[] = []): { allow: string[]; deny: string[] } {
+const RUNS_CHECKS: readonly Role[] = ["builder", "code_review", "security_review", "ui_review", "confirm"];
+
+export function permissionsFor(role: Role, jobDir: string, reads: string[] = [], checks: string[] = []): { allow: string[]; deny: string[] } {
   const p = stationPermissions(role, jobDir);
-  return { ...p, allow: [...p.allow, ...reads] };
+  return { ...p, allow: [...p.allow, ...reads, ...(RUNS_CHECKS.includes(role) ? checks : [])] };
 }
 
 function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny: string[] } {
@@ -51,6 +54,8 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
       return { ...base, allow: [...READ, ...GIT_READ, ...job, "WebSearch", "WebFetch", "Bash(factory tlc:*)", "Bash(java:*)"] };
     case "planner":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, "Bash(factory ticket:*)"] };
+    case "requirements_review":
+      return { ...base, allow: [...READ, ...GIT_READ, ...job, "Bash(factory ticket ls:*)"] };
     case "builder":
       return { ...base, allow: [...READ, ...GIT_READ, ...CHECKS, ...job, "Edit", "Write", "Bash(git add:*)", "Bash(git commit:*)", "Bash(git mv:*)", "Bash(git rm:*)", "Bash(mkdir:*)", "Bash(ls:*)"] };
     case "code_review":
@@ -62,10 +67,10 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
   }
 }
 
-export function stageSettings(role: Role, jobDir: string, reads: string[] = []) {
+export function stageSettings(role: Role, jobDir: string, reads: string[] = [], checks: string[] = []) {
   const f = factoryCommand();
   return {
-    permissions: permissionsFor(role, jobDir, reads),
+    permissions: permissionsFor(role, jobDir, reads, checks),
     includeCoAuthoredBy: false,
     attribution: { commit: "", pr: "" },
     hooks: {
@@ -89,12 +94,13 @@ export interface Launch {
   systemPromptFile: string;
   prompt?: string;
   connectorReads?: string[];
+  checks?: string[];
 }
 
 export function claudeCommand(l: Launch): string[] {
   const settingsFile = join(l.jobDir, ".factory", `${l.role}.settings.json`);
   mkdirSync(dirname(settingsFile), { recursive: true });
-  writeFileSync(settingsFile, JSON.stringify(stageSettings(l.role, l.jobDir, l.connectorReads), null, 2));
+  writeFileSync(settingsFile, JSON.stringify(stageSettings(l.role, l.jobDir, l.connectorReads, l.checks), null, 2));
   const plugin = join(paths.home(), "plugin");
   return [
     process.env.FACTORY_CLAUDE ?? "claude",

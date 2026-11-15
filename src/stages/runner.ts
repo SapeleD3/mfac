@@ -7,6 +7,8 @@ import { connectorReads } from "../connectors/mcp.js";
 
 import type { Decision, Engine, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
+import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
+import { checkConfirmed, checkCoverage, checkPlanTraces } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
 import { stripCredits } from "../repo/rules.js";
@@ -58,6 +60,7 @@ const REVIEWERS = (t: TaskView): Role[] => ["code_review", "security_review", ..
 const ROLE_STATE: Partial<Record<Role, State>> = {
   researcher: "Researching",
   planner: "Planning",
+  requirements_review: "RequirementsReview",
   builder: "Building",
   code_review: "Reviewing",
   security_review: "Reviewing",
@@ -168,7 +171,8 @@ export class Runner {
     writeFileSync(join(this.jobDir(t.id), "brief.md"), lines.filter((l) => l !== undefined).join("\n"));
     if (t.worktree && existsSync(t.worktree)) {
       const base = t.repo ? baseBranch(t.repo) : "main";
-      writeFileSync(join(this.jobDir(t.id), "conventions.md"), conventionsMarkdown(gather(t.worktree), recentBranches(t.worktree, base)));
+      const conventions = conventionsMarkdown(gather(t.worktree), recentBranches(t.worktree, base));
+      writeFileSync(join(this.jobDir(t.id), "conventions.md"), `${conventions}\n${toolchainMarkdown(discover(t.worktree))}`);
     }
   }
 
@@ -214,6 +218,7 @@ export class Runner {
       systemPromptFile: this.systemPrompt(t, role, round),
       prompt: opts.prompt,
       connectorReads: connectorReads(this.store),
+      checks: t.worktree && existsSync(t.worktree) ? allowRules(discover(t.worktree)) : [],
     });
     if (!opts.resume) {
       this.store.db
@@ -365,8 +370,29 @@ export class Runner {
         if (!existsSync(join(job, "plan.md"))) throw new Error("plan.md isn't written yet");
         const r = this.engine.move(taskId, { type: "plan_done" }, "coordinator");
         refuse(r);
-        if (r.ok) this.gateOpened(r.task);
-        return "The plan gate is open. Stop and wait for the person's verdict.";
+        if (!r.ok) return "";
+        const traces = checkPlanTraces(job);
+        const s = this.launch(r.task, "requirements_review", { prompt: `Start the requirements review of ${t.id}'s research and plan against the original ask.` });
+        const warn = traces.ok ? "" : `\nThe engine already sees gaps the reviewer will confirm:\n- ${traces.problems.join("\n- ")}`;
+        return `Requirements review started: ${s.id}. Stop now; you'll get a message when it finishes.${warn}`;
+      }
+      case "requirements": {
+        idle("requirements_review");
+        const covered = !!args.covered && !args.gaps;
+        if (covered) {
+          const c = checkCoverage(job);
+          if (!c.ok) throw new Error(`the plan can't pass the requirements review yet:\n- ${c.problems.join("\n- ")}`);
+        } else if (!existsSync(join(job, "review-requirements.md"))) throw new Error("review-requirements.md isn't written yet");
+        const r = this.engine.move(taskId, { type: "requirements_done", covered }, "coordinator", { note: String(args.note ?? "") });
+        refuse(r);
+        if (!r.ok) return "";
+        if (r.task.machine.state === "PlanGate") {
+          this.gateOpened(r.task);
+          return "Every requirement traces into the plan. The plan gate is open; stop and wait for the person's verdict.";
+        }
+        if (r.task.machine.state === "Planning") return `Gaps found: back to the planner (round ${r.task.machine.loops.requirements}/3). Run the planner with a note pointing at review-requirements.md.`;
+        this.gateOpened(r.task);
+        return "The plan still misses requirements after three rounds, so the task went to Needs you.";
       }
       case "submit-build": {
         idle("builder");
@@ -393,9 +419,10 @@ export class Runner {
       case "confirm": {
         idle("confirm");
         const solved = !!args.solved;
-        const confirmFile = join(job, "confirm.md");
-        if (solved && !/VERDICT:\s*solved/i.test(existsSync(confirmFile) ? readFileSync(confirmFile, "utf8") : ""))
-          throw new Error('confirm.md must end with "VERDICT: solved" before you can say it\'s solved');
+        if (solved) {
+          const c = checkConfirmed(job);
+          if (!c.ok) throw new Error(`it isn't shown to be solved yet:\n- ${c.problems.join("\n- ")}`);
+        }
         if (solved) {
           const pr = this.preparePullRequest(t);
           const r = this.engine.move(taskId, { type: "confirm_done", confirmed: true }, "coordinator", { note: String(args.note ?? ""), ...pr });
@@ -526,10 +553,14 @@ export class Runner {
     this.finishStage(s, "done");
     const head = readFileSync(out, "utf8").slice(0, 600);
     if (["code_review", "security_review", "ui_review"].includes(s.role)) {
-      const pending = this.running(t.id).filter((x) => x.role.endsWith("_review"));
+      const pending = this.running(t.id).filter((x) => REVIEWERS(t).includes(x.role));
       if (pending.length) return { ok: true };
       const files = REVIEWERS(t).map((r) => OUTPUT[r]).join(", ");
       this.wake(t.id, `All reviews finished (${files}). Compile their findings into review-compiled.md (deduplicated, blocking first) and run factory coord findings --blocking <n>.`);
+      return { ok: true };
+    }
+    if (s.role === "requirements_review") {
+      this.wake(t.id, `The requirements review finished and wrote ${OUTPUT[s.role]}. Read its verdict and traceability matrix, then run factory coord requirements --covered or --gaps.\n\n${head}${head.length >= 600 ? "…" : ""}`);
       return { ok: true };
     }
     const blocked = /^\s*BLOCKED:/i.test(head);

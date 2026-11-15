@@ -2,7 +2,7 @@
 
 An on-device software factory for one person. Work arrives from Slack and Jira, a Haiku triage step
 sorts it, and each task runs through research, planning and a build loop driven by Claude Code on
-your own subscription. You see it at three gates: the research doc and the plan (reviewed in Notion),
+your own subscription. You see it at three gates: the research doc and the plan (reviewed in Notion, the plan only after it's been checked against the original ask),
 and a pull request that has already been reviewed, fixed and confirmed to solve the problem.
 
 "Factory" is a placeholder name.
@@ -115,14 +115,29 @@ step with `factory coord` commands. The engine checks every one of those against
 
 | Stage | Writes (in `~/.factory/jobs/<task>/`) | May do without asking |
 | --- | --- | --- |
-| researcher | research.md, statechart.md, a TLA+ model + .cfg | read the repo, search the web, run TLC |
-| planner | plan.md, tickets (`factory ticket add`) | read the repo |
-| builder | build.md, commits on the task branch | edit code, run lint/types/tests, `git add`/`commit` |
-| code_review, security_review, ui_review (ui tag) | review-*.md, a ticket per blocking finding | read, run tests |
-| confirm | confirm.md ending `VERDICT: solved` or `not solved`, evidence files | run the app and tests |
+| researcher | requirements.md (R1, R2, … each with source quote, acceptance criterion and how to verify), research.md, statechart.md, a TLA+ model + .cfg | read the repo, search the web, run TLC |
+| planner | plan.md with a traceability table, tickets (`factory ticket add`) | read the repo |
+| requirements_review (Opus) | review-requirements.md: its own read of the source, a traceability matrix, gaps, scope creep, `VERDICT: covered` or `gaps` | read the repo and the source in Slack or Jira |
+| builder | build.md, pr.md, commits on the task branch | edit code, run the repo's checks, `git add`/`commit` |
+| code_review, security_review, ui_review (ui tag) | review-*.md with a row per requirement, a ticket per blocking finding | read, run the repo's checks |
+| confirm | confirm.md with PASS or FAIL per requirement and evidence, ending `VERDICT: solved` or `not solved` | run the app and the repo's checks |
 
-- **The research rule is a check, not a prompt.** `factory coord submit-research` makes the engine run
-  TLC itself on the stage's model. A failure sends research back with the counterexample (max 3).
+Every prompt is a contract: its inputs, its output's required sections, its acceptance criteria, what
+counts as evidence, and when to stop and say BLOCKED instead of guessing. Every stage traces its work back
+to the requirement ids, so the chain from the original ask to the merged code can be followed end to end.
+
+- **The research rule is a check, not a prompt.** `factory coord submit-research` makes the engine check
+  requirements.md's shape and run TLC itself on the stage's model. A failure sends research back with the
+  reason (max 3).
+- **The plan is checked against the original ask before you see it.** A separate requirements review
+  rereads the Slack message or Jira ticket and traces every requirement into the research and the plan.
+  Gaps or scope creep go back to the planner (max 3). The engine refuses "covered" unless every
+  requirement appears in the plan's traceability table and the review's matrix.
+- **Solved means every requirement passed.** The engine refuses `confirm --solved` unless confirm.md has a
+  PASS line for every requirement.
+- **No assumed toolchain.** At start the factory reads the repo's manifests (package.json scripts, Makefile,
+  justfile, Taskfile, Cargo, Go, Python, Ruby, Maven, Gradle, Swift, .NET, Elixir, Composer) and its CI
+  workflows into conventions.md, and lets the build, review and confirm sessions run exactly those commands.
 - **Reviews run in parallel** after each build. The coordinator compiles their findings into one list
   and sends it back to the builder, at most 3 times.
 - **No human gate on the build.** You first see code as a PR that's been reviewed, fixed and confirmed.
