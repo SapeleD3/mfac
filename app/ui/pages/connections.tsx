@@ -267,14 +267,18 @@ export function Connections() {
   );
 }
 
+interface WatchedBoard {
+  url: string;
+  name?: string;
+  server?: string;
+  status: string;
+}
+
 interface NotionStatus {
   ready: boolean;
   pending: number;
   parentPageId?: string;
-  intakeBoard?: string;
-  intakeBoardName?: string;
-  intakeServer?: string;
-  intakeStatus: string;
+  boards: WatchedBoard[];
 }
 
 const Step = ({ done, n, children }: { done: boolean; n: number; children: preact.ComponentChildren }) => (
@@ -346,55 +350,78 @@ function FactoryBoard({ s, connected, reload }: { s: NotionStatus; connected: bo
 
 function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boolean; reload: () => void }) {
   const app = useApp();
-  const [board, setBoard] = useState(s.intakeBoardName ?? s.intakeBoard ?? "");
-  const [status, setStatus] = useState(s.intakeStatus);
-  const [server, setServer] = useState(s.intakeServer ?? "");
+  const [board, setBoard] = useState("");
+  const [status, setStatus] = useState("Ready for agent");
+  const [server, setServer] = useState("");
   const choices = useCall<ServerChoice[]>("connections.choices", { name: "notion" });
   const [saving, setSaving] = useState(false);
   const r = app.routines.find((x) => x.id === "intake-notion");
   const checking = saving || r?.lastResult === "running";
+  const watched = s.boards ?? [];
   const save = async () => {
     setSaving(true);
-    await act("notion.intake", { board: board.trim(), status: status.trim(), server: server || undefined }, ["routines"]);
+    const ok = await act("notion.intake", { board: board.trim(), status: status.trim(), server: server || undefined }, ["routines"]);
     setSaving(false);
+    if (ok) setBoard("");
+    reload();
+  };
+  const unwatch = async (b: WatchedBoard) => {
+    await act("notion.unwatch", { board: b.url }, ["routines"]);
     reload();
   };
   const last =
-    s.intakeBoard && r?.lastRunAt && r.lastResult !== "running" ? (
+    watched.length && r?.lastRunAt && r.lastResult !== "running" ? (
       <div class={`xs ${r.lastResult === "failed" || r.lastResult === "skipped" ? "err-line" : "dim"}`}>
         {r.lastResult === "failed" ? "The last check failed: " : r.lastResult === "skipped" ? "The last check didn't run: " : "Last check: "}
         {r.lastDetail} · {ago(r.lastRunAt)}
       </div>
     ) : null;
+  const workspace = (name?: string) => {
+    const c = choices.data?.find((x) => x.name === name);
+    return name ? `${name}${c?.workspace ? ` · ${c.workspace}` : ""}` : "the Notion connection's server";
+  };
   return (
     <div class="card">
       <div class="card-h">
-        Your Notion board{" "}
+        Your Notion boards{" "}
         <span class="faint small" style={{ fontWeight: 400 }}>
-          a source of work, like Slack and Jira
+          sources of work, like Slack and Jira
         </span>
       </div>
       <div class="card-b layers">
         <Step n={1} done={connected}>
           Connect Notion in Claude
         </Step>
-        <Step n={2} done={!!s.intakeBoard}>
-          In your personal kanban board in Notion, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one
+        <Step n={2} done={watched.length > 0}>
+          In each personal kanban board, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one
         </Step>
-        <Step n={3} done={!!s.intakeBoard}>
-          Type the board's name here, as it shows in Notion. The factory finds it through the connector. Every 15 minutes, cards in that column go straight to the queue (you already chose them, so
-          they skip triage); when the task finishes, the factory comments on the card
+        <Step n={3} done={watched.length > 0}>
+          Add each board by its name, as it shows in Notion, and pick the Notion it lives in. Every 15 minutes, cards in its ready column go straight to the queue (you already chose them, so they skip
+          triage); the card then moves with its task
         </Step>
+        {watched.map((b) => (
+          <div key={b.url} class="row">
+            <span class="dot ok" />
+            <b class="small">{b.name ?? b.url}</b>
+            <span class="xs dim">
+              "{b.status}" · {workspace(b.server)}
+            </span>
+            <span class="grow" />
+            <Btn kind="btn-ghost" onClick={() => unwatch(b)}>
+              Stop watching
+            </Btn>
+          </div>
+        ))}
         <div class="row">
-          <input class="in" placeholder="Board name" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
+          <input class="in" placeholder={watched.length ? "Another board's name" : "Board name"} value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
           <input class="in" style={{ width: 160 }} placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected} />
           <Btn kind="btn-primary" onClick={save} disabled={!connected || !board.trim() || checking}>
-            {checking ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}
+            {checking ? "Checking…" : "Watch board"}
           </Btn>
         </div>
         {(choices.data?.length ?? 0) > 1 && (
           <div class="row">
-            <span class="small dim">Read it through</span>
+            <span class="small dim">It lives in</span>
             <select class="in xs" style={{ width: "auto" }} value={server} onChange={(e) => setServer(e.currentTarget.value)} disabled={!connected}>
               <option value="">the same Notion as the factory board</option>
               {choices.data!.map((x) => (
@@ -405,7 +432,7 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
             </select>
           </div>
         )}
-        {checking ? <div class="xs dim">Reading your board through Claude's Notion connector. This takes up to a couple of minutes; you can leave this page.</div> : last}
+        {checking ? <div class="xs dim">Reading your boards through Claude's Notion connector. This takes up to a couple of minutes; you can leave this page.</div> : last}
       </div>
     </div>
   );

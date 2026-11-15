@@ -102,7 +102,7 @@ export const memoryPart: PluginFactory = ({ engine, store }) => {
         const head = `${m.title}${m.date ? ` (${m.date.slice(0, 10)})` : ""}${m.url ? ` ${m.url}` : ""}\nSummary: ${m.summary}`;
         if (!p.about?.trim()) return head;
         const s = engine.settings().notion;
-        const excerpt = await notion.meetingExcerpt(store, m.id, p.about.trim().slice(0, 200), m.server ?? s.meetingsServer ?? s.intakeServer);
+        const excerpt = await notion.meetingExcerpt(store, m.id, p.about.trim().slice(0, 200), m.server ?? s.meetingsServer ?? s.boards?.[0]?.server ?? s.intakeServer);
         return `${head}\n\nFrom the transcript, about "${p.about.trim()}":\n${excerpt || "Nothing in the transcript is about that."}`;
       },
       "memory.status": async () => {

@@ -16,7 +16,7 @@ export function Inbox() {
   const poll = async () => {
     await act("intake.poll", { source: "slack" }, ["intake", "tasks"]);
     if (app.connections.find((c) => c.name === "jira")?.status === "connected") await act("intake.poll", { source: "jira" }, ["intake", "tasks"]);
-    if (app.settings?.notion?.intakeBoard) await act("intake.poll", { source: "notion" }, ["intake", "tasks"]);
+    if (app.settings?.notion?.boards?.length || app.settings?.notion?.intakeBoard) await act("intake.poll", { source: "notion" }, ["intake", "tasks"]);
   };
   return (
     <div class="pane-body">

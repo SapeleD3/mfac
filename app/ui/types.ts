@@ -193,7 +193,7 @@ export interface Settings {
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
-  notion?: { intakeBoard?: string; intakeBoardName?: string; intakeServer?: string; intakeStatus?: string };
+  notion?: { boards?: { url: string }[]; intakeBoard?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
 
