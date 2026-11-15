@@ -62,13 +62,16 @@ Sessions load the factory's own skills with `--plugin-dir ~/.factory/plugin`; `~
 | Skill | Source |
 | --- | --- |
 | superpowers | [obra/superpowers](https://github.com/obra/superpowers) |
-| pstack (statechart, create-formal-verification, the `principle-*` skills) | [michael-denyer/pstack-claude](https://github.com/michael-denyer/pstack-claude), the Claude Code port of Lauren Tan's [pstack](https://github.com/cursor/plugins/tree/main/pstack) |
+| pstack (statechart, create-formal-verification, poteto-mode, the `principle-*` skills, and its two agents) | Lauren Tan's original [cursor/plugins/pstack](https://github.com/cursor/plugins/tree/main/pstack), a sparse clone of just that folder, unchanged. Its skills are plain `SKILL.md` folders, which Claude Code reads as they are; the factory's own `pstack-on-claude-code` skill ([plugin/skills](plugin/skills)) maps the Cursor tool names and paths they mention to Claude Code's |
 | ponytail | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) |
 | graphify | [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) (the CLI comes from `uv tool install graphifyy`) |
 | design-principles | yours: `factory skills add design-principles <git url or folder>` |
 
-If Claude Code already has one (a plugin under `~/.claude/plugins/cache`, or `~/.claude/skills/<name>`),
-the factory links to that copy instead of cloning it again. `factory skills` lists them,
+If Claude Code already has one from the same source (a plugin under `~/.claude/plugins/cache` whose
+manifest names the same GitHub owner; for graphify, `~/.claude/skills/graphify`), the factory links to
+that copy instead of cloning it again. A fork or port is never taken for the original. A source can be
+`<git url>#<folder>` to take one folder of a larger repo, and if a skill's source changes, the next
+install replaces the factory's old copy. `factory skills` lists them,
 `factory skills update` pulls new versions, and `factory skills add NAME SOURCE` adds or overrides one.
 
 ### Upkeep

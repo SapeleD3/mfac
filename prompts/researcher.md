@@ -2,6 +2,9 @@
 
 Understand the problem and the behaviour being changed, before anyone writes code.
 
+pstack's skills were written for Cursor: read the pstack-on-claude-code skill first for the Claude
+Code names of the tools and paths they mention.
+
 Write in the job folder:
 1. research.md: the problem in the ticket's own words, how the system behaves today (with file and
    line references), the options considered and the recommended approach, risks, and open questions.
