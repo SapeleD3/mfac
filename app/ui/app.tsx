@@ -83,7 +83,9 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
   const ceiling = Math.round((app.settings?.usageCeiling ?? 0.85) * 100);
   const link = (id: string, icon: string, label: string, n?: string | number, ncls = "") => (
     <a class={on === id ? "on" : ""} href={`#${id}`} title={label}>
-      <Ic n={icon} /><span class="lbl">{label}</span>{n !== undefined && n !== "" && n !== 0 && <span class={`n ${ncls}`}>{n}</span>}
+      <Ic n={icon} s={18} />
+      <span class="lbl">{label}</span>
+      {n !== undefined && n !== "" && n !== 0 && <span class={`n ${ncls}`}>{n}</span>}
     </a>
   );
   return (
@@ -91,7 +93,9 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
       <div class="sb-top" data-tauri-drag-region>
         <span class="lights-space" data-tauri-drag-region />
         <span class="grow" data-tauri-drag-region />
-        <button class="icon-btn side-toggle" onClick={toggle} title={`${min ? "Show" : "Collapse"} sidebar (⌘\\)`}><Ic n={min ? "panel-left-open" : "panel-left-close"} /></button>
+        <button class="icon-btn side-toggle" onClick={toggle} title={`${min ? "Show" : "Collapse"} sidebar (⌘\\)`}>
+          <Ic n={min ? "panel-left-open" : "panel-left-close"} />
+        </button>
       </div>
       {link("needs", "bell-ring", "Needs you", needs || undefined, "amber")}
       {link("running", "activity", "Running", min ? running : `${running} of ${slots}`)}
@@ -100,18 +104,32 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
       {link("backlog", "archive", "Backlog", t.filter((x) => x.column === "Backlog").length)}
       {link("done", "circle-check", "Done", t.filter((x) => x.column === "Done").length)}
       {link("bin", "trash-2", "Bin", t.filter((x) => x.column === "Bin").length)}
-      <div class="sg"><span class="lbl">Factory</span></div>
+      <div class="sg">
+        <span class="lbl">Factory</span>
+      </div>
       {link("connections", "plug", "Connections", app.alerts.length || undefined, "red")}
       {link("routines", "calendar-clock", "Routines", failing || undefined, "red")}
       {link("improve", "sparkles", "Rules and learning", app.rules.filter((r) => r.status === "proposed").length || undefined, "amber")}
       {link("settings", "settings", "Settings")}
       <div class="usage" title={share !== undefined ? `Plan usage: ${share}% of the 5h window. Queue pauses at ${ceiling}%.` : "Plan usage isn't measured yet"}>
-        <div class="row lbl"><span>Plan usage, 5h window</span><span class="grow" /><b>{share !== undefined ? `${share}%` : "–"}</b></div>
-        <div class={`bar ${share !== undefined && share >= ceiling - 20 ? "amber" : ""}`}><i style={{ width: `${share ?? 0}%` }} /></div>
+        <div class="row lbl">
+          <span>Plan usage, 5h window</span>
+          <span class="grow" />
+          <b>{share !== undefined ? `${share}%` : "–"}</b>
+        </div>
+        <div class={`bar ${share !== undefined && share >= ceiling - 20 ? "amber" : ""}`}>
+          <i style={{ width: `${share ?? 0}%` }} />
+        </div>
         {weekly !== undefined && (
           <>
-            <div class="row lbl"><span>Weekly</span><span class="grow" /><b>{weekly}%</b></div>
-            <div class="bar"><i style={{ width: `${weekly}%` }} /></div>
+            <div class="row lbl">
+              <span>Weekly</span>
+              <span class="grow" />
+              <b>{weekly}%</b>
+            </div>
+            <div class="bar">
+              <i style={{ width: `${weekly}%` }} />
+            </div>
           </>
         )}
         <span class="faint lbl">{app.status?.paused ? "Queue paused by you" : g?.blocked ? `Paused: ${g.reason ?? "usage"}` : `Queue pauses at ${ceiling}%`}</span>
@@ -125,11 +143,20 @@ function TopBar({ title }: { title: string }) {
   const app = useApp();
   return (
     <header class="topbar" data-tauri-drag-region>
-      <b class="tb-title">{LOGO}<span>Factory</span></b>
-      {title && <><span class="tb-sep">/</span><span class="tb-crumb">{title}</span></>}
+      <b class="tb-title">
+        {LOGO}
+        <span>Factory</span>
+      </b>
+      {title && (
+        <>
+          <span class="tb-sep">/</span>
+          <span class="tb-crumb">{title}</span>
+        </>
+      )}
       <span class="grow" data-tauri-drag-region />
       <span class="tb-engine" title="The engine runs on its own; closing this window leaves the factory working.">
-        <span class={`dot ${app.up ? "ok" : "err"}`} />{app.up ? "Engine up" : app.loaded ? "Engine down" : "Connecting…"}
+        <span class={`dot ${app.up ? "ok" : "err"}`} />
+        {app.up ? "Engine up" : app.loaded ? "Engine down" : "Connecting…"}
       </span>
     </header>
   );
@@ -137,5 +164,13 @@ function TopBar({ title }: { title: string }) {
 
 function Toasts() {
   const app = useApp();
-  return <div class="toastbar">{app.toasts.map((t) => <div key={t.id} class={t.level === "error" ? "err" : ""}>{t.message}</div>)}</div>;
+  return (
+    <div class="toastbar">
+      {app.toasts.map((t) => (
+        <div key={t.id} class={t.level === "error" ? "err" : ""}>
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
 }

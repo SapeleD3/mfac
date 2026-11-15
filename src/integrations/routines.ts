@@ -53,7 +53,9 @@ export function inWorkingHours(at: Date, hours: { start: number; end: number; we
 }
 
 export function parseEvery(s: string): number {
-  const m = String(s).trim().match(/^(\d+)\s*([smhd]?)$/i);
+  const m = String(s)
+    .trim()
+    .match(/^(\d+)\s*([smhd]?)$/i);
   if (!m) throw new Error(`write the schedule like 10m, 2h or 1d (got "${s}")`);
   return Number(m[1]) * ({ s: 1, m: 60, h: 3600, d: 86400, "": 1 } as Record<string, number>)[m[2]!.toLowerCase()]!;
 }
@@ -98,7 +100,10 @@ export class Routines {
 
   add(input: { name: string; every: string; command: string; workingHours?: boolean }): Routine {
     if (!input.name?.trim() || !input.command?.trim()) throw new Error("a routine needs a name and a command");
-    const id = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const id = input.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
     if (this.get(id)) throw new Error(`there's already a routine called ${id}`);
     const every = parseEvery(input.every);
     this.store.db

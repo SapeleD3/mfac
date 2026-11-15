@@ -47,7 +47,10 @@ export const upkeepCommands: Record<string, Command> = {
         return 0;
       }
       const list = await viaEngine<SkillStatus[]>("skills.list", {}, () => skillStatus());
-      for (const s of list) out(`${s.status === "ok" ? mark.ok : mark.warn} ${s.name.padEnd(18)} ${s.status === "ok" ? `${s.version} · ${s.provides.join(", ")}` : s.status === "missing" ? "missing (factory skills install)" : "no source yet (factory skills add NAME SOURCE)"}`);
+      for (const s of list)
+        out(
+          `${s.status === "ok" ? mark.ok : mark.warn} ${s.name.padEnd(18)} ${s.status === "ok" ? `${s.version} · ${s.provides.join(", ")}` : s.status === "missing" ? "missing (factory skills install)" : "no source yet (factory skills add NAME SOURCE)"}`,
+        );
       return 0;
     },
   },
@@ -60,7 +63,9 @@ export const upkeepCommands: Record<string, Command> = {
       if (l5 || lw) out(await call<string>("usage.limits", { window5h: l5 ? Number(l5) : undefined, weekly: lw ? Number(lw) : undefined }));
       const u = await call<{ share?: number; used?: number; limit?: number; basis?: string; blocked?: boolean; reason?: string; windowEndsAt?: string }>("usage.get");
       if (u.share === undefined) return out("No reading yet; the usage guard runs every 2 minutes.");
-      out(`5h window: ${Math.round(u.share * 100)}% (${(u.used ?? 0).toLocaleString()} of ${(u.limit ?? 0).toLocaleString()} tokens, limit ${u.basis})${u.windowEndsAt ? ` · window ends ${u.windowEndsAt.slice(11, 16)}` : ""}`);
+      out(
+        `5h window: ${Math.round(u.share * 100)}% (${(u.used ?? 0).toLocaleString()} of ${(u.limit ?? 0).toLocaleString()} tokens, limit ${u.basis})${u.windowEndsAt ? ` · window ends ${u.windowEndsAt.slice(11, 16)}` : ""}`,
+      );
       out(u.blocked ? `Queue paused: ${u.reason}` : "Queue running.");
     },
   },
@@ -70,7 +75,10 @@ export const upkeepCommands: Record<string, Command> = {
     async run(args) {
       const all = await call<Retro[]>("retro.list", { limit: 200 });
       const rs = args[0] ? all.filter((r) => r.taskId === args[0]) : all.slice(0, 20);
-      for (const r of rs) out(`${r.taskId}  ${r.outcome.padEnd(7)} ${String(r.minutes).padStart(5)} min  ${r.tokens.toLocaleString().padStart(10)} tok  send-backs ${r.sendBacks.research}/${r.sendBacks.plan}/${r.sendBacks.pr}  loops ${r.loops.check}/${r.loops.review}/${r.loops.confirm}  ${r.title}`);
+      for (const r of rs)
+        out(
+          `${r.taskId}  ${r.outcome.padEnd(7)} ${String(r.minutes).padStart(5)} min  ${r.tokens.toLocaleString().padStart(10)} tok  send-backs ${r.sendBacks.research}/${r.sendBacks.plan}/${r.sendBacks.pr}  loops ${r.loops.check}/${r.loops.review}/${r.loops.confirm}  ${r.title}`,
+        );
       if (!rs.length) out("No retros yet. One is written when a task is done or dropped.");
     },
   },

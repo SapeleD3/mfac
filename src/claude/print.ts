@@ -104,7 +104,18 @@ function serial<T>(name: string, work: () => Promise<T>): Promise<T> {
 }
 
 export const realRunner: PrintRunner = (prompt, opts) => {
-  const base = ["-p", "--model", opts.model, ...(opts.effort ? ["--effort", opts.effort] : []), "--output-format", "text", "--tools", "", ...(opts.system ? ["--append-system-prompt", opts.system] : []), ...(opts.allowedTools?.length ? ["--allowedTools", ...opts.allowedTools] : [])];
+  const base = [
+    "-p",
+    "--model",
+    opts.model,
+    ...(opts.effort ? ["--effort", opts.effort] : []),
+    "--output-format",
+    "text",
+    "--tools",
+    "",
+    ...(opts.system ? ["--append-system-prompt", opts.system] : []),
+    ...(opts.allowedTools?.length ? ["--allowedTools", ...opts.allowedTools] : []),
+  ];
   if (!opts.session) return exec(["--no-session-persistence", ...base], prompt);
   const name = opts.session;
   return serial(name, async () => {

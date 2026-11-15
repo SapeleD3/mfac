@@ -90,13 +90,11 @@ export function stop(id: string, saveTo?: string): void {
     try {
       mkdirSync(dirname(saveTo), { recursive: true });
       writeFileSync(saveTo, `${capture(id, 50_000, true)}\n`);
-    } catch {
-    }
+    } catch {}
   }
   try {
     tmux(["kill-session", "-t", `=${nameOf(id)}`]);
-  } catch {
-  }
+  } catch {}
 }
 
 export function attach(id: string): number {
@@ -106,11 +104,6 @@ export function attach(id: string): number {
 }
 
 export function inLoginShell(command: string[]): string[] {
-  const script = [
-    `"$0" "$@"; code=$?`,
-    `case $code in 0|130) exit $code;; esac`,
-    String.raw`printf '\n\033[31m%s exited with code %s\033[0m\n' "$0" "$code"`,
-    `sleep 30`,
-  ].join("\n");
+  const script = [`"$0" "$@"; code=$?`, `case $code in 0|130) exit $code;; esac`, String.raw`printf '\n\033[31m%s exited with code %s\033[0m\n' "$0" "$code"`, `sleep 30`].join("\n");
   return [process.env.SHELL ?? "/bin/zsh", "-l", "-c", script, ...command];
 }

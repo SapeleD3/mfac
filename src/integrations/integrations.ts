@@ -74,7 +74,7 @@ export const integrationsPart =
       {
         id: "intake-notion",
         name: "Notion board intake",
-        description: "Cards you move to \"Ready for agent\" on your own Notion board go straight to the queue; one small read through your Notion connector",
+        description: 'Cards you move to "Ready for agent" on your own Notion board go straight to the queue; one small read through your Notion connector',
         everySeconds: 900,
         workingHours: true,
         run: async () => {
@@ -217,7 +217,13 @@ export const integrationsPart =
         "rules.list": () => intake.rules(),
         "rules.set": (p: { id: string; status: "active" | "rejected" | "proposed" }) => intake.setRule(p.id, p.status),
         "notion.setup": (p: { page: string }) => sync.setup(p.page),
-        "notion.status": () => ({ ...sync.ids(), ready: sync.ready(), pending: sync.pendingCount(), intakeBoard: engine.settings().notion.intakeBoard, intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent" }),
+        "notion.status": () => ({
+          ...sync.ids(),
+          ready: sync.ready(),
+          pending: sync.pendingCount(),
+          intakeBoard: engine.settings().notion.intakeBoard,
+          intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
+        }),
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
         "review.summary": (p: { id: string }) => sync.summary(p.id),
         "routines.list": () => routines.list(),

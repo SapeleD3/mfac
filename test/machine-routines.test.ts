@@ -14,7 +14,7 @@ test("launchd schedules read the way a person would say them", () => {
 });
 
 test("crontab lines are split into schedule and command, skipping comments and variables", () => {
-  assert.deepEqual(cronEntries("# backups\nMAILTO=\"\"\n*/10 * * * * ~/bin/sync.sh\n0 9 * * 1-5 brew update\n@reboot ~/bin/start\n"), [
+  assert.deepEqual(cronEntries('# backups\nMAILTO=""\n*/10 * * * * ~/bin/sync.sh\n0 9 * * 1-5 brew update\n@reboot ~/bin/start\n'), [
     { schedule: "every 10 min", command: "~/bin/sync.sh" },
     { schedule: "weekdays at 09:00", command: "brew update" },
     { schedule: "at startup", command: "~/bin/start" },

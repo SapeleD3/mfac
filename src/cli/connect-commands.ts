@@ -22,7 +22,9 @@ const until = (iso?: string) => {
 
 function openUrl(url: string) {
   const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-  spawn(cmd, [url], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+  spawn(cmd, [url], { stdio: "ignore", detached: true })
+    .on("error", () => {})
+    .unref();
 }
 
 function mcpLogin(server: string): Promise<void> {
@@ -51,7 +53,12 @@ export const connectCommands: Record<string, Command> = {
     help: "Slack, Notion, Jira, Claude Code and GitHub: connected, expired or missing, and when each last worked",
     async run(_a, f) {
       const list = f.test ? await call<Connection[]>("connections.test", {}) : await call<Connection[]>("connections.list");
-      out(table([["CONNECTION", "STATUS", "LAST WORKED", "NEEDED FOR", "DETAIL"], ...list.map((c) => [c.label + (c.required ? "" : " (optional)"), c.status, ago(c.lastOkAt), c.neededFor, c.detail ?? ""])]));
+      out(
+        table([
+          ["CONNECTION", "STATUS", "LAST WORKED", "NEEDED FOR", "DETAIL"],
+          ...list.map((c) => [c.label + (c.required ? "" : " (optional)"), c.status, ago(c.lastOkAt), c.neededFor, c.detail ?? ""]),
+        ]),
+      );
       const bad = list.filter((c) => c.status !== "connected" && c.required);
       if (bad.length) out(`\nFix with: ${bad.map((c) => `factory connect ${c.name}`).join(", ")}`);
     },
@@ -91,7 +98,7 @@ export const connectCommands: Record<string, Command> = {
       }
       if (c.status !== "connected") {
         out("\nStill not working. To fix it:");
-        info.fix.steps.forEach((s, i) => out(`  ${i + 1}. ${s}`));
+        for (const [i, s] of info.fix.steps.entries()) out(`  ${i + 1}. ${s}`);
         if (connector) out(`\nIf Claude Code has more than one ${info.label} server, pick one with --server "<name from claude mcp list>".`);
         else if (info.fix.url) openUrl(info.fix.url);
         return;
@@ -125,7 +132,12 @@ export const connectCommands: Record<string, Command> = {
     async run(_a, f) {
       const items = await call<IntakeItem[]>("intake.list", { status: f.all ? undefined : ["Inbox", "Triage", "ReplyDrafted"], limit: 50 });
       if (!items.length) return out("Nothing waiting in the inbox.");
-      out(table([["ID", "STATUS", "SOURCE", "FROM", "TRIAGE", "TEXT"], ...items.map((i) => [i.id, i.status, i.channel ?? i.source, i.author ?? "", i.triage ?? "", i.text.replace(/\s+/g, " ").slice(0, 70)])]));
+      out(
+        table([
+          ["ID", "STATUS", "SOURCE", "FROM", "TRIAGE", "TEXT"],
+          ...items.map((i) => [i.id, i.status, i.channel ?? i.source, i.author ?? "", i.triage ?? "", i.text.replace(/\s+/g, " ").slice(0, 70)]),
+        ]),
+      );
       for (const i of items.filter((x) => x.status === "ReplyDrafted")) out(`\nDraft for ${i.id}:\n  ${i.draft}\n  Send with: factory send ${i.id}`);
     },
   },
@@ -176,7 +188,20 @@ export const connectCommands: Record<string, Command> = {
       }
       const list = await call<Routine[]>("routines.list");
       const every = (s: number) => (s % 86400 === 0 ? `${s / 86400}d` : s % 3600 === 0 ? `${s / 3600}h` : `${Math.round(s / 60)}m`);
-      out(table([["ID", "ON", "EVERY", "LAST RUN", "RESULT", "NEXT", "DETAIL"], ...list.map((r) => [r.id, r.enabled ? "on" : "paused", every(r.everySeconds) + (r.workingHours ? " (work hours)" : ""), ago(r.lastRunAt), r.lastResult ?? "", r.enabled ? until(r.nextRunAt) : "", (r.lastDetail ?? "").slice(0, 60)])]));
+      out(
+        table([
+          ["ID", "ON", "EVERY", "LAST RUN", "RESULT", "NEXT", "DETAIL"],
+          ...list.map((r) => [
+            r.id,
+            r.enabled ? "on" : "paused",
+            every(r.everySeconds) + (r.workingHours ? " (work hours)" : ""),
+            ago(r.lastRunAt),
+            r.lastResult ?? "",
+            r.enabled ? until(r.nextRunAt) : "",
+            (r.lastDetail ?? "").slice(0, 60),
+          ]),
+        ]),
+      );
     },
   },
   notion: {

@@ -12,15 +12,34 @@ const ids = new Set(principles.map((p) => p.id));
 const sourceIds = new Set(sources.map((s) => s.id));
 const SECTIONS = ["## Apply when", "## Watch for", "## Trade-offs", "## Tensions", "## Example", "## Cite as", "## Sources"];
 const GROUPS = new Set(["modularity", "solid", "collaboration", "simplicity", "architecture", "data", "reliability"]);
-const PSTACK = new Set([
-  "laziness-protocol", "foundational-thinking", "redesign-from-first-principles", "attack-the-premise",
-  "subtract-before-you-add", "minimize-reader-load", "outcome-oriented-execution", "experience-first",
-  "exhaust-the-design-space", "build-the-lever", "model-the-domain", "boundary-discipline",
-  "type-system-discipline", "make-operations-idempotent", "migrate-callers-then-delete-legacy-apis",
-  "separate-before-serializing-shared-state", "prove-it-works", "fix-root-causes", "sequence-verifiable-units",
-  "test-behavior-not-implementation", "explain-the-number", "guard-the-context-window",
-  "never-block-on-the-human", "encode-lessons-in-structure",
-].map((n) => `principle-${n}`));
+const PSTACK = new Set(
+  [
+    "laziness-protocol",
+    "foundational-thinking",
+    "redesign-from-first-principles",
+    "attack-the-premise",
+    "subtract-before-you-add",
+    "minimize-reader-load",
+    "outcome-oriented-execution",
+    "experience-first",
+    "exhaust-the-design-space",
+    "build-the-lever",
+    "model-the-domain",
+    "boundary-discipline",
+    "type-system-discipline",
+    "make-operations-idempotent",
+    "migrate-callers-then-delete-legacy-apis",
+    "separate-before-serializing-shared-state",
+    "prove-it-works",
+    "fix-root-causes",
+    "sequence-verifiable-units",
+    "test-behavior-not-implementation",
+    "explain-the-number",
+    "guard-the-context-window",
+    "never-block-on-the-human",
+    "encode-lessons-in-structure",
+  ].map((n) => `principle-${n}`),
+);
 
 function walk(d: string): string[] {
   return readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : [join(d, f)]));
@@ -61,8 +80,7 @@ test("tensions are listed on both sides", () => {
   for (const p of principles) {
     for (const t of p.tensions) {
       const other = byId.get(t)!;
-      assert.ok(other.tensions.includes(p.id) || other.related.includes(p.id) || p.body.includes(`[[${t}]]`),
-        `${p.id} lists a tension with ${t}, but ${t} never mentions ${p.id}`);
+      assert.ok(other.tensions.includes(p.id) || other.related.includes(p.id) || p.body.includes(`[[${t}]]`), `${p.id} lists a tension with ${t}, but ${t} never mentions ${p.id}`);
     }
   }
 });
@@ -89,7 +107,9 @@ test("sources are well formed, used, and no PDF is committed", () => {
     for (const u of s.pdf ?? []) assert.ok(u.startsWith("https://"), `${s.id}: pdf urls must be https`);
     assert.ok(cited.has(s.id) || s.id === "pstack", `${s.id} is not cited by any principle`);
   }
-  const pdfs = walk(dir).filter((f) => /\.pdf$/i.test(f)).map((f) => relative(dir, f));
+  const pdfs = walk(dir)
+    .filter((f) => /\.pdf$/i.test(f))
+    .map((f) => relative(dir, f));
   assert.deepEqual(pdfs, [], "PDFs must not live in the repository");
 });
 
@@ -108,7 +128,10 @@ test("fetch downloads real PDFs once, rejects HTML, and tries mirrors in order",
   const first = await fetchDesignPrincipleSources({ fetch: fakeFetch, cacheDir });
   const withPdf = sources.filter((s) => s.pdf?.length);
   assert.ok(first.fetched.includes("parnas-1972"), "falls back to the second mirror after an HTML page");
-  assert.deepEqual(first.failed.map((f) => f.id), ["liskov-wing-1994"]);
+  assert.deepEqual(
+    first.failed.map((f) => f.id),
+    ["liskov-wing-1994"],
+  );
   assert.equal(first.fetched.length, withPdf.length - 1);
   assert.ok(readFileSync(join(cacheDir, "parnas-1972.pdf")).subarray(0, 5).toString() === "%PDF-");
   assert.ok(!existsSync(join(cacheDir, "liskov-wing-1994.pdf")), "no file for a failed download");
@@ -120,5 +143,8 @@ test("fetch downloads real PDFs once, rejects HTML, and tries mirrors in order",
   const second = await fetchDesignPrincipleSources({ fetch: fakeFetch, cacheDir });
   assert.deepEqual(second.fetched, ["brooks-1986"]);
   assert.equal(second.cached.length, withPdf.length - 2);
-  assert.ok(calls.every((u) => u.includes("columbia.edu") || u.includes("unc.edu")), "only missing files are requested");
+  assert.ok(
+    calls.every((u) => u.includes("columbia.edu") || u.includes("unc.edu")),
+    "only missing files are requested",
+  );
 });

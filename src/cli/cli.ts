@@ -125,7 +125,11 @@ export const commands: Record<string, Command> = {
   unpark: { usage: "unpark ID", help: "Put a parked card back exactly where it was", run: async (a) => moveResult(await call("task.unpark", { id: need(a[0]) })) },
   backlog: { usage: "backlog ID", help: "Move a queued task to the backlog: it waits and never takes a slot on its own", run: async (a) => moveResult(await call("task.demote", { id: need(a[0]) })) },
   prioritize: { usage: "prioritize ID", help: "Move a backlog task into the queue", run: async (a) => moveResult(await call("task.prioritize", { id: need(a[0]) })) },
-  restore: { usage: "restore ID", help: "Take a task out of the bin: a parked one goes back where it was, a dropped one comes back as a new backlog task", run: async (a) => out(`Restored as ${(await call<TaskView>("task.restore", { id: need(a[0]) })).id}`) },
+  restore: {
+    usage: "restore ID",
+    help: "Take a task out of the bin: a parked one goes back where it was, a dropped one comes back as a new backlog task",
+    run: async (a) => out(`Restored as ${(await call<TaskView>("task.restore", { id: need(a[0]) })).id}`),
+  },
   stop: {
     usage: "stop ID [--note TEXT]",
     help: "Stop a running stage; the task goes to Needs you",
@@ -136,8 +140,14 @@ export const commands: Record<string, Command> = {
     help: "Add (+) or remove (-) tags: learn, urgent, ui, sensitive, harden",
     async run(args) {
       const id = need(args[0]);
-      const add = args.slice(1).filter((a) => !a.startsWith("-")).map((a) => a.replace(/^\+/, ""));
-      const remove = args.slice(1).filter((a) => a.startsWith("-")).map((a) => a.slice(1));
+      const add = args
+        .slice(1)
+        .filter((a) => !a.startsWith("-"))
+        .map((a) => a.replace(/^\+/, ""));
+      const remove = args
+        .slice(1)
+        .filter((a) => a.startsWith("-"))
+        .map((a) => a.slice(1));
       const t = await call<TaskView>("task.tag", { id, add, remove });
       out(`${t.id} tags: ${t.tags.join(", ") || "none"}`);
     },

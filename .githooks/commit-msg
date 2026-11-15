@@ -1,0 +1,2 @@
+#!/bin/sh
+npm run -s build >/dev/null && node dist/src/repo/rules.js message "$1"

@@ -224,6 +224,20 @@ skipped or failed. Add your own: `factory routines add "Weekly deps" --every 7d 
 The app also lists your Mac's own scheduled jobs, read-only: launch agents in `~/Library/LaunchAgents` with
 their `launchctl` state, and your crontab.
 
+## Contributing
+
+```sh
+npm install          # also turns on the git hooks in .githooks
+npm run check        # Biome lint and format, typechecks, rules check, tests
+npm run format       # apply Biome's formatting
+npm run check:rust   # rustfmt and clippy for the Tauri shell
+npm run tlc          # model-check spec/Factory.tla (needs Java)
+```
+
+The hooks run the same checks: pre-commit on what you staged, commit-msg rejects agent credit, pre-push
+runs the tests. CI runs once per push (a newer push cancels the older run), and a separate small job
+checks the PR title and body when they change. The house rules are in [CLAUDE.md](CLAUDE.md).
+
 ## The app
 
 A Tauri app in `app/`: a Rust shell (`app/src-tauri`) and a Preact UI (`app/ui`) ported from the approved

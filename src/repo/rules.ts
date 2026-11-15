@@ -4,10 +4,7 @@ import { dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const AGENTS = "claude|anthropic|copilot|codex|openai|cursor|chatgpt|gemini";
-const CREDIT_LINE = new RegExp(
-  `^\\s*(co-authored-by:.*(${AGENTS})|claude-session:|.*generated (with|by) \\[?(${AGENTS}|ai\\b)|.*🤖 generated|https://claude\\.ai/code/session_)`,
-  "i",
-);
+const CREDIT_LINE = new RegExp(`^\\s*(co-authored-by:.*(${AGENTS})|claude-session:|.*generated (with|by) \\[?(${AGENTS}|ai\\b)|.*🤖 generated|https://claude\\.ai/code/session_)`, "i");
 const BANNER = /^\s*(\/\/+|#+|\/\*+|--|\*)\s*[-=*~#]{4,}/;
 
 export const isCreditLine = (line: string) => CREDIT_LINE.test(line);
@@ -41,7 +38,9 @@ export function findings(where: string, text: string, rules: Finding["rule"][] =
 const CODE = /\.(ts|tsx|mjs|js|rs|css|sh|py|go|swift)$/;
 
 export function checkRepo(dir: string): Finding[] {
-  const files = spawnSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" }).stdout.split("\n").filter((f) => CODE.test(f));
+  const files = spawnSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" })
+    .stdout.split("\n")
+    .filter((f) => CODE.test(f));
   return files.flatMap((f) => {
     const text = readFileSync(`${dir}/${f}`, "utf8");
     const exempt = f.startsWith("test/") || f === "src/repo/rules.ts";
@@ -79,7 +78,9 @@ export function checkStructure(dir: string): Finding[] {
     const folder = join(src, mod);
     let files: string[] = [];
     try {
-      files = readdirSync(folder, { recursive: true }).map(String).filter((f) => f.endsWith(".ts"));
+      files = readdirSync(folder, { recursive: true })
+        .map(String)
+        .filter((f) => f.endsWith(".ts"));
     } catch {
       continue;
     }
@@ -109,12 +110,14 @@ function main(args: string[]) {
     process.stdout.write(stripCredits(readFileSync(0, "utf8")));
     return;
   }
-  const all = [...checkRepo(process.cwd()), ...checkStructure(process.cwd())];
-  const event = process.env.GITHUB_EVENT_PATH;
-  if (event) {
-    const pr = (JSON.parse(readFileSync(event, "utf8")) as { pull_request?: { title?: string; body?: string } }).pull_request;
-    if (pr) all.push(...findings("PR title", pr.title ?? "", ["credit"]), ...findings("PR body", pr.body ?? "", ["credit"]));
-  }
+  const all: Finding[] = [];
+  if (args[0] === "message") all.push(...findings("commit message", readFileSync(args[1] ?? 0, "utf8"), ["credit"]));
+  else if (args[0] === "pr") {
+    const event = process.env.GITHUB_EVENT_PATH;
+    const pr = event ? (JSON.parse(readFileSync(event, "utf8")) as { pull_request?: { title?: string; body?: string } }).pull_request : undefined;
+    if (!pr) throw new Error("rules pr runs in a pull_request workflow, where GITHUB_EVENT_PATH holds the PR");
+    all.push(...findings("PR title", pr.title ?? "", ["credit"]), ...findings("PR body", pr.body ?? "", ["credit"]));
+  } else all.push(...checkRepo(process.cwd()), ...checkStructure(process.cwd()));
   for (const f of all) console.log(`${f.where}:${f.line}: ${MESSAGE[f.rule]}: ${f.text}`);
   if (all.length) {
     console.log(`\n${all.length} rule violation(s). See CLAUDE.md.`);

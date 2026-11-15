@@ -244,7 +244,9 @@ export class Runner {
   }
 
   coordinator(taskId: string): Stage | undefined {
-    return this.stages(taskId).filter((s) => s.role === "coordinator").pop();
+    return this.stages(taskId)
+      .filter((s) => s.role === "coordinator")
+      .pop();
   }
 
   wake(taskId: string, message: string) {
@@ -392,7 +394,8 @@ export class Runner {
           this.gateOpened(r.task);
           return "Every requirement traces into the plan. The plan gate is open; stop and wait for the person's verdict.";
         }
-        if (r.task.machine.state === "Planning") return `Gaps found: back to the planner (round ${r.task.machine.loops.requirements}/3). Run the planner with a note pointing at review-requirements.md.`;
+        if (r.task.machine.state === "Planning")
+          return `Gaps found: back to the planner (round ${r.task.machine.loops.requirements}/3). Run the planner with a note pointing at review-requirements.md.`;
         this.gateOpened(r.task);
         return "The plan still misses requirements after three rounds, so the task went to Needs you.";
       }
@@ -449,7 +452,15 @@ export class Runner {
       case "harden": {
         const title = String(args.title ?? "").trim();
         if (!title) throw new Error('give the hardening task a title: factory coord harden "Lint rule: no floating promises"');
-        const h = this.engine.add({ title, body: `${String(args.note ?? "")}\n\nRaised by ${t.id} after a send-back: turn the correction into a check (lint rule, type or test) and clean up old cases.`, repo: t.repo, recipe: "harden", tags: ["harden"], source: "factory", sourceRef: `${t.id}:${title}` });
+        const h = this.engine.add({
+          title,
+          body: `${String(args.note ?? "")}\n\nRaised by ${t.id} after a send-back: turn the correction into a check (lint rule, type or test) and clean up old cases.`,
+          repo: t.repo,
+          recipe: "harden",
+          tags: ["harden"],
+          source: "factory",
+          sourceRef: `${t.id}:${title}`,
+        });
         return `Queued ${h.id}: ${h.title}`;
       }
       default:
@@ -459,7 +470,9 @@ export class Runner {
 
   statusText(t: TaskView): string {
     const job = this.jobDir(t.id);
-    const files = Object.values(OUTPUT).concat(["brief.md", "statechart.md", "tlc-result.md", "review-compiled.md"]).filter((f) => existsSync(join(job, f)));
+    const files = Object.values(OUTPUT)
+      .concat(["brief.md", "statechart.md", "tlc-result.md", "review-compiled.md"])
+      .filter((f) => existsSync(join(job, f)));
     const stages = this.stages(t.id).filter((s) => s.role !== "coordinator");
     return [
       `${t.id} "${t.title}" is ${t.machine.state}${t.rounds ? ` (rounds ${t.rounds})` : ""}.`,
@@ -515,7 +528,12 @@ export class Runner {
       PRGate: "A pull request is ready for your review",
       NeedsYou: "A task needs you",
     };
-    this.engine.emit("alert", { taskId: t.id, level: t.machine.state === "NeedsYou" ? "warn" : "info", gate: t.machine.state, message: `${what[t.machine.state] ?? t.machine.state}: ${t.id} ${t.title}` });
+    this.engine.emit("alert", {
+      taskId: t.id,
+      level: t.machine.state === "NeedsYou" ? "warn" : "info",
+      gate: t.machine.state,
+      message: `${what[t.machine.state] ?? t.machine.state}: ${t.id} ${t.title}`,
+    });
   }
 
   private finishStage(s: Stage, status: Stage["status"]) {
@@ -525,7 +543,7 @@ export class Runner {
 
   onStop(sessionId: string) {
     const s = this.stageBySession(sessionId);
-    if (!s || s.status !== "running") return { ok: true };
+    if (s?.status !== "running") return { ok: true };
     const t = this.engine.get(s.taskId);
     if (!t) return { ok: true };
     if (s.role === "coordinator") {
@@ -557,12 +575,17 @@ export class Runner {
     if (["code_review", "security_review", "ui_review"].includes(s.role)) {
       const pending = this.running(t.id).filter((x) => REVIEWERS(t).includes(x.role));
       if (pending.length) return { ok: true };
-      const files = REVIEWERS(t).map((r) => OUTPUT[r]).join(", ");
+      const files = REVIEWERS(t)
+        .map((r) => OUTPUT[r])
+        .join(", ");
       this.wake(t.id, `All reviews finished (${files}). Compile their findings into review-compiled.md (deduplicated, blocking first) and run factory coord findings --blocking <n>.`);
       return { ok: true };
     }
     if (s.role === "requirements_review") {
-      this.wake(t.id, `The requirements review finished and wrote ${OUTPUT[s.role]}. Read its verdict and traceability matrix, then run factory coord requirements --covered or --gaps.\n\n${head}${head.length >= 600 ? "…" : ""}`);
+      this.wake(
+        t.id,
+        `The requirements review finished and wrote ${OUTPUT[s.role]}. Read its verdict and traceability matrix, then run factory coord requirements --covered or --gaps.\n\n${head}${head.length >= 600 ? "…" : ""}`,
+      );
       return { ok: true };
     }
     const blocked = /^\s*BLOCKED:/i.test(head);
@@ -603,7 +626,9 @@ export class Runner {
 
   private addPrompt(p: Omit<Prompt, "id" | "status" | "createdAt">): Prompt {
     const id = randomUUID().slice(0, 8);
-    this.store.db.prepare("INSERT INTO prompts (id, task_id, stage_id, kind, payload, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)").run(id, p.taskId ?? null, p.stageId ?? null, p.kind, JSON.stringify(p.payload), now());
+    this.store.db
+      .prepare("INSERT INTO prompts (id, task_id, stage_id, kind, payload, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)")
+      .run(id, p.taskId ?? null, p.stageId ?? null, p.kind, JSON.stringify(p.payload), now());
     const saved = this.prompt(id)!;
     this.engine.emit("prompt", { prompt: saved });
     return saved;
@@ -658,7 +683,10 @@ export class Runner {
     const note = d.note ? ` Their note: "${d.note}".` : "";
     const comments = existsSync(join(this.jobDir(t.id), "review-comments.md")) ? ` Every open comment, with the words it's anchored to, is in review-comments.md.` : "";
     const verdict = d.verdict === "approve" ? `approved, so the task is now ${s}` : `sent the work back to ${s} (gate round ${t.rounds ?? ""})`;
-    this.wake(t.id, `The person ${verdict}.${note}${comments} Run the next stage.${d.verdict === "send_back" ? " Also ask whether a lint rule, type or test could have caught this; if so, queue a harden task." : ""}`);
+    this.wake(
+      t.id,
+      `The person ${verdict}.${note}${comments} Run the next stage.${d.verdict === "send_back" ? " Also ask whether a lint rule, type or test could have caught this; if so, queue a harden task." : ""}`,
+    );
   }
 
   private finishTask(t: TaskView, how: "done" | "dropped") {
@@ -672,7 +700,8 @@ export class Runner {
     for (const s of this.stages().filter((x) => x.status === "running" && !live.has(x.id))) {
       const t = this.engine.get(s.taskId);
       this.setStage(s.id, { status: "stopped" });
-      if (t && RUNNING.includes(t.machine.state) && s.role !== "coordinator") this.wake(t.id, `${s.id} ended while the factory was down (a restart or crash). Check its output file and rerun it if needed.`);
+      if (t && RUNNING.includes(t.machine.state) && s.role !== "coordinator")
+        this.wake(t.id, `${s.id} ended while the factory was down (a restart or crash). Check its output file and rerun it if needed.`);
     }
     for (const t of this.engine.list().filter((x) => RUNNING.includes(x.machine.state))) {
       const c = this.coordinator(t.id);
@@ -720,7 +749,15 @@ export const runnerPart =
           if (!s) throw new Error(`no stage ${p.stage}`);
           if (runner.tmux.isAlive(s.id)) return { live: true, screen: runner.tmux.capture(s.id, p.lines ?? 200, !!p.escapes) };
           const saved = join(runner.jobDir(s.taskId), ".factory", "screens", `${s.id}.ans`);
-          return { live: false, screen: existsSync(saved) ? readFileSync(saved, "utf8").split("\n").slice(-(p.lines ?? 200)).join("\n") : "" };
+          return {
+            live: false,
+            screen: existsSync(saved)
+              ? readFileSync(saved, "utf8")
+                  .split("\n")
+                  .slice(-(p.lines ?? 200))
+                  .join("\n")
+              : "",
+          };
         },
         "session.send": (p: { stage: string; text: string }) => {
           const s = runner.stage(p.stage);

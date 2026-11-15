@@ -8,13 +8,33 @@ export interface Convention {
   excerpt?: string;
 }
 
-const PR_TEMPLATES = [".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md", "pull_request_template.md", "PULL_REQUEST_TEMPLATE.md", "docs/pull_request_template.md", "docs/PULL_REQUEST_TEMPLATE.md"];
+const PR_TEMPLATES = [
+  ".github/pull_request_template.md",
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  "pull_request_template.md",
+  "PULL_REQUEST_TEMPLATE.md",
+  "docs/pull_request_template.md",
+  "docs/PULL_REQUEST_TEMPLATE.md",
+];
 const CONTRIBUTING = ["CONTRIBUTING.md", ".github/CONTRIBUTING.md", "docs/CONTRIBUTING.md"];
 const INSTRUCTIONS = ["CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md", ".claude/settings.json"];
 const COMMIT = [
-  "commitlint.config.js", "commitlint.config.cjs", "commitlint.config.mjs", "commitlint.config.ts",
-  ".commitlintrc", ".commitlintrc.json", ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js", ".commitlintrc.cjs",
-  ".czrc", ".cz.toml", ".cz.json", ".gitmessage", ".husky/commit-msg", ".githooks/commit-msg",
+  "commitlint.config.js",
+  "commitlint.config.cjs",
+  "commitlint.config.mjs",
+  "commitlint.config.ts",
+  ".commitlintrc",
+  ".commitlintrc.json",
+  ".commitlintrc.yml",
+  ".commitlintrc.yaml",
+  ".commitlintrc.js",
+  ".commitlintrc.cjs",
+  ".czrc",
+  ".cz.toml",
+  ".cz.json",
+  ".gitmessage",
+  ".husky/commit-msg",
+  ".githooks/commit-msg",
 ];
 const BRANCH = [".validate-branch-namerc", ".validate-branch-namerc.json", ".validate-branch-namerc.js", ".branchlintrc", ".branchlintrc.json", ".husky/pre-push", ".githooks/pre-push"];
 const HOOK_MANAGERS = ["lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".pre-commit-config.yaml"];
@@ -46,7 +66,13 @@ export function gather(repo: string): Convention[] {
   if (existsSync(skills)) out.push({ kind: "instructions", path: ".claude/skills/", excerpt: readdirSync(skills).join(", ") });
   add("pr", PR_TEMPLATES);
   const templates = join(repo, ".github", "PULL_REQUEST_TEMPLATE");
-  if (existsSync(templates)) add("pr", readdirSync(templates).filter((f) => f.endsWith(".md")).map((f) => `.github/PULL_REQUEST_TEMPLATE/${f}`));
+  if (existsSync(templates))
+    add(
+      "pr",
+      readdirSync(templates)
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => `.github/PULL_REQUEST_TEMPLATE/${f}`),
+    );
   add("contributing", CONTRIBUTING, 6000);
   add("commit", COMMIT);
   add("branch", BRANCH);
@@ -92,12 +118,7 @@ const TITLE: Record<Convention["kind"], string> = {
 };
 
 export function conventionsMarkdown(found: Convention[], branches: string[]): string {
-  const lines = [
-    "# This repo's conventions",
-    "",
-    "The repo's own conventions win over the factory's defaults. The one factory rule on top: never credit Claude or any agent.",
-    "",
-  ];
+  const lines = ["# This repo's conventions", "", "The repo's own conventions win over the factory's defaults. The one factory rule on top: never credit Claude or any agent.", ""];
   if (!found.length) lines.push("The repo defines none of these. Use the factory defaults.", "");
   for (const kind of Object.keys(TITLE) as Convention["kind"][]) {
     const of = found.filter((c) => c.kind === kind);

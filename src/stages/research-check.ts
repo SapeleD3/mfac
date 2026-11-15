@@ -40,7 +40,11 @@ export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise
     return record(jobDir, { chart, proved: false, model, detail: `TLC couldn't run: ${e instanceof Error ? e.message : e}` });
   }
   if (!r.ok) {
-    const tail = r.output.split("\n").filter((l) => l.trim()).slice(-40).join("\n");
+    const tail = r.output
+      .split("\n")
+      .filter((l) => l.trim())
+      .slice(-40)
+      .join("\n");
     return record(jobDir, { chart, proved: false, model, states: r.states, detail: `TLC failed on ${model}. Its counterexample or error:\n\n${tail}` });
   }
   return record(jobDir, { chart, proved: true, model, states: r.states, detail: `TLC passed on ${model}: ${r.states.toLocaleString("en-US")} distinct states, no errors.` });
@@ -49,7 +53,6 @@ export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise
 function record(jobDir: string, r: CheckResult): CheckResult {
   try {
     writeFileSync(join(jobDir, "tlc-result.md"), `# Research check\n\n- Statechart: ${r.chart ? "yes" : "no"}\n- TLC: ${r.proved ? "passed" : "not passed"}\n\n${r.detail}\n`);
-  } catch {
-  }
+  } catch {}
   return r;
 }

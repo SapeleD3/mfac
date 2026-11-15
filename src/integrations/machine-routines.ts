@@ -17,8 +17,7 @@ export interface MachineRoutine {
 
 export type Runner = (cmd: string, args: string[]) => Promise<string>;
 
-const run: Runner = (cmd, args) =>
-  new Promise((resolve) => execFile(cmd, args, { timeout: 5000, maxBuffer: 4 << 20 }, (err, out) => resolve(err ? "" : String(out))));
+const run: Runner = (cmd, args) => new Promise((resolve) => execFile(cmd, args, { timeout: 5000, maxBuffer: 4 << 20 }, (err, out) => resolve(err ? "" : String(out))));
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
@@ -69,7 +68,16 @@ export function cronEntries(table: string): { schedule: string; command: string 
 }
 
 function cronSchedule(expr: string): string {
-  const named: Record<string, string> = { "@reboot": "at startup", "@hourly": "every hour", "@daily": "every day", "@midnight": "every day", "@weekly": "every week", "@monthly": "every month", "@yearly": "every year", "@annually": "every year" };
+  const named: Record<string, string> = {
+    "@reboot": "at startup",
+    "@hourly": "every hour",
+    "@daily": "every day",
+    "@midnight": "every day",
+    "@weekly": "every week",
+    "@monthly": "every month",
+    "@yearly": "every year",
+    "@annually": "every year",
+  };
   if (named[expr]) return named[expr]!;
   const [min, hour, dom, mon, dow] = expr.split(/\s+/);
   const step = min?.match(/^\*\/(\d+)$/);
@@ -99,7 +107,9 @@ export async function machineRoutines(opts: { home?: string; platform?: NodeJS.P
   const agents = join(home, "Library", "LaunchAgents");
   if ((opts.platform ?? process.platform) === "darwin" && existsSync(agents)) {
     const loaded = launchctlState(await sh("launchctl", ["list"]));
-    for (const f of readdirSync(agents).filter((x) => x.endsWith(".plist")).sort()) {
+    for (const f of readdirSync(agents)
+      .filter((x) => x.endsWith(".plist"))
+      .sort()) {
       const file = join(agents, f);
       let p: Record<string, unknown> = {};
       try {
@@ -136,7 +146,16 @@ export async function machineRoutines(opts: { home?: string; platform?: NodeJS.P
       const skill = join(tasks, d.name, "SKILL.md");
       if (!existsSync(skill)) continue;
       const fm = frontmatter(readFileSync(skill, "utf8"));
-      out.push({ id: `claude:${d.name}`, kind: "claude", name: fm.name || d.name, schedule: fm.schedule || fm.cron || "set in Claude", command: fm.description, state: "scheduled", file: skill, factory: false });
+      out.push({
+        id: `claude:${d.name}`,
+        kind: "claude",
+        name: fm.name || d.name,
+        schedule: fm.schedule || fm.cron || "set in Claude",
+        command: fm.description,
+        state: "scheduled",
+        file: skill,
+        factory: false,
+      });
     }
   }
   return out;

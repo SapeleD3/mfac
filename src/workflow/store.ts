@@ -255,18 +255,7 @@ export class Store {
     return `F-${String(n).padStart(3, "0")}`;
   }
 
-  createTask(input: {
-    title: string;
-    body?: string;
-    source: Source;
-    sourceRef?: string;
-    sourceUrl?: string;
-    repo?: string;
-    recipe?: Recipe;
-    tags?: Tag[];
-    priority?: number;
-    state?: State;
-  }): Task {
+  createTask(input: { title: string; body?: string; source: Source; sourceRef?: string; sourceUrl?: string; repo?: string; recipe?: Recipe; tags?: Tag[]; priority?: number; state?: State }): Task {
     return this.tx(() => {
       const id = this.nextTaskId();
       const m = initial(input.state ?? "Queued");
@@ -276,7 +265,22 @@ export class Store {
           `INSERT INTO tasks (id, title, body, source, source_ref, source_url, repo, recipe, tags, priority, state, machine, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, input.title, input.body ?? "", input.source, input.sourceRef ?? null, input.sourceUrl ?? null, input.repo ?? null, input.recipe ?? "feature", JSON.stringify(input.tags ?? []), input.priority ?? 0, m.state, JSON.stringify(m), t, t);
+        .run(
+          id,
+          input.title,
+          input.body ?? "",
+          input.source,
+          input.sourceRef ?? null,
+          input.sourceUrl ?? null,
+          input.repo ?? null,
+          input.recipe ?? "feature",
+          JSON.stringify(input.tags ?? []),
+          input.priority ?? 0,
+          m.state,
+          JSON.stringify(m),
+          t,
+          t,
+        );
       this.addEvent(id, "created", "human", { source: input.source }, undefined, m.state);
       return this.task(id)!;
     });
@@ -306,8 +310,18 @@ export class Store {
 
   updateTask(id: string, patch: Partial<Pick<Task, "title" | "body" | "repo" | "recipe" | "tags" | "priority" | "branch" | "worktree" | "prUrl" | "notionJobId" | "notionReviewId" | "takenOver">>) {
     const cols: Record<string, string> = {
-      title: "title", body: "body", repo: "repo", recipe: "recipe", tags: "tags", priority: "priority", branch: "branch",
-      worktree: "worktree", prUrl: "pr_url", notionJobId: "notion_job_id", notionReviewId: "notion_review_id", takenOver: "taken_over",
+      title: "title",
+      body: "body",
+      repo: "repo",
+      recipe: "recipe",
+      tags: "tags",
+      priority: "priority",
+      branch: "branch",
+      worktree: "worktree",
+      prUrl: "pr_url",
+      notionJobId: "notion_job_id",
+      notionReviewId: "notion_review_id",
+      takenOver: "taken_over",
     };
     const sets: string[] = [];
     const values: (string | number | null)[] = [];
@@ -315,7 +329,7 @@ export class Store {
       const col = cols[k];
       if (!col) continue;
       sets.push(`${col} = ?`);
-      values.push(Array.isArray(v) ? JSON.stringify(v) : typeof v === "boolean" ? (v ? 1 : 0) : (v as string | number | undefined) ?? null);
+      values.push(Array.isArray(v) ? JSON.stringify(v) : typeof v === "boolean" ? (v ? 1 : 0) : ((v as string | number | undefined) ?? null));
     }
     if (!sets.length) return;
     this.db.prepare(`UPDATE tasks SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`).run(...values, now(), id);

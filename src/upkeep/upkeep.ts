@@ -52,7 +52,11 @@ export function retroMarkdown(r: Retro): string {
 - Send-backs: research ${r.sendBacks.research}, plan ${r.sendBacks.plan}, PR ${r.sendBacks.pr}
 - Loops: research check ${r.loops.check}, review to builder ${r.loops.review}, confirm ${r.loops.confirm}
 - Engine refusals: ${r.refusals} · times in Needs you: ${r.needsYou}
-- Sessions: ${Object.entries(r.sessions).map(([k, v]) => `${k} ×${v}`).join(", ") || "none"}
+- Sessions: ${
+    Object.entries(r.sessions)
+      .map(([k, v]) => `${k} ×${v}`)
+      .join(", ") || "none"
+  }
 - Tags: ${r.tags.join(", ") || "none"}
 
 ## Your notes at the gates
@@ -90,7 +94,13 @@ export const upkeepPart: PluginFactory = ({ engine, store }) => {
 Numbers for ${n} tasks: first-pass approval ${Math.round((100 * firstPass) / n)}%, send-backs ${sum((r) => r.sendBacks.research + r.sendBacks.plan + r.sendBacks.pr)}, review loops ${sum((r) => r.loops.review)}, Needs you ${sum((r) => r.needsYou)}, engine refusals ${sum((r) => r.refusals)}.
 
 ${retros.map(retroMarkdown).join("\n---\n\n")}`;
-    const t = engine.add({ title: `Improve the factory: week of ${now().slice(0, 10)}`, body, repo: existsSync(join(factoryRepo(), "spec", "Factory.tla")) ? factoryRepo() : undefined, tags: ["sensitive"], source: "factory" });
+    const t = engine.add({
+      title: `Improve the factory: week of ${now().slice(0, 10)}`,
+      body,
+      repo: existsSync(join(factoryRepo(), "spec", "Factory.tla")) ? factoryRepo() : undefined,
+      tags: ["sensitive"],
+      source: "factory",
+    });
     store.setSetting("improve_factory_at", now());
     return `${t.id} queued from ${n} retros`;
   };
@@ -101,8 +111,20 @@ ${retros.map(retroMarkdown).join("\n---\n\n")}`;
       engine.on("change", onChange);
       const routines = shared.routines;
       if (!routines) return;
-      routines.register({ id: "usage-guard", name: "Usage guard", description: "Reads Claude Code's own usage logs; pauses new work above the ceiling", everySeconds: 120, run: async () => guard(engine, store) });
-      routines.register({ id: "improve-factory", name: "Improve the factory", description: "Weekly: Opus reads the retros and proposes changes to the factory itself, as a sensitive task", everySeconds: 7 * 86_400, run: improve });
+      routines.register({
+        id: "usage-guard",
+        name: "Usage guard",
+        description: "Reads Claude Code's own usage logs; pauses new work above the ceiling",
+        everySeconds: 120,
+        run: async () => guard(engine, store),
+      });
+      routines.register({
+        id: "improve-factory",
+        name: "Improve the factory",
+        description: "Weekly: Opus reads the retros and proposes changes to the factory itself, as a sensitive task",
+        everySeconds: 7 * 86_400,
+        run: improve,
+      });
       routines.register({
         id: "doctor",
         name: "Setup checks",

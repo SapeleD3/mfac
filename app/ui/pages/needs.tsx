@@ -16,15 +16,27 @@ export function NeedsYou({ id }: { id?: string }) {
   return (
     <div class="pane-body">
       <main class="main">
-        <div class="main-h"><h2>Needs you</h2><span class="chip warn">{tasks.length + asking.length}</span></div>
+        <div class="main-h">
+          <h2>Needs you</h2>
+          <span class="chip warn">{tasks.length + asking.length}</span>
+        </div>
         {asking.length > 0 && (
           <>
-            <div class="label" style={{ margin: "4px 0 6px" }}>Sessions asking</div>
+            <div class="label" style={{ margin: "4px 0 6px" }}>
+              Sessions asking
+            </div>
             <div class="p-list" style={{ padding: 0, marginBottom: 12 }}>
               {asking.map((p) => (
                 <div key={p.id} class="p-row ask" style={{ cursor: "default" }}>
-                  <span class="avatar" style={{ background: "var(--needs-you)" }}>?</span>
-                  <div style={{ minWidth: 0 }}><div class="p-title">{app.tasks.find((t) => t.id === p.taskId)?.title ?? p.payload.title ?? "A session"}</div><div class="p-doing">{p.taskId} · {p.payload.role}</div></div>
+                  <span class="avatar" style={{ background: "var(--needs-you)" }}>
+                    ?
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div class="p-title">{app.tasks.find((t) => t.id === p.taskId)?.title ?? p.payload.title ?? "A session"}</div>
+                    <div class="p-doing">
+                      {p.taskId} · {p.payload.role}
+                    </div>
+                  </div>
                   <span class="dot needs" />
                   <AskBody p={p} />
                 </div>
@@ -32,10 +44,22 @@ export function NeedsYou({ id }: { id?: string }) {
             </div>
           </>
         )}
-        {tasks.length ? <div class="list">{tasks.map((t) => <TaskLi key={t.id} t={t} on={t.id === sel?.id} />)}</div> : asking.length === 0 && <div class="empty">Nothing needs you. The factory will tell you when something does.</div>}
+        {tasks.length ? (
+          <div class="list">
+            {tasks.map((t) => (
+              <TaskLi key={t.id} t={t} on={t.id === sel?.id} />
+            ))}
+          </div>
+        ) : (
+          asking.length === 0 && <div class="empty">Nothing needs you. The factory will tell you when something does.</div>
+        )}
         {sel && sel.machine.state === "NeedsYou" && <NeedsCard t={sel} />}
         {sel && sel.machine.state !== "NeedsYou" && (sel.column === "Needs you" || sel.column === "PR ready") && (
-          <div class="row" style={{ marginTop: 12 }}><Btn kind="btn-primary" onClick={() => go(`gate/${sel.id}`)}>Review {sel.id}</Btn></div>
+          <div class="row" style={{ marginTop: 12 }}>
+            <Btn kind="btn-primary" onClick={() => go(`gate/${sel.id}`)}>
+              Review {sel.id}
+            </Btn>
+          </div>
         )}
       </main>
     </div>
@@ -50,11 +74,26 @@ function NeedsCard({ t }: { t: Task }) {
   const m = t.machine;
   const used = m.tries.NeedsYou;
   const targets = t.allowed.filter((a) => a.startsWith("send_back:")).map((a) => a.slice(10));
-  const ranOut = m.loops.check >= CAP ? `Research check failed ${m.loops.check} of ${CAP} times.` : m.loops.review >= CAP ? `Review findings went back to the builder ${m.loops.review} of ${CAP} times.` : m.loops.confirm >= CAP ? `Confirm couldn't show it's solved after ${m.loops.confirm} tries.` : "";
+  const ranOut =
+    m.loops.check >= CAP
+      ? `Research check failed ${m.loops.check} of ${CAP} times.`
+      : m.loops.review >= CAP
+        ? `Review findings went back to the builder ${m.loops.review} of ${CAP} times.`
+        : m.loops.confirm >= CAP
+          ? `Confirm couldn't show it's solved after ${m.loops.confirm} tries.`
+          : "";
   const buildBlocked = !targets.includes("Building") && !(m.approved.includes("research") && m.approved.includes("plan"));
   return (
     <div class="card" style={{ marginTop: 16 }}>
-      <div class="card-h"><span class="dot err" />{t.title}<span class="grow" /><Tags ts={t.tags} /><span class="xs dim">needs-you <Pips used={used} /></span></div>
+      <div class="card-h">
+        <span class="dot err" />
+        {t.title}
+        <span class="grow" />
+        <Tags ts={t.tags} />
+        <span class="xs dim">
+          needs-you <Pips used={used} />
+        </span>
+      </div>
       <div class="card-b col">
         {ranOut && <div class="small">{ranOut}</div>}
         {why?.kind === "refused" && <div class="p-term">Engine refused: {d.reason}</div>}
@@ -63,11 +102,17 @@ function NeedsCard({ t }: { t: Task }) {
         <textarea class="in" rows={2} placeholder="A note for the stage that picks this up" value={note} onInput={(e) => setNote(e.currentTarget.value)} />
         <div class="row wrap">
           {targets.map((x, i) => (
-            <Btn key={x} kind={i === 0 ? "btn-primary" : ""} onClick={() => act("task.decide", { id: t.id, verdict: "send_back", to: x, note }, ["tasks"])}>{TO[x] ?? `Back to ${x}`}</Btn>
+            <Btn key={x} kind={i === 0 ? "btn-primary" : ""} onClick={() => act("task.decide", { id: t.id, verdict: "send_back", to: x, note }, ["tasks"])}>
+              {TO[x] ?? `Back to ${x}`}
+            </Btn>
           ))}
           <Btn onClick={() => go(`task/${t.id}`)}>Open the task</Btn>
-          <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks"])}>Move to bin</Btn>
-          <Btn kind="btn-ghost" onClick={() => act("task.decide", { id: t.id, verdict: "drop", note }, ["tasks"])}>Drop</Btn>
+          <Btn kind="btn-ghost" onClick={() => act("task.park", { id: t.id }, ["tasks"])}>
+            Move to bin
+          </Btn>
+          <Btn kind="btn-ghost" onClick={() => act("task.decide", { id: t.id, verdict: "drop", note }, ["tasks"])}>
+            Drop
+          </Btn>
         </div>
         {buildBlocked && <div class="xs faint">Retry the build is off: research and plan aren't both approved yet (build rule).</div>}
         {used >= CAP && <div class="xs faint">No send-backs left here: drop it, or move it to the bin to come back later.</div>}

@@ -42,7 +42,14 @@ let lister: McpLister = () =>
   new Promise((resolve, reject) =>
     execFile(process.env.FACTORY_CLAUDE ?? "claude", ["mcp", "list"], { encoding: "utf8", timeout: 90_000 }, (err, stdout, stderr) => {
       if (err && (err as NodeJS.ErrnoException).code === "ENOENT") reject(new HttpError(404, "the claude command isn't installed or isn't on PATH"));
-      else if (err && !stdout) reject(new Error(`claude mcp list failed: ${String(stderr || err.message).trim().slice(0, 200)}`));
+      else if (err && !stdout)
+        reject(
+          new Error(
+            `claude mcp list failed: ${String(stderr || err.message)
+              .trim()
+              .slice(0, 200)}`,
+          ),
+        );
       else resolve(String(stdout));
     }),
   );
@@ -91,7 +98,7 @@ export async function ask<T>(store: Store, service: Service, task: string, opts:
   const prompt = [
     `Use only the ${server.name} tools. ${opts.write ? "" : "Only read: don't send, post, create, edit or delete anything."}`,
     task,
-    "Answer with only JSON, no prose. If a tool fails or you lack access, answer {\"error\": \"<what failed>\"}.",
+    'Answer with only JSON, no prose. If a tool fails or you lack access, answer {"error": "<what failed>"}.',
   ].join("\n\n");
   const reply = await claudePrint(prompt, { model: opts.model ?? "haiku", allowedTools: allowedTools(store, service, server.name, !!opts.write), session: `factory-mcp-${service}` });
   const out = extractJson<T & { error?: string }>(reply);

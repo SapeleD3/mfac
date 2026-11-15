@@ -1,9 +1,11 @@
 name: ci
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   engine:
     runs-on: ubuntu-latest
@@ -15,6 +17,7 @@ jobs:
           cache: npm
       - run: sudo apt-get install -y tmux
       - run: npm ci
+      - run: npx biome ci
       - run: npm run typecheck
       - run: npm run check:rules
       - run: npm test
@@ -47,5 +50,9 @@ jobs:
       - name: UI types and bundle
         run: npm run typecheck && node build.mjs
       - uses: dtolnay/rust-toolchain@stable
-      - name: Tauri shell compiles (macOS)
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        with:
+          components: rustfmt, clippy
+      - name: Rust format
+        run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
+      - name: Tauri shell compiles cleanly (macOS)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings

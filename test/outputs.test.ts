@@ -49,12 +49,21 @@ test("solved means every requirement has a PASS line", () => {
 
 test("the toolchain comes from the repo's own manifests, whatever the language", () => {
   const node = discover(job({ "package.json": JSON.stringify({ scripts: { test: "vitest", lint: "eslint .", typecheck: "tsc", dev: "vite" } }), "pnpm-lock.yaml": "" }));
-  assert.deepEqual(node.commands.map((c) => c.command), ["pnpm test", "pnpm run lint", "pnpm run typecheck"]);
+  assert.deepEqual(
+    node.commands.map((c) => c.command),
+    ["pnpm test", "pnpm run lint", "pnpm run typecheck"],
+  );
   const go = discover(job({ "go.mod": "module x", Makefile: "lint:\n\tgolangci-lint run\nbuild:\n\tgo build\nVAR := 1\n" }));
-  assert.deepEqual(go.commands.map((c) => c.command), ["make lint", "make build", "go test ./...", "go vet ./...", "go build ./..."]);
+  assert.deepEqual(
+    go.commands.map((c) => c.command),
+    ["make lint", "make build", "go test ./...", "go vet ./...", "go build ./..."],
+  );
   const py = discover(job({ "pyproject.toml": "[tool.pytest.ini_options]\n[tool.ruff]\n", "uv.lock": "" }));
   assert.deepEqual(allowRules(py), ["Bash(uv run pytest:*)", "Bash(uv run ruff check .:*)"]);
   const ci = discover(job({ ".github/workflows/ci.yml": "jobs:\n  t:\n    steps:\n      - run: npm ci\n      - run: |\n          npm test\n          npm run lint\n" }));
-  assert.deepEqual(ci.ci.map((c) => c.run), ["npm ci", "npm test && npm run lint"]);
+  assert.deepEqual(
+    ci.ci.map((c) => c.run),
+    ["npm ci", "npm test && npm run lint"],
+  );
   assert.deepEqual(discover(job({ "README.md": "hi" })).commands, []);
 });

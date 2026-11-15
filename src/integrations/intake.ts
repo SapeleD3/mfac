@@ -108,7 +108,16 @@ export class Intake {
     if (!r.ok) throw new Error(r.reason);
     this.store.db
       .prepare("UPDATE intake SET status = ?, triage = COALESCE(?, triage), reason = ?, tags = ?, draft = COALESCE(?, draft), task_id = COALESCE(?, task_id), overridden = ? WHERE id = ?")
-      .run(r.machine.state, patch.triage ?? null, patch.why ?? item.reason ?? null, JSON.stringify(patch.tags ?? item.tags), patch.draft ?? null, patch.taskId ?? null, patch.overridden || item.overridden ? 1 : 0, id);
+      .run(
+        r.machine.state,
+        patch.triage ?? null,
+        patch.why ?? item.reason ?? null,
+        JSON.stringify(patch.tags ?? item.tags),
+        patch.draft ?? null,
+        patch.taskId ?? null,
+        patch.overridden || item.overridden ? 1 : 0,
+        id,
+      );
     const saved = this.item(id)!;
     this.engine.emit("intake", { item: saved });
     return saved;
@@ -135,7 +144,8 @@ export class Intake {
       const since = this.cursor("slack") || new Date(Date.now() - 86_400_000).toISOString();
       const items = await slack.poll(this.store, since, { mutedChannels: this.store.setting<string[]>("slack_muted", []) });
       for (const m of items)
-        if (this.add({ source: "slack", sourceId: m.sourceId, author: m.author, channel: m.channel, text: m.text, url: m.url, meta: { channelId: m.channelId, threadTs: m.threadTs ?? m.ts } })) added++;
+        if (this.add({ source: "slack", sourceId: m.sourceId, author: m.author, channel: m.channel, text: m.text, url: m.url, meta: { channelId: m.channelId, threadTs: m.threadTs ?? m.ts } }))
+          added++;
     } else {
       const since = this.cursor("jira") || new Date(Date.now() - 7 * 86_400_000).toISOString();
       for (const i of await jira.poll(this.store, since)) {
@@ -244,8 +254,19 @@ export class Intake {
     }
     const repoPath = d.repo ? ((this.store.db.prepare("SELECT path FROM repos WHERE name = ? OR path = ?").get(d.repo, d.repo) as Row | undefined)?.path as string | undefined) : undefined;
     const existing = this.engine.store.taskBySource(item.source, item.sourceId);
-    const task: TaskView =
-      existing ? this.engine.get(existing.id)! : this.engine.add({ title: d.title || firstLine(item.text), body: `${item.text}${item.url ? `\n\nSource: ${item.url}` : ""}`, source: item.source, sourceRef: item.sourceId, sourceUrl: item.url, tags, recipe: d.recipe, repo: repoPath, backlog: d.action === "backlog" });
+    const task: TaskView = existing
+      ? this.engine.get(existing.id)!
+      : this.engine.add({
+          title: d.title || firstLine(item.text),
+          body: `${item.text}${item.url ? `\n\nSource: ${item.url}` : ""}`,
+          source: item.source,
+          sourceRef: item.sourceId,
+          sourceUrl: item.url,
+          tags,
+          recipe: d.recipe,
+          repo: repoPath,
+          backlog: d.action === "backlog",
+        });
     const event: Event = item.status === "Triage" ? { type: "triage", as: d.action === "backlog" ? "backlog" : "task" } : { type: "promote" };
     return this.moveItem(id, event, { ...base, taskId: task.id });
   }
@@ -262,9 +283,7 @@ export class Intake {
 
   private learn(item: IntakeItem) {
     if (!item.channel || !item.triage) return;
-    const same = this.store.db
-      .prepare("SELECT COUNT(*) AS n FROM intake WHERE overridden = 1 AND source = ? AND channel = ? AND triage = ?")
-      .get(item.source, item.channel, item.triage) as Row;
+    const same = this.store.db.prepare("SELECT COUNT(*) AS n FROM intake WHERE overridden = 1 AND source = ? AND channel = ? AND triage = ?").get(item.source, item.channel, item.triage) as Row;
     if (Number(same.n) < 3) return;
     const exists = this.rules().some((r) => r.match.source === item.source && r.match.channel === item.channel);
     if (exists) return;
@@ -301,4 +320,8 @@ export class Intake {
   }
 }
 
-const firstLine = (t: string) => t.split("\n").find((l) => l.trim())?.slice(0, 90) ?? "Untitled";
+const firstLine = (t: string) =>
+  t
+    .split("\n")
+    .find((l) => l.trim())
+    ?.slice(0, 90) ?? "Untitled";

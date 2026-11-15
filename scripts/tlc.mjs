@@ -36,7 +36,10 @@ export async function check(spec, { workers = "auto" } = {}) {
     child.on("error", (e) => done({ status: 127, stdout, stderr: stderr + String(e) }));
     child.on("close", (status) => done({ status, stdout, stderr }));
   });
-  const output = `${r.stdout ?? ""}${r.stderr ?? ""}`.split("\n").filter((l) => !l.startsWith("Picked up JAVA_TOOL_OPTIONS")).join("\n");
+  const output = `${r.stdout ?? ""}${r.stderr ?? ""}`
+    .split("\n")
+    .filter((l) => !l.startsWith("Picked up JAVA_TOOL_OPTIONS"))
+    .join("\n");
   const ok = r.status === 0 && /Model checking completed\. No error has been found\./.test(output);
   const found = [...output.matchAll(/([\d,]+) distinct states found/g)].pop();
   const states = Number((found?.[1] ?? "0").replace(/,/g, ""));

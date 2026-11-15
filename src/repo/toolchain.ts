@@ -130,7 +130,11 @@ export function discover(repo: string): Toolchain {
     for (const f of readdirSync(workflows).filter((x) => /\.ya?ml$/.test(x))) {
       const body = readFileSync(join(workflows, f), "utf8");
       for (const m of body.matchAll(/^\s*(?:-\s*)?run:\s*(?:\|\s*\n((?:\s{6,}.*\n?)+)|(.+))$/gm)) {
-        const run = (m[1] ?? m[2] ?? "").split("\n").map((l) => l.trim()).filter(Boolean).join(" && ");
+        const run = (m[1] ?? m[2] ?? "")
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .join(" && ");
         if (run) ci.push({ file: `.github/workflows/${f}`, run: run.slice(0, 200) });
       }
     }
@@ -141,9 +145,15 @@ export function discover(repo: string): Toolchain {
 
 export function toolchainMarkdown(t: Toolchain): string {
   const lines = ["## Toolchain", ""];
-  if (!t.commands.length) lines.push("No test, lint or build commands were found in the repo's manifests. Find how the repo is checked (README, CONTRIBUTING, CI) before changing code, and say what you found.", "");
+  if (!t.commands.length)
+    lines.push("No test, lint or build commands were found in the repo's manifests. Find how the repo is checked (README, CONTRIBUTING, CI) before changing code, and say what you found.", "");
   else {
-    lines.push("Commands found in the repo's own manifests. Use these, not tools the repo doesn't use. Stage sessions are allowed to run them.", "", "| Purpose | Command | From |", "| --- | --- | --- |");
+    lines.push(
+      "Commands found in the repo's own manifests. Use these, not tools the repo doesn't use. Stage sessions are allowed to run them.",
+      "",
+      "| Purpose | Command | From |",
+      "| --- | --- | --- |",
+    );
     for (const c of t.commands) lines.push(`| ${c.purpose} | \`${c.command}\` | ${c.from} |`);
     lines.push("");
   }

@@ -46,7 +46,8 @@ test("stage sessions are told not to add attribution", () => {
 
 test("a task branch's commit messages lose agent credit before it's pushed", () => {
   const dir = mkdtempSync(join(tmpdir(), "factory-rules-"));
-  const g = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).trim();
+  const g = (...args: string[]) =>
+    execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).trim();
   g("init", "-q", "-b", "main");
   writeFileSync(join(dir, "a"), "1");
   g("add", "a");
@@ -71,7 +72,9 @@ test("the layout check catches loose files, unknown modules and upward imports",
   put("src/workflow/engine.ts", 'import { a } from "../shared/paths.js";\nimport { b } from "../daemon/host.js";\n');
   put("src/cli/cli.ts", 'const m = await import("../main/plugins.js");\nimport { c } from "../workflow/engine.js";\n');
   assert.deepEqual(
-    checkStructure(dir).map((f) => [f.where, f.line, f.rule]).sort(),
+    checkStructure(dir)
+      .map((f) => [f.where, f.line, f.rule])
+      .sort(),
     [
       ["src/loose.ts", 0, "layout"],
       ["src/misc", 0, "layout"],

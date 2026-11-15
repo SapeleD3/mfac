@@ -47,7 +47,13 @@ export function extend(commands: Record<string, Command>) {
         const [sub, ...rest] = args;
         const task = taskOf(f);
         if (sub === "add") {
-          const t = await call<Ticket>("ticket.add", { task, title: rest.join(" "), check: str(f.check), pickedUpBy: str(f["picked-up-by"]), createdBy: str(f["created-by"]) ?? process.env.FACTORY_ROLE ?? "you" });
+          const t = await call<Ticket>("ticket.add", {
+            task,
+            title: rest.join(" "),
+            check: str(f.check),
+            pickedUpBy: str(f["picked-up-by"]),
+            createdBy: str(f["created-by"]) ?? process.env.FACTORY_ROLE ?? "you",
+          });
           return out(`Filed ${t.id}: ${t.title}`);
         }
         if (sub === "done" || sub === "move") {
@@ -125,7 +131,11 @@ export function extend(commands: Record<string, Command>) {
       help: "Deny a waiting permission request",
       run: async (a: string[], f: Flags) => out(`${(await call<Prompt>("prompt.answer", { id: a[0], allow: false, message: str(f.note) })).status}`),
     },
-    answer: { usage: "answer PROMPT N", help: "Pick option N for a question a session asked", run: async (a: string[]) => out(`${(await call<Prompt>("prompt.answer", { id: a[0], option: Number(a[1]) })).status}`) },
+    answer: {
+      usage: "answer PROMPT N",
+      help: "Pick option N for a question a session asked",
+      run: async (a: string[]) => out(`${(await call<Prompt>("prompt.answer", { id: a[0], option: Number(a[1]) })).status}`),
+    },
     pause: { usage: "pause", help: "Stop starting new tasks (running ones finish their stage)", run: async () => out(JSON.stringify(await call("factory.pause", { paused: true }))) },
     resume: { usage: "resume", help: "Start taking tasks again", run: async () => out(JSON.stringify(await call("factory.pause", { paused: false }))) },
     "set-repo": {

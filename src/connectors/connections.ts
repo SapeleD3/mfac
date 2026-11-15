@@ -85,7 +85,11 @@ export const realTester =
       case "notion":
       case "jira": {
         const s = await serverFor(engine.store, name);
-        if (!s) throw new HttpError(404, connectorSettings(engine.store).server?.[name] === "" ? "turned off by you (factory connect " + name + " turns it back on)" : `no ${INFO[name].label} connector in Claude Code`);
+        if (!s)
+          throw new HttpError(
+            404,
+            connectorSettings(engine.store).server?.[name] === "" ? `turned off by you (factory connect ${name} turns it back on)` : `no ${INFO[name].label} connector in Claude Code`,
+          );
         if (s.status === "needs-auth") throw new HttpError(401, `${s.name} needs you to sign in again in Claude`);
         if (s.status === "failed") throw new HttpError(502, `${s.name}: ${s.detail}`);
         return `via ${s.name}`;
