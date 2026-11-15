@@ -5,6 +5,7 @@ import { Gate } from "./pages/gate";
 import { Improve } from "./pages/improve";
 import { Inbox } from "./pages/inbox";
 import { NeedsYou } from "./pages/needs";
+import { Projects } from "./pages/projects";
 import { Queue } from "./pages/queue";
 import { Routines } from "./pages/routines";
 import { Session } from "./pages/session";
@@ -50,6 +51,7 @@ export function App() {
     needs: ["Needs you", () => <NeedsYou id={route.id} />],
     session: [`${route.id} · live session`, () => <Session id={route.id!} stage={route.query.get("stage") ?? undefined} />],
     inbox: ["Inbox", () => <Inbox />],
+    projects: ["Projects", () => <Projects route={route} />],
     backlog: ["Backlog", () => <Backlog />],
     bin: ["Bin", () => <Bin />],
     connections: ["Connections", () => <Connections />],
@@ -104,6 +106,7 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
       {link("backlog", "archive", "Backlog", t.filter((x) => x.column === "Backlog").length)}
       {link("done", "circle-check", "Done", t.filter((x) => x.column === "Done").length)}
       {link("bin", "trash-2", "Bin", t.filter((x) => x.column === "Bin").length)}
+      {link("projects", "folders", "Projects")}
       <div class="sg">
         <span class="lbl">Factory</span>
       </div>

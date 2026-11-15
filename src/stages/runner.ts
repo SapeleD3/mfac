@@ -5,13 +5,14 @@ import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
 import { connectorReads } from "../connectors/mcp.js";
 import { transcriptPath } from "../claude/print.js";
+import { recall } from "../memory/recall.js";
 
 import type { Decision, Engine, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
 import { checkConfirmed, checkCoverage, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
-import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
+import { baseBranch, changedFiles, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
 import { isGitRepo } from "../repo/registry.js";
 import { stripCredits } from "../repo/rules.js";
 import { paths } from "../shared/paths.js";
@@ -155,7 +156,12 @@ export class Runner {
     return dir;
   }
 
-  private writeBrief(t: TaskView) {
+  private async writeBrief(t: TaskView) {
+    const history = await recall(this.store, t).catch(() => ({ markdown: "", picks: [] }));
+    if (history.markdown) {
+      writeFileSync(join(this.jobDir(t.id), "history.md"), history.markdown);
+      this.store.addEvent(t.id, "recalled", "engine", { picks: history.picks });
+    }
     const lines = [
       `# ${t.id}: ${t.title}`,
       "",
@@ -164,6 +170,9 @@ export class Runner {
       t.parent ? `- Follow-up to ${t.parent}: its files are in ${this.jobDir(t.parent)}. Read its brief, research and outcome first; this task continues that work.` : "",
       t.chat
         ? `- Started from a Claude Code chat. Its full transcript is ${transcriptPath(t.chat) ?? `session ${t.chat} (transcript not found)`}; read it for the decisions and context behind the ask.`
+        : "",
+      history.markdown
+        ? `- Earlier work in this repo: history.md (${history.picks.map((p) => p.taskId).join(", ") || "what else is in progress there"}). Read it first; pull more with factory memory only when a line matters.`
         : "",
       `- Tags: ${t.tags.join(", ") || "none"}`,
       `- Source: ${t.source}${t.sourceUrl ? ` (${t.sourceUrl})` : ""}`,
@@ -301,7 +310,7 @@ export class Runner {
       if (guard.blocked) return;
       for (const t of queued) {
         if (free <= 0) break;
-        this.startTask(t.id);
+        await this.startTask(t.id);
         free--;
       }
     } finally {
@@ -309,7 +318,7 @@ export class Runner {
     }
   }
 
-  startTask(taskId: string) {
+  async startTask(taskId: string) {
     let t = this.engine.get(taskId)!;
     if (t.repo && !t.worktree && (t.machine.kind === "research" || !isGitRepo(t.repo))) {
       t = this.engine.update(t.id, { worktree: t.repo });
@@ -331,7 +340,7 @@ export class Runner {
     }
     const r = this.engine.move(t.id, { type: "start" }, "engine");
     if (!r.ok) return;
-    this.writeBrief(r.task);
+    await this.writeBrief(r.task);
     this.launch(r.task, "coordinator", { prompt: `Task ${t.id} is starting in Researching. Read ${this.jobDir(t.id)}/brief.md and begin.` });
   }
 
@@ -536,6 +545,7 @@ export class Runner {
     const bodyFile = join(job, "pr-body.md");
     writeFileSync(bodyFile, stripCredits(body));
     const title = stripCredits(draft?.title ?? t.title).trim() || t.id;
+    writeFileSync(join(job, "files.txt"), changedFiles(worktree, base).join("\n"));
     const pr = openPullRequest(worktree, { branch, base, title, bodyFile });
     if (pr.url) this.engine.update(t.id, { prUrl: pr.url });
     return { prUrl: pr.url, prError: pr.error };

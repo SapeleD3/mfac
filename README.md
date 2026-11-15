@@ -199,13 +199,48 @@ Approved rules sort what they can, and the rest goes to one batched Haiku call: 
 **task**, or **urgent** (outage words, a VIP, Jira Highest or due within a day; the engine checks these
 itself too).
 
-New input for work that already exists doesn't make a second task. A reply in the Slack thread a task came
-from, or a new update on its Jira issue, is added to that task without a model call. Triage also sees the
-open and recent tasks and marks an item that is clearly more of the same; when it's only likely, the inbox
-shows "Looks like more for F-012" with a button to add it. Work that hasn't started takes the context into
-its brief, running work gets it at its coordinator's next step (saved in `context.md`), and finished work
-gets a follow-up task that starts from the old one's files. Add context yourself from a task's page or
+New input for work that already exists doesn't make a second task, and finding the task it belongs to
+costs no tokens when it can be found locally. A reply in the Slack thread a task came from, or a new
+update on its Jira issue, is added to that task. So is a message that names a task's id, its pull request,
+its branch or its Jira key, or that reads almost the same as an open task (by on-device embeddings). When
+the task it points at has finished, say a ticket raised because a merged change broke something, the new
+task becomes its child and starts with its history. Only the items it can't settle go to Haiku, and each
+shows Haiku just the three closest existing tasks, never the whole board. When a match is only likely, the
+inbox shows "Looks like more for F-012" with a button to add it. Work that hasn't started takes the context
+into its brief, running work gets it at its coordinator's next step (saved in `context.md`), and finished
+work gets a follow-up task that starts from the old one's files. Add context yourself from a task's page or
 with `factory context F-012 "what changed"`.
+
+### Memory: what each task learns from earlier work in its repo
+
+The factory keeps learning per repo, which matters most in a monorepo where every task lands in the same
+place. It's built to spend as few tokens as possible.
+
+- **When a task finishes** the factory keeps a digest: the ask, the requirements, what the research
+  decided, the coordinator's `lessons.md`, your notes at the gates, the files the PR changed, its area
+  (`packages/billing`) and its PR, ticket and thread. One Haiku call (no saved session) turns that into a
+  60-word summary and up to four decisions. It's embedded on the Mac by a small local model
+  (all-MiniLM-L6-v2 through transformers.js, installed by setup.sh or `factory memory install` under
+  `~/.factory/embed`), and its links go into a graph: task to files, area, PR, tickets, thread and the
+  task it continued. All of it lives in the factory's SQLite.
+- **When a task starts** the factory ranks earlier work in the same repo by the graph (the task it
+  continues, tasks its ask names, tasks that changed the same files, tickets and areas), by embedding
+  similarity and by keywords, and writes `history.md`: one line per related task and what else is in
+  progress there, capped at 600 tokens (`memory_budget_tokens`). Stages pull more only when a line matters,
+  with `factory memory show F-012` (about 300 tokens), `factory memory search "words"` and
+  `factory memory file path/to/file.ts`.
+- **Without the embedder** everything still works from the graph and keywords; `factory memory status`
+  says which is in use.
+
+What it costs, per task: one Haiku summary when it finishes (about 1,000 tokens in and 150 out), and
+`history.md` read by the coordinator and researcher (two reads of at most 600 tokens, usually 150 to 300),
+plus any `memory show` a stage chooses to run. Embedding, retrieval, links and the graph cost nothing.
+Triage costs less than before: the prompt no longer lists the 30 most recent tasks (about 1,000 tokens a
+run), only up to three candidates per item that needs the model.
+
+**Projects** in the app (and `factory projects`, `factory projects acme-mono`) shows each repo with every
+job that ran in it, newest first by month: its state, source, area, PR and source links, which task it
+continues and which it led to, with a filter by area.
 
 ### From a Claude Code chat: /mfactory
 
@@ -318,6 +353,7 @@ The engine is split into modules by what they do, in layers. A module imports on
 | 3 | `stages/` | The runner, stage sessions in tmux, and the research check |
 | 3 | `integrations/` | Intake from Slack and Jira, triage and routines |
 | 3 | `upkeep/` | Doctor, launchd agents, retros and self-update |
+| 3 | `memory/` | Per-repo memory: task digests and summaries, on-device embeddings, the task graph, retrieval and Projects |
 | 4 | `cli/` | The `factory` command |
 | 4 | `main/` | The `factoryd` entry point, which wires the plugins together |
 

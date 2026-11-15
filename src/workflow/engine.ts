@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
     confirm: "sonnet",
     triage: "haiku",
     reply: "sonnet",
+    memory: "haiku",
   },
   efforts: {},
   workingHours: { start: 8, end: 19, weekends: false },

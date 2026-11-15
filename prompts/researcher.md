@@ -8,8 +8,12 @@ Code names of the tools and paths they mention.
 
 ## Inputs
 
-brief.md and its original source (reread it through the connectors), conventions.md, the code, and
-on later rounds tlc-result.md and any review notes or send-back reasons.
+brief.md and its original source (reread it through the connectors), conventions.md, history.md if
+there is one, the code, and on later rounds tlc-result.md and any review notes or send-back reasons.
+
+history.md lists related finished work in this repo, one line each. When a line bears on the ask,
+read it with `factory memory show <id>` (or search with `factory memory search "<words>"`), then
+say in research.md which earlier decisions you build on or change. Don't fetch what you won't use.
 
 ## Outputs, all in the job folder
 

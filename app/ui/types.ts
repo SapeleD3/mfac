@@ -210,3 +210,38 @@ export interface Repo {
   about: string;
   isDefault: boolean;
 }
+
+export interface ProjectSummary {
+  name: string;
+  path: string;
+  about: string;
+  isDefault: boolean;
+  registered: boolean;
+  counts: { active: number; waiting: number; queued: number; done: number; dropped: number; total: number };
+  lastActivity?: string;
+}
+
+export interface TimelineItem {
+  id: string;
+  title: string;
+  state: State;
+  column: string;
+  kind: "change" | "research";
+  recipe: string;
+  source: string;
+  sourceUrl?: string;
+  prUrl?: string;
+  branch?: string;
+  parent?: string;
+  children: string[];
+  area?: string;
+  summary?: string;
+  files: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Project extends ProjectSummary {
+  areas: { name: string; count: number }[];
+  tasks: TimelineItem[];
+}

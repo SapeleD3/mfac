@@ -60,6 +60,7 @@ export const LAYERS: Record<string, number> = {
   stages: 3,
   integrations: 3,
   upkeep: 3,
+  memory: 3,
   cli: 4,
   main: 4,
 };

@@ -111,6 +111,13 @@ fi
 step "Skills: superpowers, pstack, ponytail, graphify, design-principles (linked from Claude Code if you already have them)"
 factory skills install | sed 's/^/  /'
 
+step "On-device embeddings for the factory's memory (no tokens, nothing leaves the Mac)"
+if [[ -f "$FACTORY_HOME/embed/node_modules/@huggingface/transformers/package.json" ]]; then
+  ok "installed"
+else
+  factory memory install | sed 's/^/  /' || note "Couldn't install embeddings; memory falls back to graph and keyword search. Retry with factory memory install."
+fi
+
 step "/mfactory in Claude Code (hands a chat to the factory)"
 factory plugin install | sed 's/^/  /' || note "Couldn't install /mfactory; run factory plugin install later."
 

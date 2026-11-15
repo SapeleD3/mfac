@@ -61,6 +61,12 @@ export function diffStat(worktree: string, base: string): string {
   return tryGit(worktree, ["diff", "--stat", `origin/${base}...HEAD`]).out || tryGit(worktree, ["diff", "--stat", `${base}...HEAD`]).out;
 }
 
+export function changedFiles(worktree: string, base: string): string[] {
+  const r = tryGit(worktree, ["diff", "--name-only", `origin/${base}...HEAD`]);
+  const out = r.ok ? r.out : tryGit(worktree, ["diff", "--name-only", `${base}...HEAD`]).out;
+  return out.split("\n").filter(Boolean);
+}
+
 export function stripBranchCredits(worktree: string, base: string): { ok: boolean; out: string } {
   const range = `origin/${base}..HEAD`;
   const log = tryGit(worktree, ["log", "--format=%B%x00", range]);

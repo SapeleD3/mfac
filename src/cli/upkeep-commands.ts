@@ -9,6 +9,8 @@ import { paths } from "../shared/paths.js";
 import { isAlive } from "../daemon/server.js";
 import { type SkillStatus, install as installSkills, status as skillStatus } from "../skills/skills.js";
 import { installChatCommand } from "../skills/chat-command.js";
+import { installEmbedder } from "../memory/embed.js";
+import type { Project, ProjectSummary } from "../memory/projects.js";
 import type { Retro } from "../upkeep/upkeep.js";
 import { factoryRepo } from "../upkeep/upkeep.js";
 import { relaunchApp } from "../upkeep/launchd.js";
@@ -23,6 +25,54 @@ async function viaEngine<T>(method: string, params: Record<string, unknown>, loc
 }
 
 export const upkeepCommands: Record<string, Command> = {
+  memory: {
+    usage: 'memory show ID | search "words" [--repo NAME] | file PATH | status | install',
+    help: "What the factory remembers from finished tasks: one task's summary, a search, the tasks that changed a file; install sets up on-device embeddings",
+    async run(args, f) {
+      const [sub, ...rest] = args;
+      if (sub === "show") return out(await call<string>("memory.show", { task: rest[0] ?? "" }));
+      if (sub === "search") {
+        const lines = await call<string[]>("memory.search", { query: rest.join(" "), repo: str(f.repo) });
+        return out(lines.length ? lines.join("\n") : "Nothing in memory matches.");
+      }
+      if (sub === "file") {
+        const lines = await call<string[]>("memory.file", { path: rest[0] ?? "" });
+        return out(lines.length ? lines.join("\n") : "No finished task changed that file.");
+      }
+      if (sub === "install") {
+        out("Installing the on-device embedding runtime into ~/.factory/embed (a few hundred MB, once)…");
+        const r = installEmbedder();
+        out(r.ok ? "Installed. The model (about 23 MB) downloads on first use into ~/.factory/models." : `Install failed:\n${r.out}`);
+        return r.ok ? 0 : 1;
+      }
+      if (sub === "status" || !sub) {
+        const s = await call<{ embedder?: string; problem?: string; digests: number; summarized: number; vectors: number; edges: number; budgetTokens: number }>("memory.status", {});
+        out(`Embeddings: ${s.embedder ? `${s.embedder}, on this Mac` : `off (${s.problem || "not loaded"}); search uses the graph and keywords`}`);
+        out(`Remembered tasks: ${s.digests} (${s.summarized} summarised) · vectors ${s.vectors} · graph edges ${s.edges}`);
+        out(`Each starting task gets at most ${s.budgetTokens} tokens of earlier work.`);
+        return 0;
+      }
+      throw new Error('factory memory show F-012 | search "words" | file PATH | status | install');
+    },
+  },
+  projects: {
+    usage: "projects [NAME]",
+    help: "Each repo and the jobs that ran in it, newest first, with lineage and area",
+    async run(args) {
+      if (!args[0]) {
+        for (const p of await call<ProjectSummary[]>("projects.list", {}))
+          out(
+            `${p.name.padEnd(24)} ${String(p.counts.total).padStart(3)} jobs · ${p.counts.active} running · ${p.counts.waiting} waiting on you · ${p.counts.done} done${p.registered ? "" : " (not a registered repo)"}`,
+          );
+        return 0;
+      }
+      const p = await call<Project>("projects.get", { name: args[0] });
+      out(`${p.name}${p.about ? `: ${p.about}` : ""}`);
+      if (p.areas.length) out(`Areas: ${p.areas.map((a) => `${a.name} (${a.count})`).join(", ")}`);
+      for (const t of p.tasks) out(`${t.createdAt.slice(0, 10)}  ${t.id}  ${t.state.padEnd(12)} ${t.title}${t.parent ? `  ← ${t.parent}` : ""}${t.area ? `  [${t.area}]` : ""}`);
+      return 0;
+    },
+  },
   doctor: {
     usage: "doctor",
     help: "Check this Mac is ready: tools, Claude login, engine, database, login agent, TLC, connections, skills",
