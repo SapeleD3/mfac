@@ -99,9 +99,16 @@ export function kickstart(restart = false): boolean {
 
 export const APP_BUNDLE_ID = "com.sapeled3.factory";
 
-export function relaunchApp(app: string): void {
-  if (process.platform !== "darwin") return;
+export function relaunchApp(app: string): boolean {
+  if (process.platform !== "darwin") return false;
+  const running = () => spawnSync("pgrep", ["-f", `${app}/Contents/MacOS/`]).status === 0;
   spawnSync("osascript", ["-e", `tell application id "${APP_BUNDLE_ID}" to quit`], { stdio: "ignore" });
-  for (let i = 0; i < 50 && spawnSync("pgrep", ["-f", `${app}/Contents/MacOS/`]).status === 0; i++) spawnSync("sleep", ["0.2"]);
-  spawnSync("open", ["-g", app], { stdio: "ignore" });
+  for (let i = 0; i < 50 && running(); i++) spawnSync("sleep", ["0.2"]);
+  if (running()) spawnSync("pkill", ["-f", `${app}/Contents/MacOS/`]);
+  // open fails with -600 while the old copy is still shutting down, so it gets a few tries.
+  for (let i = 0; i < 5; i++) {
+    if (spawnSync("open", ["-g", app], { stdio: "ignore" }).status === 0) return true;
+    spawnSync("sleep", ["1"]);
+  }
+  return false;
 }

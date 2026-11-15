@@ -11,6 +11,7 @@ import { type SkillStatus, install as installSkills, status as skillStatus } fro
 import type { Retro } from "../upkeep/upkeep.js";
 import { factoryRepo } from "../upkeep/upkeep.js";
 import { relaunchApp } from "../upkeep/launchd.js";
+import { restartEngine } from "./engine-control.js";
 
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
@@ -105,14 +106,12 @@ export const upkeepCommands: Record<string, Command> = {
         step("app: install", "ditto", [join(repo, "app", "src-tauri", "target", "release", "bundle", "macos", "Factory.app"), app]);
         writeFileSync(join(paths.home(), "app-built-from"), `${spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()}\n`);
       }
-      const { commands } = await import("./cli.js");
-      const code = await commands.engine!.run(["restart"], {});
+      out("→ engine: restart");
+      out(await restartEngine());
       if (withApp) {
-        out("→ app: restart");
-        relaunchApp(app);
-        out(`Factory.app is the new build: ${app}`);
+        out("→ app: reopen");
+        out(relaunchApp(app) ? `Factory.app is running the new build: ${app}` : `Factory.app is installed at ${app}; open it from there (macOS didn't let it relaunch)`);
       }
-      return code;
     },
   },
 };
