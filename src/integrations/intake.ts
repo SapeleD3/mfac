@@ -5,7 +5,9 @@ import type { Engine, TaskView } from "../workflow/engine.js";
 import * as jira from "../connectors/jira.js";
 import * as notion from "../connectors/notion.js";
 import * as slack from "../connectors/slack.js";
+import { type Candidate, matchTask } from "../memory/recall.js";
 import { Repos } from "../repo/registry.js";
+import { linksIn } from "../workflow/links.js";
 import { type Event, type State, initial, step } from "../workflow/statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "../workflow/store.js";
 
@@ -248,14 +250,31 @@ export class Intake {
     const active = this.rules("active");
     const forModel: IntakeItem[] = [];
     let attached = 0;
+    const candidates = new Map<string, Candidate[]>();
     for (const i of inbox) {
       this.moveItem(i.id, { type: "pick" });
       const same = this.threadTask(i);
-      if (same && !["Done", "Dropped"].includes(same.machine.state)) {
+      if (same && !finished(same)) {
         this.attach(i.id, same.id, `more in the ${i.source === "jira" ? "Jira issue" : "thread"} that started ${same.id}`);
         attached++;
         continue;
       }
+      const own = this.engine.store.taskBySource(i.source, i.sourceId)?.id;
+      const link = linksIn(this.store, i.text, own ? [own] : []).find((l) => this.engine.get(l.taskId));
+      const match = link ? undefined : await matchTask(this.store, i.text, { exclude: own ? [own] : [] }).catch(() => undefined);
+      const hit = link
+        ? { id: link.taskId, why: link.why }
+        : match?.sure
+          ? { id: match.sure.taskId, why: `it reads like more of ${match.sure.taskId} (similarity ${match.sure.score.toFixed(2)})` }
+          : undefined;
+      const target = hit ? this.engine.get(hit.id) : undefined;
+      if (target && hit && !finished(target)) {
+        this.attach(i.id, target.id, hit.why);
+        attached++;
+        continue;
+      }
+      if (target && hit) this.setMeta(i.id, { parentTask: target.id, parentWhy: hit.why });
+      else if (match?.candidates.length) candidates.set(i.id, match.candidates);
       const rule = active.find((r) => matches(r, i));
       if (rule) {
         this.store.db.prepare("UPDATE triage_rules SET hits = hits + 1 WHERE id = ?").run(rule.id);
@@ -263,16 +282,17 @@ export class Intake {
       } else forModel.push(i);
     }
     if (!forModel.length) return { triaged: inbox.length, tokensUsed: false, ...(attached ? { attached } : {}) };
-    const decisions = await this.askModel(forModel);
+    const decisions = await this.askModel(forModel, candidates);
     for (const i of forModel) {
       const d = decisions.find((x) => x.id === i.id) ?? { id: i.id, action: "task" as TriageAction, reason: "triage gave no answer, so it's queued for you to look at" };
       const related = d.followUp ? this.engine.get(d.followUp) : undefined;
-      if (related && d.sure && d.action !== "ignore") {
+      if (related && d.sure && d.action !== "ignore" && !finished(related)) {
         this.attach(i.id, related.id, d.reason ?? `more input for ${related.id}`);
         attached++;
         continue;
       }
-      if (related) this.setMeta(i.id, { relatedTask: related.id });
+      if (related && d.sure && finished(related)) this.setMeta(i.id, { parentTask: related.id, parentWhy: d.reason ?? `it follows on from ${related.id}` });
+      else if (related) this.setMeta(i.id, { relatedTask: related.id });
       await this.apply(i.id, { action: this.boost(i, d.action), why: d.reason, tags: d.tags, recipe: d.recipe, title: d.title, repo: d.repo });
     }
     return { triaged: inbox.length, tokensUsed: true, ...(attached ? { attached } : {}) };
@@ -287,15 +307,15 @@ export class Intake {
     return action;
   }
 
-  private async askModel(items: IntakeItem[]) {
+  /** Only the few tasks each item was matched to locally are shown, never the whole board: that list is what used to cost the most. */
+  private async askModel(items: IntakeItem[], candidates = new Map<string, Candidate[]>()) {
     const repos = this.repos.forPrompt();
-    const month = Date.now() - 30 * 86_400_000;
-    const tasks = this.engine
-      .list({ all: true })
-      .filter((t) => !["Ignored", "Replied"].includes(t.machine.state) && (!["Done", "Dropped"].includes(t.machine.state) || Date.parse(t.updatedAt) > month))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 30)
-      .map((t) => `- ${t.id} [${t.machine.state}] ${t.title}${t.sourceUrl ? ` (${t.sourceUrl})` : ""}`);
+    const shown = (i: IntakeItem) =>
+      (candidates.get(i.id) ?? []).flatMap((c) => {
+        const t = this.engine.get(c.taskId);
+        return t ? [`${t.id} [${t.machine.state}] ${t.title.slice(0, 80)}`] : [];
+      });
+    const anyCandidates = items.some((i) => shown(i).length);
     const examples = (this.store.db.prepare("SELECT source, channel, author, text, triage FROM intake WHERE overridden = 1 ORDER BY received_at DESC LIMIT 10").all() as Row[]).map(
       (r) => `- [${r.source} ${r.channel ?? ""} from ${r.author ?? "?"}] "${String(r.text).slice(0, 140)}" → ${r.triage}`,
     );
@@ -310,13 +330,17 @@ export class Intake {
       repos.length ? `Known repos:\n${repos.join("\n")}` : "No repos are registered yet; use null.",
       examples.length ? `How they corrected triage before (follow these):\n${examples.join("\n")}` : "",
       "recipe research means they want an answer, findings or a recommendation, not a code change: the task stops once the research is reviewed and approved.",
-      tasks.length
-        ? `Existing tasks (open, or finished in the last 30 days):\n${tasks.join("\n")}\nIf an item is more input for one of these (a reply about it, a correction, a new detail, the same problem again), set followUp to its id, and sure to true only when it's clearly the same work. Otherwise followUp is null.`
+      anyCandidates
+        ? "Some items list candidates: existing tasks that look related. If an item is more input for one of them (a reply about it, a correction, a new detail, the same problem again, or work its result caused), set followUp to that id, and sure to true only when it clearly is. Otherwise followUp is null."
         : "",
       'Answer with only a JSON array: [{"id","action","reason","title","recipe","tags","repo","followUp","sure"}].',
       "",
       "Items:",
-      ...items.map((i) => JSON.stringify({ id: i.id, source: i.source, channel: i.channel, from: i.author, text: i.text.slice(0, 2000), ...i.meta })),
+      ...items.map((i) => {
+        const { relatedTask: _r, parentTask: _p, parentWhy: _w, ...meta } = i.meta;
+        const c = shown(i);
+        return JSON.stringify({ id: i.id, source: i.source, channel: i.channel, from: i.author, text: i.text.slice(0, 2000), ...meta, ...(c.length ? { candidates: c } : {}) });
+      }),
     ]
       .filter(Boolean)
       .join("\n");
@@ -341,7 +365,8 @@ export class Intake {
       const draft = await this.draftReply(item).catch(() => "");
       return this.moveItem(id, { type: "triage", as: "reply" }, { ...base, draft });
     }
-    const repoPath = this.repos.resolve(d.repo) ?? this.repos.mentionedIn(item.text) ?? this.repos.defaultPath();
+    const parentRepo = item.meta.parentTask ? this.engine.get(item.meta.parentTask)?.repo : undefined;
+    const repoPath = this.repos.resolve(d.repo) ?? parentRepo ?? this.repos.mentionedIn(item.text) ?? this.repos.defaultPath();
     const existing = this.engine.store.taskBySource(item.source, item.sourceId);
     const task: TaskView = existing
       ? this.engine.get(existing.id)!
@@ -355,6 +380,7 @@ export class Intake {
           recipe: d.recipe,
           repo: repoPath,
           backlog: d.action === "backlog",
+          parent: item.meta.parentTask,
         });
     const event: Event = item.status === "Triage" ? { type: "triage", as: d.action === "backlog" ? "backlog" : "task" } : { type: "promote" };
     return this.moveItem(id, event, { ...base, taskId: task.id });
@@ -408,6 +434,8 @@ export class Intake {
     return this.moveItem(id, { type: "send_reply" }, { draft: body });
   }
 }
+
+const finished = (t: TaskView) => t.machine.state === "Done" || t.machine.state === "Dropped";
 
 const firstLine = (t: string) =>
   t

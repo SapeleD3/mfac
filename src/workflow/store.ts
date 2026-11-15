@@ -185,6 +185,11 @@ CREATE TABLE IF NOT EXISTS triage_rules (
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS retros (task_id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS digests (task_id TEXT PRIMARY KEY, repo TEXT, area TEXT, at TEXT NOT NULL, data TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS digests_repo ON digests(repo);
+CREATE TABLE IF NOT EXISTS vectors (kind TEXT NOT NULL, ref TEXT NOT NULL, model TEXT NOT NULL, hash TEXT NOT NULL, vec BLOB NOT NULL, PRIMARY KEY (kind, ref));
+CREATE TABLE IF NOT EXISTS edges (src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, PRIMARY KEY (src, rel, dst));
+CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
@@ -323,6 +328,10 @@ export class Store {
   taskByChat(chat: string): Task | undefined {
     const r = this.db.prepare("SELECT * FROM tasks WHERE chat = ? ORDER BY created_at DESC LIMIT 1").get(chat) as Row | undefined;
     return r ? toTask(r) : undefined;
+  }
+
+  children(id: string): Task[] {
+    return (this.db.prepare("SELECT * FROM tasks WHERE parent = ? COLLATE NOCASE ORDER BY created_at").all(id) as Row[]).map(toTask);
   }
 
   taskBySource(source: Source, ref: string): Task | undefined {

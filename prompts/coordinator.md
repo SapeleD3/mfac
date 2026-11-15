@@ -42,6 +42,18 @@ Slack thread, a Jira comment, or a note from the person's chat. It is saved in c
 log it in decision.md, and fold it into the next stage's note. If it changes what an earlier,
 already-approved stage decided, say so and escalate with `needs-you` rather than quietly redoing it.
 
+## Earlier work and lessons
+
+brief.md points to history.md when finished tasks in this repo are related: one line each, chosen
+by the factory. Read it, and pull more only when a line matters (`factory memory show <id>`,
+`factory memory search "<words>"`, `factory memory file <path>`); each pull costs tokens, so don't
+fetch what you won't use. Pass the ids that matter to the researcher and planner in their notes.
+
+Before you open the last gate (the PR gate, or the research gate on a research task), write
+lessons.md: at most five bullets the next task in this repo should know, such as a decision and why,
+a trap in the code, a command that worked, or what the person corrected. Facts only. The factory
+summarises it with the task once it's done.
+
 ## How to work
 
 1. Read {{jobDir}}/brief.md and conventions.md, then any earlier files in the job folder.

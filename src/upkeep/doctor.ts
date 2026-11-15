@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { installed as agentInstalled } from "./launchd.js";
 import { paths } from "../shared/paths.js";
 import { status as skillStatus } from "../skills/skills.js";
+import { MODEL, embedderInstalled } from "../memory/embed.js";
 
 export interface Check {
   name: string;
@@ -129,6 +130,14 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
     status: gaps.length ? "warn" : "ok",
     detail: gaps.length ? `${gaps.map((s) => s.name).join(", ")} missing` : `${skills.length} installed`,
     fix: gaps.length ? "factory skills install (or factory skills add <name> <source>)" : undefined,
+  });
+
+  const embeds = embedderInstalled();
+  checks.push({
+    name: "Memory",
+    status: embeds ? "ok" : "warn",
+    detail: embeds ? `on-device embeddings (${MODEL})` : "no embeddings: memory uses the graph and keywords only",
+    fix: embeds ? undefined : "factory memory install",
   });
 
   if (mac) {
