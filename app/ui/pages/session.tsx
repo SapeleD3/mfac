@@ -58,6 +58,13 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
     <div class="pane-body" style={{ display: "flex" }}>
       <div class="live" style={{ flex: 1, minHeight: 0 }}>
         <aside class="live-side">
+          <a class="ls back" href={`#task/${id}`} title="Esc">
+            <Ic n="arrow-left" s={14} />
+            <span>
+              Back to {id}
+              {t?.title ? <div class="xs dim ellip">{t.title}</div> : null}
+            </span>
+          </a>
           <div class="label" style={{ padding: "4px 8px" }}>
             Sessions in {id}
           </div>

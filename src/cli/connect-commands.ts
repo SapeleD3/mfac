@@ -108,7 +108,7 @@ export const connectCommands: Record<string, Command> = {
       if (name === "notion") {
         const status = await call<{ ready: boolean }>("notion.status");
         if (status.ready) return out("Your factory board is already set up.");
-        const page = await ask("Link to a Notion page for your factory board (Jobs, Tickets and Reviews go there), or Enter to skip: ");
+        const page = await ask("Name of a Notion page for your factory board (Jobs, Tickets and Reviews go there), or Enter to skip: ");
         if (page) {
           out("Creating the board (one call to Notion)...");
           await call("notion.setup", { page });
@@ -207,7 +207,7 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | boards | unwatch "BOARD NAME" | meetings [--server NAME] [--on|--off] | status',
+    usage: 'notion setup "PAGE NAME" | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | boards | unwatch "BOARD NAME" | meetings [--server NAME] [--on|--off] | status',
     help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake adds one of your own boards to watch (through --server when its workspace differs) and queues cards moved to its ready column; run it once per board",
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));

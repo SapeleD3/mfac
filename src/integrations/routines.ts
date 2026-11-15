@@ -26,8 +26,12 @@ export interface Builtin {
   everySeconds: number;
   workingHours?: boolean;
   enabled?: boolean;
+  timeoutMs?: number;
   run: () => Promise<string>;
 }
+
+const RUN_LIMIT_MS = 10 * 60_000;
+const INTERRUPTED = "Stopped when the engine restarted; it runs again on schedule";
 
 const toRoutine = (r: Row): Routine => ({
   id: String(r.id),
@@ -68,7 +72,11 @@ export class Routines {
   constructor(
     private store: Store,
     private engine: Engine,
-  ) {}
+  ) {
+    const at = now();
+    this.store.db.prepare("UPDATE routine_runs SET ended_at = ?, result = 'failed', detail = ? WHERE result = 'running'").run(at, INTERRUPTED);
+    this.store.db.prepare("UPDATE routines SET last_result = 'failed', last_detail = ? WHERE last_result = 'running'").run(INTERRUPTED);
+  }
 
   register(b: Builtin) {
     this.builtins.set(b.id, b);
@@ -148,7 +156,7 @@ export class Routines {
     let result: "ok" | "warn" | "failed" | "skipped" = "ok";
     let detail = "";
     try {
-      detail = r.builtin ? await this.builtins.get(id)!.run() : await shell(r.command!);
+      detail = r.builtin ? await withLimit(this.builtins.get(id)!) : await shell(r.command!);
       const marked = detail.match(/^(skip|warn):\s*/);
       if (marked) {
         result = marked[1] === "skip" ? "skipped" : "warn";
@@ -188,6 +196,15 @@ export class Routines {
   stop() {
     if (this.timer) clearInterval(this.timer);
   }
+}
+
+function withLimit(b: Builtin): Promise<string> {
+  const ms = b.timeoutMs ?? RUN_LIMIT_MS;
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`gave up after ${Math.max(1, Math.round(ms / 60_000))} min without an answer`)), ms);
+  });
+  return Promise.race([b.run(), limit]).finally(() => clearTimeout(timer));
 }
 
 function shell(command: string): Promise<string> {

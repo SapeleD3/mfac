@@ -292,7 +292,7 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
 - `factory disconnect slack` stops the factory using a connector; Claude keeps it. Remove it in Claude's
   connector settings to revoke access entirely.
 
-`factory connect notion` also builds your factory board on a page you pick: **Jobs**, **Tickets**
+`factory connect notion` also builds your factory board on a page you name (`factory notion setup "Factory"`, or its link): **Jobs**, **Tickets**
 (each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.
 At the research and plan gates the review doc is published there. Comment in Notion on every issue,
 then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every

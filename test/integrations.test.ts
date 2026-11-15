@@ -43,10 +43,11 @@ setPrintRunner(async (prompt, opts) => {
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
+    if (prompt.includes("Search Notion for pages")) return JSON.stringify({ found: [{ title: "🏭 Factory", url: "https://www.notion.so/Factory-0123456789abcdef0123456789abcdef" }] });
     if (prompt.includes("Search Notion for databases")) {
       assert.equal(opts.session, "factory-mcp-notion-intake");
       return JSON.stringify({
-        boards: [
+        found: [
           { title: "🛠️ Custom Tools Board", url: "https://notion.so/custom-tools-board" },
           { title: "Custom Tools Board archive", url: "https://notion.so/old-board" },
         ],
@@ -227,6 +228,14 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   assert.equal(connectorCalls.length, reads + 1, "a card already queued isn't read again");
   await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
   assert.equal(connectorCalls.filter((x) => x.prompt.includes("Search Notion for databases")).length, 2, "a link is used as it is");
+});
+
+test("the factory board's page is found by its name, and a link still works as it is", async () => {
+  const { findPage, looksLikeLink } = await import("../src/connectors/notion.js");
+  const { pageIdFrom } = await import("../src/board/notion-sync.js");
+  const page = await findPage(running.store, "factory");
+  assert.equal(pageIdFrom(page.url), "01234567-89ab-cdef-0123-456789abcdef");
+  assert.ok(!looksLikeLink("Factory") && looksLikeLink("https://www.notion.so/Factory-0123456789abcdef0123456789abcdef"));
 });
 
 test("Claude's own connector is used before a plugin's server, and a server whose tools don't load falls through to the next", async () => {
@@ -531,4 +540,16 @@ test("AWS, Gmail and Google Drive are optional rows like Atlassian: quiet until 
   assert.deepEqual(reads, [`${toolPrefix("aws-prod")}__list_buckets`, `${toolPrefix("aws-prod")}__describe_log_groups`], "a generic call tool could change anything, so it asks");
   mcpList = saved;
   await servers(true);
+});
+
+test("a routine left running by a restart, or one that never answers, ends with a reason instead of staying on 'running'", async () => {
+  const { Routines } = await import("../src/integrations/routines.js");
+  running.store.db.prepare("INSERT INTO routines (id, name, description, every_s, working_hours, enabled, builtin, last_result) VALUES ('stuck', 'Stuck', '', 60, 0, 1, 1, 'running')").run();
+  const routines = new Routines(running.store, running.engine);
+  assert.match(routines.get("stuck")!.lastDetail!, /engine restarted/);
+  assert.equal(routines.get("stuck")!.lastResult, "failed");
+  routines.register({ id: "hangs", name: "Hangs", description: "", everySeconds: 60, timeoutMs: 30, run: () => new Promise(() => {}) });
+  const r = await routines.run("hangs");
+  assert.equal(r.lastResult, "failed");
+  assert.match(r.lastDetail!, /gave up/);
 });
