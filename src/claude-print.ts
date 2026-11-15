@@ -5,23 +5,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "./paths.js";
 
-/*
- * One-shot Claude calls for small jobs (triage, reply drafts, connector reads): `claude -p` on the
- * person's subscription, returning text. Built-in tools are always off; `allowedTools` lets a call use
- * named MCP tools, such as the Slack or Notion connector the person has in Claude.
- *
- * Each kind of job reuses one named session ("factory-triage", "factory-mcp-slack", ...), resumed call
- * after call, instead of leaving a new session behind every time. A session is rotated once it has had
- * ROTATE_TURNS calls or is a week old (so its context, and the cost of each call, stays small), and the
- * old transcript is deleted. They all run in ~/.factory/sessions, so they list under one Claude project
- * and never in your repos. Calls for the same job wait their turn. Tests swap `runner` for a fake.
- */
-
 export interface PrintOptions {
   model: string;
   system?: string;
   allowedTools?: string[];
-  /** Which reusable session this call belongs to, e.g. "factory-triage". */
   session?: string;
 }
 
@@ -49,10 +36,8 @@ const writePool = (pool: Record<string, Pooled>) => {
   writeFileSync(poolFile(), JSON.stringify(pool, null, 2));
 };
 
-/** The utility sessions the factory keeps, by name. */
 export const pooledSessions = () => readPool();
 
-/** Deletes a session's transcript wherever Claude Code keeps it (~/.claude/projects/<project>/<id>.jsonl). */
 export function deleteTranscript(sessionId: string, claudeDir = process.env.FACTORY_CLAUDE_DIR ?? join(homedir(), ".claude")): boolean {
   if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return false;
   const projects = join(claudeDir, "projects");
@@ -68,7 +53,6 @@ export function deleteTranscript(sessionId: string, claudeDir = process.env.FACT
   return found;
 }
 
-/** Picks the session for this call: resume the pooled one, or start (and record) a fresh one. */
 function claim(name: string): { id: string; resume: boolean } {
   const pool = readPool();
   const cur = pool[name];
@@ -85,7 +69,6 @@ function claim(name: string): { id: string; resume: boolean } {
   return { id, resume: false };
 }
 
-/** Forget a pooled session that can't be resumed (deleted by hand, say); the next call starts fresh. */
 function drop(name: string) {
   const pool = readPool();
   delete pool[name];
@@ -112,7 +95,6 @@ const exec = (args: string[], prompt: string) =>
 
 const queues = new Map<string, Promise<unknown>>();
 
-/** Runs calls for the same session one at a time. */
 function serial<T>(name: string, work: () => Promise<T>): Promise<T> {
   const prev = queues.get(name) ?? Promise.resolve();
   const next = prev.catch(() => {}).then(work);
@@ -131,7 +113,6 @@ export const realRunner: PrintRunner = (prompt, opts) => {
       return await exec(args(s), prompt);
     } catch (e) {
       if (!s.resume) throw e;
-      // The pooled session couldn't be resumed: start a fresh one under the same name.
       drop(name);
       return exec(args(claim(name)), prompt);
     }
@@ -144,7 +125,6 @@ export function setPrintRunner(r: PrintRunner) {
   runner = r;
 }
 
-/** Pulls the first JSON value out of a model's reply (it may wrap it in a fence). */
 export function extractJson<T>(text: string): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = fenced ? fenced[1]! : text;

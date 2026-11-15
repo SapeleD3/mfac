@@ -6,17 +6,8 @@ import { paths } from "./paths.js";
 import { type Handler, SocketServer } from "./server.js";
 import { Store } from "./store.js";
 
-/*
- * factoryd: the engine process. The launch agent starts it at login and restarts it if it dies;
- * the app, the panel and the CLI only attach to it. Closing them leaves the factory working.
- *
- * Design principle: crash-only. All state is in factory.db and tmux, so stopping this process at
- * any moment is safe; on start it picks up where the database says it was.
- */
-
 export interface Plugin {
   name: string;
-  /** Methods this part adds to the socket API. */
   api?: Record<string, Handler>;
   start?(): void | Promise<void>;
   stop?(): void | Promise<void>;
@@ -24,7 +15,6 @@ export interface Plugin {
 
 export type PluginFactory = (ctx: { engine: Engine; store: Store; server: SocketServer }) => Plugin;
 
-/** Parts registered by later modules (runner, intake, routines). Kept as a list so tests can start a bare engine. */
 export const plugins: PluginFactory[] = [];
 
 export async function startEngine(opts: { db?: string; socket?: string; plugins?: PluginFactory[] } = {}) {

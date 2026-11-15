@@ -12,7 +12,6 @@ const ids = new Set(principles.map((p) => p.id));
 const sourceIds = new Set(sources.map((s) => s.id));
 const SECTIONS = ["## Apply when", "## Watch for", "## Trade-offs", "## Tensions", "## Example", "## Cite as", "## Sources"];
 const GROUPS = new Set(["modularity", "solid", "collaboration", "simplicity", "architecture", "data", "reliability"]);
-// pstack's principle skills (cursor/plugins pstack/skills/principle-*); we link to them, never copy them.
 const PSTACK = new Set([
   "laziness-protocol", "foundational-thinking", "redesign-from-first-principles", "attack-the-premise",
   "subtract-before-you-add", "minimize-reader-load", "outcome-oriented-execution", "experience-first",

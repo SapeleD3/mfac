@@ -1,4 +1,3 @@
-/* The queue: a board by default (drag cards between columns; the engine decides what's allowed), or a list. */
 import { useState } from "preact/hooks";
 import type { Route } from "../app";
 import { go } from "../app";
@@ -15,7 +14,6 @@ const COLS: [Task["column"], string, string][] = [
   ["Done", "done", "Written back to Slack or Jira"],
 ];
 
-/** Why a drop is refused, before asking the engine (the engine checks again either way). */
 function refusal(from: Task["column"], to: Task["column"]): string | undefined {
   if (from === to) return undefined;
   if (to === "Parked") return from === "Done" ? "Finished tasks can't be parked" : undefined;

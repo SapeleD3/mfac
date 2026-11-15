@@ -1,9 +1,3 @@
-// Model-checks a TLA+ spec with TLC. Used by CI on spec/Factory.tla, by `npm run tlc`, and by the
-// research stage's check (src/research-check.ts) on each task's own model.
-//
-//   node scripts/tlc.mjs [spec/Factory.tla]
-//
-// Downloads a pinned tla2tools.jar once (checksum-verified) into ~/.factory/tools. Needs Java 11+.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,7 +23,6 @@ export async function ensureJar() {
 
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 
-/** Runs TLC on `spec` (its .cfg beside it) and returns { ok, states, output }. */
 export async function check(spec, { workers = "auto" } = {}) {
   await ensureJar();
   const file = resolve(spec);

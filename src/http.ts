@@ -1,4 +1,3 @@
-/** Outbound HTTPS only, with a timeout. Tests swap `fetchImpl` for a fake. */
 export let fetchImpl: typeof fetch = (...a) => fetch(...a);
 export function setFetch(f: typeof fetch) {
   fetchImpl = f;
@@ -11,7 +10,6 @@ export class HttpError extends Error {
   ) {
     super(message);
   }
-  /** 401 and 403 mean the token is missing, expired or lacks a scope: a connection problem, not a bug. */
   get auth() {
     return this.status === 401 || this.status === 403;
   }

@@ -10,13 +10,6 @@ import { paths } from "./paths.js";
 import { isAlive } from "./server.js";
 import { STATES, type State } from "./statechart.js";
 
-/*
- * `factory`: the headless way to run the factory, and the scriptable face of everything the app
- * does. Every command is a thin call over the engine's socket.
- *
- * Design principle: if it can be a script, it is one.
- */
-
 export interface Command {
   usage: string;
   help: string;
@@ -49,7 +42,6 @@ const list = (v: Flags[string] | undefined) => (v === undefined || v === true ? 
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const bold = (s: string) => (process.stdout.isTTY ? `\x1b[1m${s}\x1b[0m` : s);
 const dim = (s: string) => (process.stdout.isTTY ? `\x1b[2m${s}\x1b[0m` : s);
-
 
 function printTask(t: TaskView) {
   out(`${bold(t.id)}  ${t.title}`);

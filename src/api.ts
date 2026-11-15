@@ -6,7 +6,6 @@ import type { Handler } from "./server.js";
 import type { Event, State } from "./statechart.js";
 import type { Actor } from "./store.js";
 
-/** What clients may ask of the engine. Later milestones add their own methods with `extend`. */
 export function coreApi(engine: Engine, startedAt: string): Record<string, Handler> {
   return {
     ping: () => ({ pong: true, pid: process.pid, startedAt, version: process.env.npm_package_version ?? "0.1.0" }),
@@ -17,7 +16,6 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
       if (!t) throw new Error(`no task ${p.id}`);
       return { task: t, events: engine.events(t.id) };
     },
-    /** Low-level move; the coordinator and stages use it, and the statechart has the last word. */
     "task.move": (p: { id: string; event: Event; actor?: Actor; data?: Record<string, unknown> }) => {
       // Sessions may only report their own work; verdicts at gates are reserved for people.
       const actor = p.actor ?? "coordinator";
@@ -36,7 +34,6 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
       return engine.update(p.id, patch);
     },
     "task.rules": (p: { id: string }) => engine.rules(p.id),
-    /** The files a task's stages wrote (research.md, plan.md, reviews...), for the task view. */
     "job.files": (p: { id: string }) => {
       const dir = paths.job(p.id);
       if (!existsSync(dir)) return [];
@@ -48,7 +45,6 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
         })
         .sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
     },
-    /** Read one file from a task's job folder (at most 256 KB; nothing outside the folder). */
     "job.read": (p: { id: string; name: string }) => {
       const dir = paths.job(p.id);
       const file = normalize(join(dir, p.name));

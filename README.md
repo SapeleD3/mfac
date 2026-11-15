@@ -226,6 +226,9 @@ npm run preview      # dev only: the UI in a browser against your running engine
 ```sh
 npm test          # builds, then runs the tests (including a walk of every reachable task state)
 npm run tlc       # model-checks spec/Factory.tla with TLC (needs Java 11+)
+npm run check:rules
 ```
+
+The rules in [CLAUDE.md](CLAUDE.md) apply here and to everything the factory writes in other repos: no agent credit in commits or PRs, and no comments unless they give the next developer context the code can't. Stage sessions run with attribution turned off, and the factory strips any credit lines from a task branch's commits and PR body before it pushes.
 
 Factory files live in `~/.factory` (or `$FACTORY_HOME`), never inside a repo.

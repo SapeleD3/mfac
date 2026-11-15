@@ -1,8 +1,3 @@
-/*
- * Rules and learning: the self-improving loop at three levels. Your repos (corrections become checks,
- * as harden tasks), triage (your overrides become rules you approve), and the factory itself (a weekly
- * improve-factory task from the retros). Every change goes through the same gates.
- */
 import { go } from "../app";
 import { Btn, StateChip } from "../kit";
 import { act, useApp } from "../store";

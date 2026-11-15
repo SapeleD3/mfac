@@ -2,14 +2,6 @@ import { spawn } from "node:child_process";
 import type { Engine } from "./engine.js";
 import { type Row, type Store, now, opt } from "./store.js";
 
-/*
- * Routines: everything the factory does on a schedule, in one place you can see and control. Each has
- * a schedule, its last run and result, its next run, and an on/paused switch. Built-in routines are
- * code in the engine; your own routines are shell commands (often `factory add ...`).
- *
- * Design principle: if it can be a script, it is one; and nothing runs out of sight.
- */
-
 export interface Routine {
   id: string;
   name: string;
@@ -33,7 +25,6 @@ export interface Builtin {
   everySeconds: number;
   workingHours?: boolean;
   enabled?: boolean;
-  /** Returns a one-line result; throw to mark the run failed. Return "skip: why" to mark it skipped. */
   run: () => Promise<string>;
 }
 
@@ -60,7 +51,6 @@ export function inWorkingHours(at: Date, hours: { start: number; end: number; we
   return h >= hours.start && h < hours.end;
 }
 
-/** "10m", "2h", "1d", "30s" or a number of seconds. */
 export function parseEvery(s: string): number {
   const m = String(s).trim().match(/^(\d+)\s*([smhd]?)$/i);
   if (!m) throw new Error(`write the schedule like 10m, 2h or 1d (got "${s}")`);
@@ -100,7 +90,6 @@ export class Routines {
     return this.store.db.prepare("SELECT * FROM routine_runs WHERE routine_id = ? ORDER BY id DESC LIMIT ?").all(id, limit) as Row[];
   }
 
-  /** Your own routine: a shell command on a schedule. */
   add(input: { name: string; every: string; command: string; workingHours?: boolean }): Routine {
     if (!input.name?.trim() || !input.command?.trim()) throw new Error("a routine needs a name and a command");
     const id = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -136,7 +125,6 @@ export class Routines {
     return r;
   }
 
-  /** Run one routine now (the Run now button, or its schedule). */
   async run(id: string, opts: { manual?: boolean } = {}): Promise<Routine> {
     const r = this.get(id);
     if (!r) throw new Error(`no routine ${id}`);
@@ -170,7 +158,6 @@ export class Routines {
     return saved;
   }
 
-  /** Run whatever is due. Routines outside working hours are pushed to their next slot. */
   async tick(at = new Date()) {
     const hours = this.engine.settings().workingHours;
     for (const r of this.list()) {

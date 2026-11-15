@@ -12,7 +12,6 @@ import * as tmux from "./tmux.js";
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
 
-/** Which task a session is working on: --task, or the FACTORY_TASK the runner sets in every session. */
 function taskOf(f: Flags, arg?: string): string {
   const id = str(f.task) ?? arg ?? process.env.FACTORY_TASK;
   if (!id) throw new Error("which task? pass --task F-001 (inside a factory session it's automatic)");
@@ -26,7 +25,6 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Commands added by later milestones. */
 export function extend(commands: Record<string, Command>) {
   Object.assign(commands, {
     coord: {

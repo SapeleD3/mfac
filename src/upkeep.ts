@@ -10,12 +10,6 @@ import { install as installSkills, status as skillStatus } from "./skills.js";
 import { type Row, now, parseJson } from "./store.js";
 import { guard } from "./usage.js";
 
-/*
- * Upkeep: the usage guard, a retro for every finished task, the weekly improve-factory task, and the
- * setup checks. All plain code; the only Claude it starts is the improve-factory task, and that goes
- * through research, plan and PR ready like any other task.
- */
-
 export interface Retro {
   taskId: string;
   title: string;
@@ -67,7 +61,6 @@ ${r.notes.length ? r.notes.map((n) => `- ${n}`).join("\n") : "- none"}
 `;
 }
 
-/** The factory's own checkout (where setup.sh ran), for improve-factory tasks. */
 export const factoryRepo = () => join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const upkeepPart: PluginFactory = ({ engine, store }) => {

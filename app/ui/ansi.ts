@@ -1,4 +1,3 @@
-/* Turns a tmux capture with escapes (capture-pane -e) into safe HTML: SGR colours and weight only. */
 const BASIC = ["#1d1f24", "#e06c6c", "#6cc28a", "#e8b04a", "#6aa8ff", "#c79bf2", "#5fc4c4", "#c9d1d9"];
 const BRIGHT = ["#6b707c", "#ff8a7a", "#8fe0a8", "#f2c46b", "#8fb5ff", "#d9b3ff", "#7fd1d1", "#ffffff"];
 

@@ -1,12 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { paths } from "./paths.js";
-
-/*
- * One git worktree per task under ~/.factory/worktrees/<repo>/<task>, on its own branch, so tasks in
- * the same repo never touch each other or the person's checkout.
- */
+import { stripCredits } from "./rules.js";
 
 export function git(cwd: string, args: string[], input?: string): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"] }).trim();
@@ -30,14 +27,12 @@ export function slug(text: string, max = 40): string {
   );
 }
 
-/** The repo's main branch: origin's HEAD if known, else main or master. */
 export function baseBranch(repo: string): string {
   const head = tryGit(repo, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
   if (head.ok) return head.out.replace(/^origin\//, "");
   return tryGit(repo, ["rev-parse", "--verify", "main"]).ok ? "main" : "master";
 }
 
-/** Create (or reuse) the task's worktree. Returns its path and branch. */
 export function ensureWorktree(repo: string, taskId: string, title: string, base = baseBranch(repo)): { path: string; branch: string; created: boolean } {
   const path = paths.worktree(repoName(repo), taskId);
   const branch = `factory/${taskId.toLowerCase()}-${slug(title, 32)}`;
@@ -55,7 +50,6 @@ export function removeWorktree(repo: string, path: string) {
   tryGit(repo, ["worktree", "prune"]);
 }
 
-/** Rebase the task's branch onto the latest base before the PR gate, so you never review a stale diff. */
 export function rebaseOnBase(worktree: string, base: string): { ok: boolean; out: string } {
   tryGit(worktree, ["fetch", "--quiet", "origin", base]);
   const r = tryGit(worktree, ["rebase", `origin/${base}`]);
@@ -67,7 +61,15 @@ export function diffStat(worktree: string, base: string): string {
   return tryGit(worktree, ["diff", "--stat", `origin/${base}...HEAD`]).out || tryGit(worktree, ["diff", "--stat", `${base}...HEAD`]).out;
 }
 
-/** Push the branch and open a PR with `gh`, if it's installed and signed in. */
+export function stripBranchCredits(worktree: string, base: string): { ok: boolean; out: string } {
+  const range = `origin/${base}..HEAD`;
+  const log = tryGit(worktree, ["log", "--format=%B%x00", range]);
+  if (!log.ok || log.out.split("\0").every((m) => stripCredits(m).trim() === m.trim())) return { ok: true, out: "" };
+  const filter = `"${process.execPath}" "${fileURLToPath(new URL("./rules.js", import.meta.url))}" strip`;
+  const r = spawnSync("git", ["filter-branch", "-f", "--msg-filter", filter, range], { cwd: worktree, encoding: "utf8", env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: "1" } });
+  return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
+}
+
 export function openPullRequest(worktree: string, opts: { branch: string; base: string; title: string; bodyFile: string }): { url?: string; error?: string } {
   const push = tryGit(worktree, ["push", "-u", "origin", opts.branch]);
   if (!push.ok) return { error: `git push failed: ${push.out}` };

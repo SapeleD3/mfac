@@ -1,8 +1,3 @@
-/*
- * Needs you: every gate waiting for a verdict, every question or permission prompt from a session,
- * and tasks where an automatic loop ran out or the engine refused a step. Needs you is a gate too,
- * with the same cap of 3, so every task still ends.
- */
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { Btn, Pips, Tags } from "../kit";

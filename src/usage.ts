@@ -4,16 +4,6 @@ import { basename, join } from "node:path";
 import type { Engine } from "./engine.js";
 import type { Store } from "./store.js";
 
-/*
- * The usage guard. Claude Code writes every session's transcript, with token counts, under
- * ~/.claude/projects. The guard reads them (no API, no tokens), works out how much of the plan's 5-hour
- * window is used, and pauses starting new work above the ceiling in Settings. Running stages finish.
- * It also adds up each factory session's tokens onto its task.
- *
- * The plan's real limits aren't published as token counts, so unless you set them (settings
- * `usage_limits`), the 5-hour limit is estimated as your busiest 5-hour window in the last 14 days.
- */
-
 interface Entry {
   at: number;
   tokens: number;
@@ -46,14 +36,12 @@ function parse(file: string): Entry[] {
       const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
       entries.push({ at: Date.parse(m.timestamp), tokens, session });
     } catch {
-      /* a partial line while the session writes */
     }
   }
   cache.set(file, { size: st.size, mtime: st.mtimeMs, entries });
   return entries;
 }
 
-/** Every usage entry from transcripts touched in the last `days` days. */
 export function readUsage(days = 14, dir = claudeDir()): Entry[] {
   const root = join(dir, "projects");
   if (!existsSync(root)) return [];
@@ -69,14 +57,12 @@ export function readUsage(days = 14, dir = claudeDir()): Entry[] {
         if (statSync(file).mtimeMs < since) continue;
         for (const e of parse(file)) if (e.at >= since) out.push(e);
       } catch {
-        /* removed while reading */
       }
     }
   }
   return out.sort((a, b) => a.at - b.at);
 }
 
-/** Sessions grouped into 5-hour blocks the way the plan counts them: a block starts at the first message. */
 export function blocks(entries: Entry[]): { start: number; tokens: number }[] {
   const out: { start: number; tokens: number }[] = [];
   for (const e of entries) {
@@ -120,7 +106,6 @@ export function reading(entries: Entry[], opts: { ceiling: number; limit5h?: num
   };
 }
 
-/** One run of the usage-guard routine. */
 export function guard(engine: Engine, store: Store): string {
   const entries = readUsage();
   const limits = store.setting<{ window5h?: number; weekly?: number }>("usage_limits", {});
@@ -131,7 +116,6 @@ export function guard(engine: Engine, store: Store): string {
     engine.emit("alert", { level: r.blocked ? "warn" : "info", message: r.blocked ? `Queue paused: ${r.reason}. Running stages finish.` : "Plan usage is back under the ceiling; the queue is running again." });
   }
 
-  // Tokens per factory session, onto its stage and task.
   const stages = store.db.prepare("SELECT id, task_id, session_id, tokens FROM stages").all() as { id: string; task_id: string; session_id: string; tokens: number }[];
   const bySession = new Map<string, number>();
   for (const e of entries) bySession.set(e.session, (bySession.get(e.session) ?? 0) + e.tokens);

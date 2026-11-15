@@ -1,7 +1,3 @@
-/*
- * One task, start to end: its rail of stages and gates with each cap's count, what the coordinator
- * did and why, the files each stage wrote, and the links out (Notion, VS Code, the PR, the source).
- */
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openTerminal, openUrl } from "../bridge";

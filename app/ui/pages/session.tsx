@@ -1,8 +1,3 @@
-/*
- * Live session: the real Claude Code session a stage is running, streamed from the factory's tmux
- * server. Read-only by default; take over to type into it (the coordinator waits until you hand
- * back), or open the same session in Terminal.
- */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ansiToHtml } from "../ansi";
 import { call, openInVSCode, openTerminal } from "../bridge";

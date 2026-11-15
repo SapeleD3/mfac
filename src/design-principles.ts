@@ -4,19 +4,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./paths.js";
 
-/**
- * The design-principles knowledge base: a bundled skill in plugin/skills/design-principles that
- * every station reads when it makes a design decision, plus a local cache of the free source PDFs.
- *
- * The repository is public, so PDFs are never committed. fetchDesignPrincipleSources() downloads
- * the ones that are legally free (author, institution or open-licence copies listed in
- * sources.json) into ~/.factory/cache/design-principles on the person's machine.
- *
- * Design principles: single source of truth (sources.json is the only list of sources; the notes
- * cite its ids and the tests check every citation); crash-only (each PDF is written to a temp file
- * and renamed, so a killed download never leaves a half file that looks cached).
- */
-
 export const designPrinciplesDir = () =>
   join(dirname(fileURLToPath(import.meta.url)), "..", "..", "plugin", "skills", "design-principles");
 
@@ -54,7 +41,6 @@ export function loadSources(dir = designPrinciplesDir()): Source[] {
 const list = (v: string | undefined) =>
   (v ?? "").replace(/^\[|\]$/g, "").split(",").map((s) => s.trim()).filter(Boolean);
 
-/** Parses the flat frontmatter every principle file uses: `key: value` and `key: [a, b]`. */
 export function parsePrinciple(text: string): Principle {
   const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
   if (!m) throw new Error("principle file has no frontmatter");
@@ -94,11 +80,6 @@ interface CacheEntry { url: string; bytes: number; sha256: string; fetchedAt: st
 
 const isPdf = (b: Uint8Array) => b.length > 5 && Buffer.from(b.subarray(0, 5)).toString("latin1") === "%PDF-";
 
-/**
- * Downloads every source that has a free PDF into the cache, trying its URLs in order.
- * Already-cached PDFs are skipped, so running it again only retries what failed.
- * Anything that is not a real PDF (a login page, an HTML error) counts as a failure.
- */
 export async function fetchDesignPrincipleSources(opts: {
   fetch?: typeof fetch;
   dir?: string;
@@ -160,6 +141,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   const r = await fetchDesignPrincipleSources({ log: (l) => console.log(l) });
   console.log(`${r.fetched.length} fetched, ${r.cached.length} already cached, ${r.failed.length} failed -> ${designPrinciplesCache()}`);
-  // A dead mirror should not fail setup; only fail when nothing could be fetched at all.
   process.exit(r.failed.length && !r.fetched.length && !r.cached.length ? 1 : 0);
 }

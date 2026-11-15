@@ -15,7 +15,6 @@ const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
 const mark = { ok: "\x1b[32m✓\x1b[0m", warn: "\x1b[33m!\x1b[0m", err: "\x1b[31m✗\x1b[0m" };
 
-/** Uses the engine when it's up (it knows connections and saved skills), or runs on its own. */
 async function viaEngine<T>(method: string, params: Record<string, unknown>, local: () => Promise<T>): Promise<T> {
   return (await isAlive(paths.socket())) ? call<T>(method, params) : local();
 }

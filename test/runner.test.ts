@@ -15,7 +15,6 @@ process.env.FACTORY_HOME = dir;
 const socket = join(dir, "run", "factoryd.sock");
 process.env.FACTORY_SOCKET = socket;
 
-/** tmux stand-in: records what the runner starts and types, and which sessions are alive. */
 const alive = new Set<string>();
 const started: { id: string; cwd: string; command: string[]; env: Record<string, string> }[] = [];
 const pasted: { id: string; text: string }[] = [];
@@ -67,19 +66,16 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.ok(now.task.worktree?.includes(join("worktrees")), "worktree created");
   assert.equal((await c<{ task: TaskView }>("task.get", { id: other.id })).task.machine.state, "Queued", "one slot only");
 
-  // The coordinator is an Opus session in the worktree, with the factory's hooks and allowlist.
   const coordStart = started.find((s) => s.id === `${t.id}-coordinator-1`)!;
   assert.ok(coordStart.command.includes("opus"));
   assert.ok(coordStart.command.includes("--settings"));
   assert.equal(coordStart.env.FACTORY_TASK, t.id);
   assert.equal(coordStart.cwd, now.task.worktree);
 
-  // Stages must match the state.
   await assert.rejects(coord(t.id, "run", { role: "builder" }), /builder runs in Building/);
   assert.match(await coord(t.id, "run", { role: "researcher" }), /Started/);
   await assert.rejects(coord(t.id, "run", { role: "researcher" }), /still running/);
 
-  // The researcher stops without its file: nudged, not finished.
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-1`) });
   assert.match(lastPaste().text, /without writing research.md/);
 
@@ -91,7 +87,6 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.equal(lastPaste().id, `${t.id}-coordinator-1`);
   assert.match(lastPaste().text, /researcher-1 finished and wrote research.md/);
 
-  // TLC fails: research goes back with the counterexample.
   tlcPasses = false;
   assert.match(await coord(t.id, "submit-research"), /check failed \(round 1\/3\)[\s\S]*Invariant Safe is violated/);
   tlcPasses = true;
@@ -101,7 +96,6 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.match(await coord(t.id, "submit-research"), /research gate is open/);
   assert.equal(alive.has(`${t.id}-coordinator-1`), false, "coordinator's session freed at the gate");
 
-  // The coordinator can't approve; a person can, and the coordinator resumes with the verdict.
   await assert.rejects(c("task.move", { id: t.id, event: { type: "approve" }, actor: "coordinator" }), /person's decision/);
   await c("task.decide", { id: t.id, verdict: "approve", note: "Good, keep the CSV path" });
   await new Promise((r) => setTimeout(r, 30));
@@ -122,7 +116,6 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-builder-1`) });
   assert.match(await coord(t.id, "submit-build"), /code_review-1.*security_review-1.*ui_review-1/);
 
-  // Reviews run side by side; the coordinator hears once, when the last one finishes.
   const before = pasted.length;
   for (const role of ["code_review", "security_review"]) {
     writeFileSync(join(job(t.id), `review-${role.split("_")[0]}.md`), "Blocking findings: 0");
@@ -152,7 +145,6 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.equal(final.machine.state, "PRGate");
   assert.equal(final.machine.loops.review, 1);
 
-  // The slot is free again, so the second task starts.
   await c("factory.tick");
   assert.equal((await c<{ task: TaskView }>("task.get", { id: other.id })).task.machine.state, "Researching");
 });
@@ -168,7 +160,6 @@ test("permission requests wait for your click in the panel", async () => {
   await c("prompt.answer", { id: prompts[0]!.id, allow: false, message: "Not on the work Mac" });
   assert.deepEqual(await pending, { behavior: "deny", message: "Not on the work Mac" });
 
-  // Unanswered requests fall back to Claude's own prompt in the session.
   const unanswered = await c<{ behavior: string }>("hook.permission", { session_id: session, tool_name: "Bash", tool_input: { command: "ls" } });
   assert.equal(unanswered.behavior, "ask");
 });

@@ -3,16 +3,6 @@ import { extractJson, runner as claudePrint } from "./claude-print.js";
 import { HttpError } from "./http.js";
 import type { Store } from "./store.js";
 
-/*
- * Slack, Notion and Jira come through Claude itself: the connectors (or MCP servers) the person already
- * has in Claude Code. The factory holds no tokens and needs no Slack app. It only:
- *  - finds the right server in `claude mcp list` (free: no model call), which also says whether the
- *    server is connected or needs signing in again;
- *  - runs small `claude -p` calls on Haiku that may use only that server's tools, and that answer in
- *    JSON. Reads are limited to the server's read-only tools when they're known; a write (posting a
- *    reply you pressed Send on, updating the Notion board) is the only call that gets the rest.
- */
-
 export const SERVICES = ["slack", "notion", "jira"] as const;
 export type Service = (typeof SERVICES)[number];
 
@@ -24,7 +14,6 @@ export interface McpServer {
 
 const MATCH: Record<Service, RegExp> = { slack: /slack/i, notion: /notion/i, jira: /atlassian|jira/i };
 
-/** Verbs in a tool name that change something (slack_send_message, notion-create-pages, addCommentToJiraIssue). Anything else is a read. */
 const WRITE_VERBS = new Set("send post create update delete remove add edit move archive schedule upload reply react set write comment duplicate restore transition assign invite".split(" "));
 export const isWriteTool = (name: string) =>
   name
@@ -33,7 +22,6 @@ export const isWriteTool = (name: string) =>
     .split(/[^a-z]+/)
     .some((w) => WRITE_VERBS.has(w));
 
-/** Parses `claude mcp list`: lines like `claude.ai Slack: https://... - ✓ Connected`. */
 export function parseMcpList(text: string): McpServer[] {
   const out: McpServer[] = [];
   for (const line of text.split("\n")) {
@@ -46,7 +34,6 @@ export function parseMcpList(text: string): McpServer[] {
   return out;
 }
 
-/** The tool-name prefix Claude Code gives a server's tools: mcp__<name with non-word characters as _>. */
 export const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
 export type McpLister = () => Promise<string>;
@@ -67,7 +54,6 @@ export function setMcpLister(l: McpLister) {
 
 let cache: { at: number; servers: McpServer[] } | undefined;
 
-/** Claude Code's MCP servers and connectors, cached for a minute (each listing checks every server). */
 export async function servers(fresh = false): Promise<McpServer[]> {
   if (!fresh && cache && Date.now() - cache.at < 60_000) return cache.servers;
   cache = { at: Date.now(), servers: parseMcpList(await lister()) };
@@ -75,15 +61,12 @@ export async function servers(fresh = false): Promise<McpServer[]> {
 }
 
 export interface ConnectorSettings {
-  /** The server to use per service. Empty string: you turned it off. Unset: the first one that matches. */
   server?: Partial<Record<Service, string>>;
-  /** Tool names seen when you connected, so reads can be limited to read-only tools. */
   tools?: Partial<Record<Service, string[]>>;
 }
 
 export const connectorSettings = (store: Store) => store.setting<ConnectorSettings>("connectors", {});
 
-/** Which server serves this service, or undefined if there is none (or you turned it off). */
 export async function serverFor(store: Store, service: Service, fresh = false): Promise<McpServer | undefined> {
   const chosen = connectorSettings(store).server?.[service];
   if (chosen === "") return undefined;
@@ -101,10 +84,6 @@ export function allowedTools(store: Store, service: Service, server: string, wri
 
 const LABEL: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Jira (Atlassian)" };
 
-/**
- * One small Claude call that may use only this service's connector. `task` says what to do and what
- * JSON to answer with. Throws an HttpError the health checks understand when the connector is missing.
- */
 export async function ask<T>(store: Store, service: Service, task: string, opts: { write?: boolean; model?: string } = {}): Promise<T> {
   const server = await serverFor(store, service);
   if (!server) throw new HttpError(404, `no ${LABEL[service]} connector in Claude Code`);
@@ -122,7 +101,6 @@ export async function ask<T>(store: Store, service: Service, task: string, opts:
   return out;
 }
 
-/** `factory connect`: confirms the connector works with one cheap read, and remembers its tool names. */
 export async function probe(store: Store, service: Service): Promise<{ who: string; server: string; tools: string[] }> {
   const server = await serverFor(store, service, true);
   if (!server) throw new HttpError(404, `no ${LABEL[service]} connector in Claude Code`);
@@ -137,10 +115,6 @@ export async function probe(store: Store, service: Service): Promise<{ who: stri
   return { who: r.who ?? "connected", server: server.name, tools };
 }
 
-/**
- * The read-only tools of every connector you've connected, for stage sessions' allowlists. Only tools
- * seen at `factory connect` count, so a write tool is never allowed by accident. No calls made.
- */
 export function connectorReads(store: Store): string[] {
   const s = connectorSettings(store);
   return SERVICES.flatMap((svc) => {

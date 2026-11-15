@@ -1,12 +1,6 @@
 import { ask } from "./connectors.js";
 import type { Store } from "./store.js";
 
-/*
- * Slack, read through the Slack connector you have in Claude (see connectors.ts): a small Haiku call
- * that may use only read-only Slack tools picks up DMs, group DMs and @-mentions of you since the
- * cursor. Replies are only ever posted after you press Send.
- */
-
 export interface SlackItem {
   sourceId: string;
   author: string;
@@ -18,7 +12,6 @@ export interface SlackItem {
   threadTs?: string;
 }
 
-/** Everything aimed at you since `since` (ISO time). */
 export async function poll(store: Store, since: string, opts: { mutedChannels?: string[] } = {}): Promise<SlackItem[]> {
   const muted = opts.mutedChannels?.length ? ` Skip these channels: ${opts.mutedChannels.join(", ")}.` : "";
   const r = await ask<{ items?: Partial<SlackItem>[] }>(
@@ -45,7 +38,6 @@ export async function poll(store: Store, since: string, opts: { mutedChannels?: 
     .filter((i) => !(opts.mutedChannels ?? []).includes(i.channel));
 }
 
-/** Post in the item's thread, as you. Only called after you press Send (or approve a write-back). */
 export async function reply(store: Store, channelId: string, threadTs: string, text: string) {
   await ask(
     store,

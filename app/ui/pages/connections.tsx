@@ -1,8 +1,3 @@
-/*
- * Connections and health. Slack, Notion and Jira are the connectors you already have in Claude; the
- * factory holds no tokens. Health checks read `claude mcp list` (no model call). A failure raises a
- * sticky alert; work that needs it pauses instead of failing.
- */
 import { useState } from "preact/hooks";
 import { openTerminal, openUrl } from "../bridge";
 import { Brand, Btn, Ic, ago } from "../kit";

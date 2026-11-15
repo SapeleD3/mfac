@@ -1,7 +1,3 @@
-/*
- * Intake and triage. In working hours the engine polls Slack and Jira for anything newer than its
- * cursor (plain API calls, no tokens); one batched Haiku call triages the rest. Overrides here teach it.
- */
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openUrl } from "../bridge";

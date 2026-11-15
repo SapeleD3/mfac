@@ -4,12 +4,6 @@ import { HttpError } from "./http.js";
 import { connectorSettings, probe, serverFor, servers } from "./connectors.js";
 import { type Row, type Store, now, opt } from "./store.js";
 
-/*
- * Connections and health. Slack, Notion and Jira are Claude's own connectors (connectors.ts); the
- * factory holds no tokens. Before each intake run the engine checks the connection with no model call. A failure raises a sticky alert that never auto-dismisses (fix it or snooze it), and
- * work that needs the connection pauses instead of failing; it catches up from its cursor once fixed.
- */
-
 export const CONNECTIONS = ["slack", "notion", "jira", "claude", "github"] as const;
 export type ConnectionName = (typeof CONNECTIONS)[number];
 export type ConnectionStatus = "connected" | "expired" | "missing" | "error";
@@ -83,7 +77,6 @@ const run = (cmd: string, args: string[]) =>
     });
   });
 
-/** One cheap call per connection; throws on failure. */
 export const realTester =
   (engine: Engine): Tester =>
   async (name) => {
@@ -91,7 +84,6 @@ export const realTester =
       case "slack":
       case "notion":
       case "jira": {
-        // Free: `claude mcp list` checks each server's connection without a model call.
         const s = await serverFor(engine.store, name);
         if (!s) throw new HttpError(404, connectorSettings(engine.store).server?.[name] === "" ? "turned off by you (factory connect " + name + " turns it back on)" : `no ${INFO[name].label} connector in Claude Code`);
         if (s.status === "needs-auth") throw new HttpError(401, `${s.name} needs you to sign in again in Claude`);
@@ -143,7 +135,6 @@ export class Connections {
     return this.get(name).status === "connected";
   }
 
-  /** Was a connector found at the last check? Optional ones without one don't raise alerts. */
   configured(name: ConnectionName): boolean {
     if (name === "claude" || name === "github") return true;
     return this.get(name).status !== "missing";
@@ -185,19 +176,16 @@ export class Connections {
     return out;
   }
 
-  /** `factory connect`: checks the connector with one cheap read (a small Haiku call) and remembers its tools. */
   async connect(name: ConnectionName, server?: string): Promise<Connection & { server?: string }> {
     if (name === "claude" || name === "github") return this.test(name);
     if (server !== undefined) {
       const s = connectorSettings(this.store);
       this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server } });
     } else {
-      // Connecting again undoes a disconnect: back to the first matching server.
       const s = connectorSettings(this.store);
       if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
     }
     await servers(true);
-    // The server's name is what `claude mcp login` needs to sign you in again.
     const found = (await serverFor(this.store, name))?.name;
     const c = await this.test(name);
     if (c.status !== "connected") return { ...c, server: found };
@@ -211,7 +199,6 @@ export class Connections {
     return { ...this.get(name), server: found };
   }
 
-  /** Stops the factory using a connector. Claude itself keeps it; remove it there to revoke access. */
   async disconnect(name: ConnectionName): Promise<Connection> {
     if (name === "claude" || name === "github") throw new Error(`${INFO[name].label} uses its own sign-in; sign out there instead`);
     const s = connectorSettings(this.store);
@@ -229,7 +216,6 @@ export class Connections {
     return !!c.snoozedUntil && Date.parse(c.snoozedUntil) > Date.now();
   }
 
-  /** Sticky alerts still standing: required connections that aren't working and aren't snoozed. */
   alerts(): Connection[] {
     return this.list().filter((c) => c.checkedAt && c.status !== "connected" && (c.required || c.status !== "missing") && !this.snoozed(c));
   }

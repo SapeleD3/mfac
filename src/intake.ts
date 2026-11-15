@@ -7,19 +7,6 @@ import * as slack from "./slack.js";
 import { type Event, type State, initial, step } from "./statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "./store.js";
 
-/*
- * Intake and triage. Polling, not webhooks (a webhook needs a public URL). Every half hour in working
- * hours a small Haiku call reads Slack and Jira through your connectors in Claude for anything newer
- * than the cursor; plain rules sort what they can; the rest goes to one batched Haiku call that sorts
- * each item into ignore, reply, task or urgent.
- *
- * Each item follows the first part of the task statechart (Inbox, Triage, Ignored, ReplyDrafted,
- * Replied, Queued), checked with the same step function.
- *
- * Self-improving: every time you overrule triage it's recorded; repeated overrides become proposed
- * rules you approve, and recent ones are shown to triage as examples.
- */
-
 export type TriageAction = "ignore" | "reply" | "task" | "urgent";
 
 export interface IntakeItem {
@@ -95,8 +82,6 @@ export class Intake {
     private connections: Connections,
   ) {}
 
-  // ---------- items ----------
-
   items(filter: { status?: State[]; limit?: number } = {}): IntakeItem[] {
     const rows = this.store.db.prepare("SELECT * FROM intake ORDER BY received_at DESC LIMIT ?").all(filter.limit ?? 200) as Row[];
     return rows.map(toItem).filter((i) => !filter.status || filter.status.includes(i.status));
@@ -107,7 +92,6 @@ export class Intake {
     return r ? toItem(r) : undefined;
   }
 
-  /** Records a new item, once per source id. Returns undefined for a duplicate. */
   add(i: { source: Source; sourceId: string; author?: string; channel?: string; text: string; url?: string; meta?: Record<string, string> }): IntakeItem | undefined {
     const id = randomUUID().slice(0, 8);
     const r = this.store.db
@@ -116,7 +100,6 @@ export class Intake {
     return Number(r.changes) ? this.item(id) : undefined;
   }
 
-  /** Move an item along the intake part of the statechart; refuses what the chart doesn't allow. */
   private moveItem(id: string, event: Event, patch: Partial<{ triage: TriageAction; why: string; tags: Tag[]; draft: string; taskId: string; overridden: boolean }> = {}) {
     const item = this.item(id);
     if (!item) throw new Error(`no intake item ${id}`);
@@ -130,8 +113,6 @@ export class Intake {
     return saved;
   }
 
-  // ---------- polling ----------
-
   private cursor(source: string): string {
     const r = this.store.db.prepare("SELECT cursor FROM cursors WHERE source = ?").get(source) as Row | undefined;
     return r ? String(r.cursor) : "";
@@ -141,7 +122,6 @@ export class Intake {
     this.store.db.prepare("INSERT INTO cursors (source, cursor, at) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor, at = excluded.at").run(source, cursor, now());
   }
 
-  /** One intake run for a source: health first, then new items since the cursor. Returns how many were new. */
   async poll(source: "slack" | "jira"): Promise<{ added: number; skipped?: string }> {
     const c = await this.connections.test(source);
     if (c.status !== "connected") return { added: 0, skipped: `${source} is ${c.status}; intake waits and catches up from its cursor once it's fixed` };
@@ -165,13 +145,10 @@ export class Intake {
     return { added };
   }
 
-  // ---------- triage ----------
-
   rules(status?: TriageRule["status"]): TriageRule[] {
     return (this.store.db.prepare("SELECT * FROM triage_rules ORDER BY created_at").all() as Row[]).map(toRule).filter((r) => !status || r.status === status);
   }
 
-  /** Sort every Inbox item. Rules first (no tokens), then one Haiku call for the rest. */
   async triage(): Promise<{ triaged: number; tokensUsed: boolean }> {
     const inbox = this.items({ status: ["Inbox"] });
     if (!inbox.length) return { triaged: 0, tokensUsed: false };
@@ -235,7 +212,6 @@ export class Intake {
     }
   }
 
-  /** Carry out a triage decision: log an ignore, draft a reply, or queue a task. */
   async apply(id: string, d: { action: TriageAction; why?: string; tags?: Tag[]; recipe?: Recipe; title?: string; repo?: string | null; override?: boolean }): Promise<IntakeItem> {
     const item = this.item(id)!;
     const tags = [...new Set([...(d.tags ?? []).filter((t) => (TAGS as readonly string[]).includes(t)), ...(d.action === "urgent" ? (["urgent"] as Tag[]) : [])])];
@@ -253,7 +229,6 @@ export class Intake {
     return this.moveItem(id, event, { ...base, taskId: task.id });
   }
 
-  /** You overruled triage. Recorded for learning, and repeated patterns become proposed rules. */
   async override(id: string, action: TriageAction, opts: { tags?: Tag[]; title?: string } = {}): Promise<IntakeItem> {
     const item = this.item(id);
     if (!item) throw new Error(`no intake item ${id}`);
@@ -284,8 +259,6 @@ export class Intake {
     return this.rules().find((r) => r.id === id);
   }
 
-  // ---------- replies ----------
-
   private async draftReply(item: IntakeItem): Promise<string> {
     const model = this.engine.settings().models.reply ?? "sonnet";
     return claudePrint(
@@ -294,7 +267,6 @@ export class Intake {
     );
   }
 
-  /** You pressed Send. The only way the factory ever posts as you. */
   async send(id: string, text?: string): Promise<IntakeItem> {
     const item = this.item(id);
     if (!item) throw new Error(`no intake item ${id}`);
