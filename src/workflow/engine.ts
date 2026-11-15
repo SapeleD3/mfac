@@ -9,7 +9,7 @@ export interface Settings {
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
-  notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string; intakeBoard?: string; intakeStatus?: string };
+  notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string; intakeBoard?: string; intakeBoardName?: string; intakeStatus?: string };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
   defaultRepo?: string;
 }

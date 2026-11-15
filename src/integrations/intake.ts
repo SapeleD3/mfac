@@ -168,7 +168,7 @@ export class Intake {
   /** Cards you moved to the ready column are your decision already, so they skip triage and go straight to the queue. */
   private async pollBoard(): Promise<{ added: number; found?: number; skipped?: string }> {
     const { intakeBoard, intakeStatus } = this.engine.settings().notion;
-    if (!intakeBoard) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board link>)" };
+    if (!intakeBoard) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board name>)" };
     const c = await this.connections.test("notion");
     if (c.status !== "connected") return { added: 0, skipped: `Notion is ${c.status}; cards wait on the board` };
     const status = intakeStatus || "Ready for agent";

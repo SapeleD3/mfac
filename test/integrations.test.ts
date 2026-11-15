@@ -41,7 +41,17 @@ setPrintRunner(async (prompt, opts) => {
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
+    if (prompt.includes("Search Notion for databases")) {
+      assert.equal(opts.session, "factory-mcp-notion-intake");
+      return JSON.stringify({
+        boards: [
+          { title: "🛠️ Custom Tools Board", url: "https://notion.so/custom-tools-board" },
+          { title: "Custom Tools Board archive", url: "https://notion.so/old-board" },
+        ],
+      });
+    }
     if (prompt.includes('status is "Ready for agent"')) {
+      assert.match(prompt, /^Use the .*https:\/\/notion\.so\/custom-tools-board is a Notion database/s, "polls read the board found by name, without searching again");
       assert.equal(opts.session, "factory-mcp-notion-intake", "board intake never queues behind the board sync");
       return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
     }
@@ -183,7 +193,9 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   const none = await c<{ added: number; skipped?: string }>("intake.poll", { source: "notion" });
   assert.match(none.skipped!, /no Notion board to watch/);
   const before = triageCalls.length;
-  const r = await c<{ status: string; routine: Routine }>("notion.intake", { board: "https://notion.so/my-board", wait: true });
+  await assert.rejects(c("notion.intake", { board: "Custom" }), /more than one Notion board matches "Custom"/);
+  const r = await c<{ board: string; status: string; routine: Routine }>("notion.intake", { board: "custom tools board", wait: true });
+  assert.equal(r.board, "🛠️ Custom Tools Board");
   assert.equal(r.status, "Ready for agent");
   assert.equal(r.routine.lastResult, "ok");
   assert.equal(r.routine.lastDetail, "1 card queued");
@@ -197,6 +209,8 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   const reads = connectorCalls.length;
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the same card isn't queued twice");
   assert.equal(connectorCalls.length, reads + 1, "a card already queued isn't read again");
+  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  assert.equal(connectorCalls.filter((x) => x.prompt.includes("Search Notion for databases")).length, 2, "a link is used as it is");
 });
 
 test("Claude's own connector is used before a plugin's server, and a server whose tools don't load falls through to the next", async () => {

@@ -104,6 +104,30 @@ export interface BoardCard {
 
 const INTAKE = { session: "factory-mcp-notion-intake", timeoutMs: 150_000 };
 
+export const looksLikeLink = (s: string) => /^https?:\/\//i.test(s) || /^[0-9a-f]{32}$/i.test(s.replace(/-/g, ""));
+
+/** Resolved once when the board is saved, so each poll reads the board by id instead of searching again. */
+export async function findBoard(store: Store, name: string): Promise<{ url: string; title: string }> {
+  const r = await ask<{ boards?: { title?: string; url?: string }[] }>(
+    store,
+    "notion",
+    `Search Notion for databases (boards) named "${name}". Answer {"boards": [{"title", "url"}]} with up to 5 databases whose title matches it best, closest first. If none, {"boards": []}.`,
+    INTAKE,
+  );
+  const boards = (r.boards ?? []).filter((b): b is { title: string; url: string } => !!b.title && !!b.url);
+  const norm = (s: string) =>
+    s
+      .replace(/[^\p{L}\p{N}\s]/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const exact = boards.filter((b) => norm(b.title) === norm(name));
+  if (exact.length === 1) return exact[0]!;
+  if (!exact.length && boards.length === 1) return boards[0]!;
+  if (!boards.length) throw new Error(`no Notion board called "${name}" that Claude's Notion connector can see`);
+  throw new Error(`more than one Notion board matches "${name}": ${(exact.length ? exact : boards).map((b) => `"${b.title}"`).join(", ")}. Use the exact name, or paste its link`);
+}
+
 /** Lists only ids and titles in one filtered query; page bodies are read separately, and only for cards the factory hasn't seen. */
 export async function readyCards(store: Store, board: string, status: string): Promise<BoardCard[]> {
   const r = await ask<{ cards?: Partial<BoardCard>[] }>(

@@ -286,8 +286,8 @@ plan and build send-backs stop at three, and sending work back to research start
 Board changes queue up and go in one batched call every 10 minutes (none when nothing changed); review
 pages are published as soon as a gate opens, and tickets you add on the board are picked up every 2 hours.
 
-Your own Notion kanban board can be a source of work too: `factory notion intake <board link>` (or the
-Connections page). Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
+Your own Notion kanban board can be a source of work too: `factory notion intake "<board name>"` (or the
+Connections page); the name is looked up once through the Notion connector, and a link works too. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
 `--status`) go straight to the queue without triage, once each, and the factory comments on the card when
 the task finishes.
 

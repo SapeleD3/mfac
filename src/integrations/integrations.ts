@@ -208,12 +208,14 @@ export const integrationsPart =
         "connections.alerts": () => connections.alerts(),
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
         "notion.intake": async (p: { board: string; status?: string; wait?: boolean }) => {
-          if (!p.board?.trim()) throw new Error("paste a link to your Notion board (the database view you move cards on)");
-          const next = { ...engine.settings().notion, intakeBoard: p.board.trim(), intakeStatus: p.status?.trim() || "Ready for agent" };
+          const given = p.board?.trim();
+          if (!given) throw new Error("give the name of your Notion board (the one you move cards on)");
+          const found = notion.looksLikeLink(given) ? { url: given, title: undefined } : await notion.findBoard(store, given);
+          const next = { ...engine.settings().notion, intakeBoard: found.url, intakeBoardName: found.title, intakeStatus: p.status?.trim() || "Ready for agent" };
           engine.updateSettings({ notion: next });
           routines.update("intake-notion", { workingHours: false });
           const check = routines.run("intake-notion", { manual: true });
-          return { board: next.intakeBoard, status: next.intakeStatus, routine: p.wait ? await check : routines.get("intake-notion") };
+          return { board: next.intakeBoardName ?? next.intakeBoard, status: next.intakeStatus, routine: p.wait ? await check : routines.get("intake-notion") };
         },
         "intake.poll": async (p: { source: "slack" | "jira" | "notion" }) => {
           const r = await intake.poll(p.source);
@@ -231,6 +233,7 @@ export const integrationsPart =
           ready: sync.ready(),
           pending: sync.pendingCount(),
           intakeBoard: engine.settings().notion.intakeBoard,
+          intakeBoardName: engine.settings().notion.intakeBoardName,
           intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
         }),
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
