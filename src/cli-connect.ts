@@ -25,6 +25,18 @@ function openUrl(url: string) {
   spawn(cmd, [url], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
 }
 
+/** Claude Code's own sign-in for an MCP server or claude.ai connector, in this terminal. */
+function mcpLogin(server: string): Promise<void> {
+  return new Promise((resolve) => {
+    const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", ["mcp", "login", server], { stdio: "inherit" });
+    child.on("error", (e) => {
+      out(`Couldn't run claude mcp login: ${e.message}`);
+      resolve();
+    });
+    child.on("close", () => resolve());
+  });
+}
+
 async function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -46,24 +58,45 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   connect: {
-    usage: "connect slack|notion|jira|claude|github [--server NAME]",
-    help: "Checks that Claude Code can reach Slack, Notion or Jira through your connectors (one small Haiku call), and sets up the Notion board",
+    usage: "connect slack|notion|jira|claude|github [--server NAME] [--login]",
+    help: "Connects Slack, Notion or Jira through Claude: signs you in with Claude Code's own sign-in if needed, then checks it can read; sets up the Notion board",
     async run(args, f) {
       const name = args[0] as ConnectionName;
       if (!(CONNECTIONS as readonly string[]).includes(name)) throw new Error(`connect one of: ${CONNECTIONS.join(", ")}`);
       const info = INFO[name];
       out(`${info.label}: ${info.neededFor}.${info.via ? ` Uses: ${info.via}.` : ""}`);
-      out("Checking...");
-      const c = await call<Connection>("connections.connect", { name, server: str(f.server) });
-      out(`${info.label}: ${c.status}${c.detail ? ` (${c.detail})` : ""}`);
-      if (c.status !== "connected") {
-        out("\nTo fix it:");
-        info.fix.steps.forEach((s, i) => out(`  ${i + 1}. ${s}`));
-        if (info.fix.url) {
-          out(`\nOpening ${info.fix.url}`);
-          openUrl(info.fix.url);
+      const check = async () => {
+        out("Checking...");
+        const c = await call<Connection & { server?: string }>("connections.connect", { name, server: str(f.server) });
+        out(`${info.label}: ${c.status}${c.detail ? ` (${c.detail})` : ""}`);
+        return c;
+      };
+      let c = await check();
+      const connector = name !== "claude" && name !== "github";
+      if (connector && c.server && (c.status !== "connected" || f.login)) {
+        // Claude Code's own sign-in for this server (an MCP server's OAuth, or a claude.ai connector's
+        // authorization page). The factory never sees the credentials.
+        out(`\nSigning in to ${c.server} with Claude Code (claude mcp login). Finish in your browser.`);
+        await mcpLogin(c.server);
+        await ask("Press Enter once you've finished signing in: ");
+        c = await check();
+      } else if (connector && !c.server) {
+        out(`\nClaude Code has no ${info.label} connector yet. Opening Claude's connector settings: add ${info.label} there (or add an MCP server with claude mcp add).`);
+        openUrl(info.fix.url!);
+        await ask(`Press Enter once ${info.label} is added: `);
+        c = await check();
+        if (c.server && c.status !== "connected") {
+          out(`\nSigning in to ${c.server} with Claude Code (claude mcp login).`);
+          await mcpLogin(c.server);
+          await ask("Press Enter once you've finished signing in: ");
+          c = await check();
         }
-        if (name !== "claude" && name !== "github") out("\nIf Claude Code has more than one, pick it with --server \"<name from claude mcp list>\".");
+      }
+      if (c.status !== "connected") {
+        out("\nStill not working. To fix it:");
+        info.fix.steps.forEach((s, i) => out(`  ${i + 1}. ${s}`));
+        if (connector) out(`\nIf Claude Code has more than one ${info.label} server, pick one with --server "<name from claude mcp list>".`);
+        else if (info.fix.url) openUrl(info.fix.url);
         return;
       }
       if (name === "notion") {
@@ -86,7 +119,7 @@ export const connectCommands: Record<string, Command> = {
       if (!["slack", "notion", "jira"].includes(name)) throw new Error("disconnect one of: slack, notion, jira");
       const c = await call<Connection>("connections.disconnect", { name });
       out(`${c.label}: the factory no longer uses it, and work that needs it is paused. factory connect ${name} turns it back on.`);
-      out("Claude still has the connector. To remove Claude's access too: https://claude.ai/settings/connectors");
+      out("Claude still has the connector. To remove Claude's access too: https://claude.ai/customize/connectors");
     },
   },
   inbox: {

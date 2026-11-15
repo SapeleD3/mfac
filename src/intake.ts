@@ -226,7 +226,7 @@ export class Intake {
       .join("\n");
     const model = this.engine.settings().models.triage ?? "haiku";
     try {
-      const reply = await claudePrint(prompt, { model });
+      const reply = await claudePrint(prompt, { model, session: "factory-triage" });
       const parsed = extractJson<{ id: string; action: TriageAction; reason?: string; title?: string; recipe?: Recipe; tags?: Tag[]; repo?: string | null }[]>(reply);
       return parsed.filter((d) => ["ignore", "reply", "task", "urgent"].includes(d.action));
     } catch (e) {
@@ -290,7 +290,7 @@ export class Intake {
     const model = this.engine.settings().models.reply ?? "sonnet";
     return claudePrint(
       `Draft a short reply from me to this ${item.source} message. Plain, friendly, specific; no greeting fluff; under 80 words. If you can't answer from the message alone, ask the one question that unblocks it. Reply with only the text.\n\nFrom ${item.author ?? "someone"} in ${item.channel ?? item.source}:\n${item.text}`,
-      { model },
+      { model, session: "factory-replies" },
     );
   }
 

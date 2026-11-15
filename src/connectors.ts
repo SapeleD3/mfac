@@ -114,7 +114,7 @@ export async function ask<T>(store: Store, service: Service, task: string, opts:
     task,
     "Answer with only JSON, no prose. If a tool fails or you lack access, answer {\"error\": \"<what failed>\"}.",
   ].join("\n\n");
-  const reply = await claudePrint(prompt, { model: opts.model ?? "haiku", allowedTools: allowedTools(store, service, server.name, !!opts.write) });
+  const reply = await claudePrint(prompt, { model: opts.model ?? "haiku", allowedTools: allowedTools(store, service, server.name, !!opts.write), session: `factory-mcp-${service}` });
   const out = extractJson<T & { error?: string }>(reply);
   if (out && typeof out === "object" && !Array.isArray(out) && typeof out.error === "string") {
     throw new HttpError(/auth|permission|unauthori|forbidden|sign in/i.test(out.error) ? 401 : 502, `${LABEL[service]}: ${out.error}`);

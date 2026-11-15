@@ -143,6 +143,13 @@ step with `factory coord` commands. The engine checks every one of those against
 
 Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `factory pause` stops new starts.
 
+**Sessions stay tidy.** Every Claude session the factory starts has a name. Stage sessions are named for their task
+and stage (`factory-F-012-research`, `factory-F-012-build-r2`). Small jobs reuse one session each, resumed call
+after call: `factory-triage`, `factory-replies`, and `factory-mcp-slack` / `-notion` / `-jira` for connector
+calls. Those run in `~/.factory/sessions`, so they list under one Claude project and never in your repos, and
+each one is replaced by a fresh session (old transcript deleted) after 30 calls or a week, to keep its context
+and cost small. A week after a task finishes, the cleanup routine deletes its sessions' transcripts.
+
 ## Where work comes from
 
 Every 30 minutes in working hours (Settings: 15, 30 or 60), a small Haiku call reads Slack (DMs, group DMs
@@ -165,9 +172,12 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
   The health check reads `claude mcp list` every 5 minutes, which makes no model call. A connector that
   needs you to sign in again shows as expired with a sticky alert, and the work that needs it waits and
   catches up from its cursor.
-- `factory connect slack` (or `notion`, `jira`) finds the connector in `claude mcp list`, makes one small
-  Haiku call to confirm it can read, and remembers the connector's tool names. If it's missing, it opens
-  claude.ai's connector settings. With more than one match, pick with `--server "<name>"`.
+- `factory connect slack` (or `notion`, `jira`) finds the connector in `claude mcp list`. If it needs you
+  to sign in (or you pass `--login`), it runs Claude Code's own sign-in, `claude mcp login "claude.ai Slack"`,
+  which opens your browser; the factory never sees the credentials. If Claude has no such connector yet,
+  it opens [Claude's connector settings](https://claude.ai/customize/connectors). Then it makes one small
+  Haiku call to confirm it can read and remembers the connector's tool names. With more than one match,
+  pick with `--server "<name>"`. Inside Claude Code, `/mcp` does the same sign-in by hand.
 - Every factory session may use the connectors' **read-only** tools without asking, so stations can look
   up the thread or ticket a task came from. Posting, commenting and editing still ask you, except the
   factory's own write-back at gates and replies you press Send on.

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
 import { connectorReads } from "./connectors.js";
+
 import type { Decision, Engine, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree } from "./git.js";
@@ -12,6 +13,10 @@ import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-c
 import { RUNNING, type State } from "./statechart.js";
 import { type Row, type Store, now, opt, parseJson } from "./store.js";
 import * as realTmux from "./tmux.js";
+
+/** Every stage session is named for its task and stage, e.g. "factory-F-012-research-r2". */
+export const sessionName = (taskId: string, role: Role, round: number) =>
+  `factory-${taskId}-${role.replace("_", "-").replace("researcher", "research").replace("planner", "plan").replace("builder", "build")}${round > 1 ? `-r${round}` : ""}`;
 
 /*
  * The runner: starts and supervises every Claude Code session. Each task gets one Opus coordinator
@@ -222,7 +227,7 @@ export class Runner {
       sessionId,
       resume: !!opts.resume,
       model,
-      name: `${t.id} ${role.replace("_", " ")}${round > 1 ? ` r${round}` : ""}`,
+      name: sessionName(t.id, role, round),
       role,
       jobDir: this.jobDir(t.id),
       systemPromptFile: this.systemPrompt(t, role, round),

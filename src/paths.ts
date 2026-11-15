@@ -24,4 +24,6 @@ export const paths = {
   /** The factory's own skills; never the person's ~/.claude/skills. */
   skills: () => join(factoryHome(), "skills"),
   tools: () => join(factoryHome(), "tools"),
+  /** Where the factory's own utility sessions (triage, connector calls) run, so they group under one Claude project. */
+  sessions: () => join(factoryHome(), "sessions"),
 };

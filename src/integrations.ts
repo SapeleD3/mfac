@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { deleteTranscript } from "./claude-print.js";
 import { type ConnectionName, Connections, type Tester, realTester } from "./connections.js";
 import type { Decision, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
@@ -113,10 +114,11 @@ export const integrationsPart =
       {
         id: "cleanup",
         name: "Cleanup",
-        description: "Removes worktrees and saved screens of tasks finished more than a week ago",
+        description: "A week after a task finishes: removes its saved screens and its sessions' Claude transcripts, so no orphaned sessions pile up",
         everySeconds: 86_400,
         run: async () => {
           let removed = 0;
+          let transcripts = 0;
           const old = Date.now() - 7 * 86_400_000;
           for (const t of engine.list({ all: true }).filter((x) => ["Done", "Dropped"].includes(x.machine.state) && Date.parse(x.updatedAt) < old)) {
             const screens = join(paths.job(t.id), ".factory", "screens");
@@ -124,10 +126,11 @@ export const integrationsPart =
               rmSync(screens, { recursive: true, force: true });
               removed++;
             }
+            for (const r of store.db.prepare("SELECT session_id FROM stages WHERE task_id = ?").all(t.id) as { session_id: string }[]) if (deleteTranscript(String(r.session_id))) transcripts++;
           }
           const wt = paths.worktrees();
           const stale = existsSync(wt) ? readdirSync(wt).length : 0;
-          return `${removed} finished tasks tidied; ${stale} repos with worktrees`;
+          return `${removed} finished tasks tidied, ${transcripts} old session transcripts removed; ${stale} repos with worktrees`;
         },
       },
       {
