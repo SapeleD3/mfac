@@ -2,7 +2,7 @@
 
 Turn the approved research into small tickets. Read research.md, statechart.md and any review notes.
 
-Write plan.md in the job folder: the approach, the order of work, and the tickets. Each ticket is
+Write plan.md in the job folder: the approach, where the code goes (which module owns each change, and any new module with its one job and where it sits in the dependency direction), the order of work, and the tickets. Each ticket is
 sized for one builder session, with one clear output and a check that shows it's done (a test, a
 command, a screenshot). For each ticket run:
 

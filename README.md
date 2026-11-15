@@ -27,7 +27,7 @@ and a pull request that has already been reviewed, fixed and confirmed to solve 
   SQLite file. The only traffic that leaves the machine is Claude itself, which also reaches Slack, Jira and
   Notion through your connectors.
 - **The engine enforces the rules.** A task's life is a statechart ([spec/statechart.md](spec/statechart.md)),
-  model-checked with TLC from [spec/Factory.tla](spec/Factory.tla). `src/statechart.ts` is its code copy,
+  model-checked with TLC from [spec/Factory.tla](spec/Factory.tla). `src/workflow/statechart.ts` is its code copy,
   and the engine refuses any move it doesn't allow, whoever asks.
 - **Three ways to run it:** the widget (default), the full app, or headless with the `factory` CLI.
   They all attach to the same engine; closing the app leaves the factory working.
@@ -128,7 +128,7 @@ step with `factory coord` commands. The engine checks every one of those against
 - **No human gate on the build.** You first see code as a PR that's been reviewed, fixed and confirmed.
   Before the PR gate the engine rebases on the latest base, pushes and opens the PR with `gh`, with the
   confirm evidence, statechart, TLC result and review summary in its description.
-- **Permissions:** each station has an allowlist (`src/agent.ts`). Anything else goes to the
+- **Permissions:** each station has an allowlist (`src/stages/agent.ts`). Anything else goes to the
   PermissionRequest hook and waits for your click (`factory prompts`, `factory allow`/`deny`; the app's
   panel in milestone 4). Pushing, merging and `sudo` are always denied. Nothing runs with permissions skipped.
 - **Watch and take over:** `factory sessions`, `factory attach F-001` (read along in your terminal),
@@ -223,12 +223,32 @@ npm run preview      # dev only: the UI in a browser against your running engine
 
 ## Develop
 
+The engine is split into modules by what they do, in layers. A module imports only from its own layer or lower ones, and `npm run check:rules` enforces it.
+
+| Layer | Module | What it owns |
+| --- | --- | --- |
+| 0 | `shared/` | Paths under `~/.factory`, the HTTP error type |
+| 1 | `workflow/` | The statechart, the task store and the engine that moves tasks through it |
+| 2 | `daemon/` | The socket server and client, the core API, and the plugin host |
+| 3 | `claude/` | Named, reused `claude -p` sessions and usage reading |
+| 3 | `skills/` | Installing the core skills and the design-principles KB |
+| 3 | `repo/` | Git worktrees and branches, the target repo's conventions, the repo rules check |
+| 3 | `connectors/` | Slack, Notion and Jira through Claude's MCP connectors, and connection health |
+| 3 | `board/` | Tickets, and the Notion board sync |
+| 3 | `stages/` | The runner, stage sessions in tmux, and the research check |
+| 3 | `integrations/` | Intake from Slack and Jira, triage and routines |
+| 3 | `upkeep/` | Doctor, launchd agents, retros and self-update |
+| 4 | `cli/` | The `factory` command |
+| 4 | `main/` | The `factoryd` entry point, which wires the plugins together |
+
 ```sh
 npm test          # builds, then runs the tests (including a walk of every reachable task state)
 npm run tlc       # model-checks spec/Factory.tla with TLC (needs Java 11+)
 npm run check:rules
 ```
 
-The rules in [CLAUDE.md](CLAUDE.md) apply here and to everything the factory writes in other repos: no agent credit in commits or PRs, and no comments unless they give the next developer context the code can't. Stage sessions run with attribution turned off, and the factory strips any credit lines from a task branch's commits and PR body before it pushes.
+In a target repo, that repo's conventions win. Stage sessions run inside its worktree, so its CLAUDE.md, `.claude` skills, settings and hooks load as usual, and its git hooks run on every commit and push. Its gitignored `.claude/settings.local.json` and `CLAUDE.local.md` are copied into the worktree. At start the factory writes `conventions.md` to the job folder: PR templates, CONTRIBUTING, commitlint and commitizen config, commit-msg hooks, branch-name rules and recent branch names. The builder writes `pr.md` from it, with the branch, title and body in the repo's style. The factory renames the branch to match before pushing, and opens the PR with that title and body. The factory's defaults apply only where the repo defines nothing.
+
+The rules in [CLAUDE.md](CLAUDE.md) apply here, and the no-credit rule applies to everything the factory writes in other repos: no agent credit in commits or PRs, and no comments unless they give the next developer context the code can't. Stage sessions run with attribution turned off, and the factory strips any credit lines from a task branch's commits and PR body before it pushes.
 
 Factory files live in `~/.factory` (or `$FACTORY_HOME`), never inside a repo.

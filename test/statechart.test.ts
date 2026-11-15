@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CAP, type Event, type Machine, STATES, TERMINAL, initial, invariants, step } from "../src/statechart.js";
+import { CAP, type Event, type Machine, STATES, TERMINAL, initial, invariants, step } from "../src/workflow/statechart.js";
 
 const EVENTS: Event[] = [
   { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" },

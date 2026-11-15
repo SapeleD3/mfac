@@ -8,7 +8,7 @@ import { test } from "node:test";
 const dir = mkdtempSync(join(tmpdir(), "factory-skills-"));
 process.env.FACTORY_HOME = join(dir, "home");
 process.env.FACTORY_CLAUDE_DIR = join(dir, "claude");
-const { CORE_SKILLS, existingInstall, install, parseSource } = await import("../src/skills.js");
+const { CORE_SKILLS, existingInstall, install, parseSource } = await import("../src/skills/skills.js");
 
 const skill = (path: string) => {
   mkdirSync(path, { recursive: true });

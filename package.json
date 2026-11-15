@@ -6,8 +6,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "factory": "dist/src/cli.js",
-    "factoryd": "dist/src/factoryd.js"
+    "factory": "dist/src/cli/cli.js",
+    "factoryd": "dist/src/main/factoryd.js"
   },
   "engines": {
     "node": ">=22.13"
@@ -17,8 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --no-warnings=ExperimentalWarning --test dist/test/*.test.js",
     "tlc": "node scripts/tlc.mjs",
-    "check:rules": "npm run build && node dist/src/rules.js",
-    "principles:fetch": "npm run build && node dist/src/design-principles.js fetch"
+    "check:rules": "npm run build && node dist/src/repo/rules.js",
+    "principles:fetch": "npm run build && node dist/src/skills/design-principles.js fetch"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

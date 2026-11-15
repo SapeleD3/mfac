@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { stageSettings } from "../src/agent.js";
-import { stripBranchCredits } from "../src/git.js";
-import { findings, stripCredits } from "../src/rules.js";
+import { stageSettings } from "../src/stages/agent.js";
+import { stripBranchCredits } from "../src/repo/git.js";
+import { checkStructure, findings, stripCredits } from "../src/repo/rules.js";
 
 const credited = [
   "Add the intake poller",
@@ -58,4 +58,28 @@ test("a task branch's commit messages lose agent credit before it's pushed", () 
   assert.ok(r.ok, r.out);
   assert.equal(g("log", "-1", "--format=%B"), "Add the intake poller\n\nPolls Slack and Jira.");
   assert.equal(g("log", "-1", "--format=%s", "HEAD~1"), "base", "commits already on main are left alone");
+});
+
+test("the layout check catches loose files, unknown modules and upward imports", () => {
+  const dir = mkdtempSync(join(tmpdir(), "factory-layout-"));
+  const put = (f: string, text: string) => {
+    mkdirSync(join(dir, f, ".."), { recursive: true });
+    writeFileSync(join(dir, f), text);
+  };
+  put("src/loose.ts", "");
+  put("src/misc/thing.ts", "");
+  put("src/workflow/engine.ts", 'import { a } from "../shared/paths.js";\nimport { b } from "../daemon/host.js";\n');
+  put("src/cli/cli.ts", 'const m = await import("../main/plugins.js");\nimport { c } from "../workflow/engine.js";\n');
+  assert.deepEqual(
+    checkStructure(dir).map((f) => [f.where, f.line, f.rule]).sort(),
+    [
+      ["src/loose.ts", 0, "layout"],
+      ["src/misc", 0, "layout"],
+      ["src/workflow/engine.ts", 2, "layer"],
+    ],
+  );
+});
+
+test("this repo's own layout passes", () => {
+  assert.deepEqual(checkStructure(process.cwd()), []);
 });
