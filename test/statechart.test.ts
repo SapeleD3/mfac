@@ -70,12 +70,12 @@ test("the code's state space is finite and every reachable state keeps the spec'
   }
 });
 
-test("every task ends or waits in Parked: without parking moves the graph has no cycles and no dead ends", () => {
+test("every task ends or waits in Parked: without parking moves or sending research back, the graph has no cycles and no dead ends", () => {
   const color = new Map<string, number>();
   const visit = (k: string): void => {
     color.set(k, 1);
     const m = seen.get(k)!;
-    const out = edges.get(k)!.filter((e) => !["Park", "Unpark", "Demote", "Prioritize"].includes(e.action));
+    const out = edges.get(k)!.filter((e) => !["Park", "Unpark", "Demote", "Prioritize"].includes(e.action) && !/^SendBack\(\w+,Researching\)$/.test(e.action));
     if (!TERMINAL.includes(m.state) && m.state !== "Parked") assert.ok(out.length > 0, `dead end in ${k}`);
     for (const e of out) {
       const c = color.get(e.to);
@@ -111,18 +111,28 @@ test("a research task is reviewed after its check, ends at the research gate, an
   for (const s of seen.values()) if (s.kind === "research") assert.ok(!["Planning", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate"].includes(s.state), `research reached ${s.state}`);
 });
 
-test("gates refuse a fourth send-back and keep approve and drop", () => {
-  let m: Machine = { ...initial("ResearchGate"), chart: true, proved: true };
-  for (let i = 0; i < CAP; i++) {
+test("sending research back is never capped and starts the caps over; plan and build send-backs stop at three", () => {
+  let m: Machine = { ...initial("ResearchGate"), chart: true, proved: true, loops: { check: 2, requirements: 3, review: 0, confirm: 0 } };
+  for (let i = 0; i < CAP * 3; i++) {
     const back = step(m, { type: "send_back", to: "Researching" });
-    assert.ok(back.ok);
-    m = { ...back.machine, state: "ResearchGate", chart: true, proved: true };
+    assert.ok(back.ok, `research send-back ${i + 1} is allowed`);
+    assert.deepEqual(back.machine.loops, { check: 0, requirements: 0, review: 0, confirm: 0 }, "the automatic loops count afresh for the new research");
+    m = { ...back.machine, state: "ResearchGate", chart: true, proved: true, covered: true };
   }
-  const fourth = step(m, { type: "send_back", to: "Researching" });
+  let p: Machine = { ...initial("PlanGate"), chart: true, proved: true, covered: true, approved: ["research"] };
+  for (let i = 0; i < CAP; i++) {
+    const back = step(p, { type: "send_back", to: "Planning" });
+    assert.ok(back.ok);
+    p = { ...back.machine, state: "PlanGate", covered: true };
+  }
+  const fourth = step(p, { type: "send_back", to: "Planning" });
   assert.equal(fourth.ok, false);
-  assert.match((fourth as { reason: string }).reason, /all 3 send-backs/);
-  assert.ok(step(m, { type: "approve" }).ok);
-  assert.ok(step(m, { type: "drop" }).ok);
+  assert.match((fourth as { reason: string }).reason, /all 3 send-backs to planning; you can still send it back to research/);
+  assert.ok(step(p, { type: "approve" }).ok);
+  assert.ok(step(p, { type: "drop" }).ok);
+  const redo = step(p, { type: "send_back", to: "Researching" });
+  assert.ok(redo.ok);
+  assert.equal(redo.machine.tries.PlanGate, 0, "new research, new plan: its cap starts over");
 });
 
 test("research without a passing TLC check never reaches the gate", () => {

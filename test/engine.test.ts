@@ -43,7 +43,7 @@ test("a task walks the whole line through the socket, with the engine refusing s
   assert.equal((await move({ type: "check" })).task!.machine.state, "ResearchGate");
   const sent = await call<{ ok: boolean; task: TaskView }>("task.decide", { id: t.id, verdict: "send_back", note: "Cover the CSV path too" }, socket);
   assert.equal(sent.task.machine.state, "Researching");
-  assert.equal(sent.task.machine.tries.ResearchGate, 1);
+  assert.equal(sent.task.machine.tries.ResearchGate, 0, "research send-backs are uncapped, so nothing counts toward a cap");
   await move({ type: "research_done", chart: true, proved: true });
   await move({ type: "check" });
   await call("task.decide", { id: t.id, verdict: "approve" }, socket);

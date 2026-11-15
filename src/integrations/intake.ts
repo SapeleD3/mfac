@@ -329,7 +329,7 @@ export class Intake {
       `For task, backlog and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (the name of the known repo this work most likely belongs to, judged by what each repo is for and any repo, service or product named in the item; null if you can't tell).`,
       repos.length ? `Known repos:\n${repos.join("\n")}` : "No repos are registered yet; use null.",
       examples.length ? `How they corrected triage before (follow these):\n${examples.join("\n")}` : "",
-      "recipe research means they want an answer, findings or a recommendation, not a code change: the task stops once the research is reviewed and approved.",
+      "Every task is researched before it is planned, so pick the recipe by the outcome they want. recipe research only when they want an answer, findings or a recommendation and nothing in the item asks for a change; the task stops once the research is approved. If a fix, feature or change is asked for or clearly implied, use bugfix or feature even when it needs investigating first.",
       anyCandidates
         ? "Some items list candidates: existing tasks that look related. If an item is more input for one of them (a reply about it, a correction, a new detail, the same problem again, or work its result caused), set followUp to that id, and sure to true only when it clearly is. Otherwise followUp is null."
         : "",

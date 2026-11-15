@@ -10,8 +10,8 @@ CI model-checks the spec with TLC at `Cap = 3` on every PR (`npm run tlc` does t
 | Build rule | Building only starts on approved research and an approved plan |
 | PR rule | You only see code once review is clean and the change is confirmed to solve the problem |
 | Gates rule | Done only after research, plan and PR are all approved |
-| Caps | At most 3 send-backs per gate, and 3 rounds per automatic loop (research check, requirements review, review findings, confirm); then Needs you, also capped at 3 |
-| Ends or parked | Every task ends as Ignored, Replied, Done or Dropped, or waits in Parked or the Backlog because you or triage put it there |
+| Caps | Sending work back to research is your call and never capped; it starts the task over, so every other cap counts afresh. At most 3 send-backs to planning or the build, and 3 rounds per automatic loop (research check, requirements review, review findings, confirm); then Needs you, also capped at 3 |
+| Ends or parked | Unless you keep sending it back to research, every task ends as Ignored, Replied, Done or Dropped, or waits in Parked or the Backlog because you or triage put it there |
 
 Beyond the original design, the model adds three moves that only a person makes, so fairness never
 forces them: dismissing a drafted reply, overruling triage (an ignored item or a draft becomes a task),
@@ -46,7 +46,7 @@ stateDiagram-v2
     RequirementsReview --> Researching: research task, gaps against the original ask (max 3)
     RequirementsReview --> ResearchGate: research task, every requirement answered
     ResearchGate --> Done: research task, you approve
-    ResearchGate --> Researching: you send back (max 3)
+    ResearchGate --> Researching: you send back (no cap)
     ResearchGate --> Dropped: you drop
 
     Planning --> RequirementsReview: plan and tickets written
@@ -55,7 +55,7 @@ stateDiagram-v2
     RequirementsReview --> NeedsYou: gaps remain after 3
     PlanGate --> Building: you approve
     PlanGate --> Planning: you send back (max 3)
-    PlanGate --> Researching: you send back to research
+    PlanGate --> Researching: you send back to research (no cap)
     PlanGate --> Dropped: you drop
 
     state "Build loop, no human gate" as Loop {
@@ -79,7 +79,7 @@ stateDiagram-v2
     PRGate --> Planning: you send back to plan
     PRGate --> Dropped: you drop
 
-    NeedsYou --> Researching: you restart research (max 3)
+    NeedsYou --> Researching: you restart research (no cap)
     NeedsYou --> Building: you retry the build (max 3)
     NeedsYou --> Dropped: you drop
 

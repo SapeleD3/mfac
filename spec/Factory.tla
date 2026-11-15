@@ -5,7 +5,7 @@
 \* parking and unparking cards on the kanban board.
 EXTENDS Naturals
 
-CONSTANT Cap            \* 3: max send-backs per gate, and per automatic loop
+CONSTANT Cap            \* 3: max send-backs to planning or the build per gate, and per automatic loop
 
 Gates == {"ResearchGate","PlanGate","PRGate","NeedsYou"}
 Parkable == {"Queued","Backlog","ResearchGate","PlanGate","PRGate","NeedsYou"}
@@ -70,24 +70,30 @@ CheckRetry == /\ st = "ResearchCheck" /\ ~proved /\ loops["check"] < Cap
               /\ UNCHANGED <<tries,chart,proved,covered,findings,confirmed,approved,parkedFrom>>
 CheckOut   == st = "ResearchCheck" /\ ~proved /\ loops["check"] = Cap /\ Go("NeedsYou") /\ Same
 
-\* Human gates: approve, send back (max Cap per gate), drop
+\* Human gates: approve, send back, drop. Sending back to planning or the build is capped
+\* (Cap per gate); sending research back to the drawing board is your call and never capped.
+\* It starts the work over, so every later cap counts afresh.
 Approve(g, next, tag) ==
     /\ st = g /\ Go(next) /\ approved' = approved \cup {tag}
     /\ UNCHANGED <<tries,loops,chart,proved,covered,findings,confirmed,parkedFrom>>
 SendBack(g, back, clear) ==
-    /\ st = g /\ tries[g] < Cap /\ Go(back)
+    /\ st = g /\ back # "Researching" /\ tries[g] < Cap /\ Go(back)
     /\ tries' = [tries EXCEPT ![g] = @ + 1]
     /\ approved' = approved \ clear
-    /\ IF back = "Researching" THEN chart' = FALSE /\ proved' = FALSE
-                               ELSE UNCHANGED <<chart,proved>>
-    /\ IF back \in {"Researching","Planning"} THEN covered' = FALSE ELSE UNCHANGED covered
-    /\ UNCHANGED <<loops,findings,confirmed,parkedFrom>>
+    /\ IF back = "Planning" THEN covered' = FALSE ELSE UNCHANGED covered
+    /\ UNCHANGED <<loops,chart,proved,findings,confirmed,parkedFrom>>
+Redo(g, clear) ==
+    /\ st = g /\ Go("Researching")
+    /\ tries' = [x \in Gates |-> 0] /\ loops' = [l \in Loops |-> 0]
+    /\ approved' = approved \ clear
+    /\ chart' = FALSE /\ proved' = FALSE /\ covered' = FALSE
+    /\ UNCHANGED <<findings,confirmed,parkedFrom>>
 Drop(g) == st = g /\ Go("Dropped") /\ Same
 BDrop == Drop("Backlog")
 
 \* Research is reviewed in Notion (comments there); the app records one overall verdict
 RGate == \/ Approve("ResearchGate", IF kind = "research" THEN "Done" ELSE "Planning", "research")
-         \/ SendBack("ResearchGate","Researching",{})
+         \/ Redo("ResearchGate",{})
          \/ Drop("ResearchGate")
 \* Planning splits the work into small tickets on your Notion factory board
 Plan  == st = "Planning" /\ Go("RequirementsReview") /\ Same
@@ -101,7 +107,7 @@ ReqReview == /\ st = "RequirementsReview" /\ covered' \in BOOLEAN
              /\ UNCHANGED <<tries,chart,proved,findings,confirmed,approved,parkedFrom>>
 PGate == \/ Approve("PlanGate","Building","plan")
          \/ SendBack("PlanGate","Planning",{})
-         \/ SendBack("PlanGate","Researching",{"research"})
+         \/ Redo("PlanGate",{"research"})
          \/ Drop("PlanGate")
 
 \* Build loop: no human gate until the PR is ready
@@ -125,8 +131,8 @@ PRGateStep == \/ Approve("PRGate","Done","pr")
               \/ SendBack("PRGate","Planning",{"plan"})
               \/ Drop("PRGate")
 
-\* Needs you: also a gate, also capped
-NGate == \/ SendBack("NeedsYou","Researching",{"research","plan"})
+\* Needs you: also a gate; retrying the build is capped, research again is not
+NGate == \/ Redo("NeedsYou",{"research","plan"})
          \/ /\ {"research","plan"} \subseteq approved
             /\ SendBack("NeedsYou","Building",{})
          \/ Drop("NeedsYou")
@@ -179,6 +185,11 @@ BuildRule == st \in {"Building","Reviewing","Confirming","PRGate"}
 PRRule == st = "PRGate" => ~findings /\ confirmed
 \* Done only after research, plan and PR are all approved; a research task needs only its research approved
 GatesRule == st = "Done" => approved = IF kind = "research" THEN {"research"} ELSE {"research","plan","pr"}
-\* Every task ends, or waits in Parked or the Backlog until you pick it up
-EndsOrParked == <>(st \in Terminal \cup {"Parked","Backlog"})
+\* The factory never loops on its own: every task keeps coming back to you, or ends, or waits
+\* in Parked or the Backlog
+ComesBackToYou == []<>(st \in Terminal \cup {"Parked","Backlog"} \cup Gates)
+\* Sending research back is the one loop only you can repeat; once you stop, every task ends,
+\* or waits in Parked or the Backlog until you pick it up
+RedoStep == st \in Gates /\ st' = "Researching"
+EndsOrParked == <>[][~RedoStep]_vars => <>(st \in Terminal \cup {"Parked","Backlog"})
 =============================================================================

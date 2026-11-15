@@ -191,15 +191,20 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
       if (!isGate(s)) return wrong(m, "send back", "at a gate or Needs you");
       const route = SEND_BACK[s].find((r) => r.to === e.to && !(research(m) && r.to !== "Researching"));
       if (!route) return no(`${s} can send back to ${SEND_BACK[s].map((r) => r.to).join(" or ")}, not ${e.to}`);
-      if (m.tries[s] >= cap) return no(`${s} has used all ${cap} send-backs; only approve or drop remain`);
+      // Research back to the drawing board is the person's call and is never capped. It starts the
+      // work over, so every later cap counts afresh from the new research.
+      const restart = e.to === "Researching";
+      if (!restart && m.tries[s] >= cap)
+        return no(`${s} has used all ${cap} send-backs to ${e.to === "Building" ? "the build" : "planning"}; you can still send it back to research, approve or drop it`);
       if (route.needs && !route.needs.every((a) => m.approved.includes(a))) return no(`sending back to ${e.to} needs ${route.needs.join(" and ")} approved first`);
       const n = go(m, e.to);
-      n.tries[s]++;
       n.approved = n.approved.filter((a) => !route.clears.includes(a));
-      if (e.to === "Researching") {
+      if (restart) {
         n.chart = false;
         n.proved = false;
-      }
+        n.tries = { ResearchGate: 0, PlanGate: 0, PRGate: 0, NeedsYou: 0 };
+        n.loops = { check: 0, requirements: 0, review: 0, confirm: 0 };
+      } else n.tries[s]++;
       if (e.to === "Researching" || e.to === "Planning") n.covered = false;
       return ok(n, `SendBack(${s},${e.to})`);
     }

@@ -208,7 +208,7 @@ function Foot() {
 function GateRow({ t }: { t: Task }) {
   const s = t.machine.state;
   const isPR = s === "PRGate";
-  const tries = s === "NeedsYou" ? t.machine.tries.NeedsYou : s === "ResearchGate" || s === "PlanGate" || s === "PRGate" ? t.machine.tries[s] : 0;
+  const tries = s === "NeedsYou" ? t.machine.tries.NeedsYou : s === "PlanGate" || s === "PRGate" ? t.machine.tries[s] : 0;
   const notion = notionUrl(t.notionReviewId);
   return (
     <div class="p-row ask" onClick={() => showMain(`task/${t.id}`)}>
