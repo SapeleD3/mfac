@@ -1,15 +1,12 @@
 import { execFile } from "node:child_process";
 import type { Engine } from "./engine.js";
 import { HttpError } from "./http.js";
-import * as jira from "./jira.js";
-import * as notion from "./notion.js";
-import { deleteSecret, getSecret } from "./secrets.js";
-import * as slack from "./slack.js";
+import { connectorSettings, probe, serverFor, servers } from "./connectors.js";
 import { type Row, type Store, now, opt } from "./store.js";
 
 /*
- * Connections and health. Before each intake run the engine makes one cheap test call per connection,
- * without Claude. A failure raises a sticky alert that never auto-dismisses (fix it or snooze it), and
+ * Connections and health. Slack, Notion and Jira are Claude's own connectors (connectors.ts); the
+ * factory holds no tokens. Before each intake run the engine checks the connection with no model call. A failure raises a sticky alert that never auto-dismisses (fix it or snooze it), and
  * work that needs the connection pauses instead of failing; it catches up from its cursor once fixed.
  */
 
@@ -31,49 +28,37 @@ export interface Connection {
   fix: { url?: string; steps: string[] };
 }
 
+const CONNECTOR_STEPS = (app: string, also = "") => [
+  `In Claude (claude.ai, Settings, Connectors), connect ${app}${also}. Claude Code uses the same connectors when it's signed in with that account.`,
+  `Or add a ${app} MCP server to Claude Code yourself (claude mcp add ...). Either way the factory uses Claude's access; it never asks for a token.`,
+  `Then run factory connect ${app.toLowerCase()} to check it works.`,
+];
+
 export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status">> = {
   slack: {
     label: "Slack",
     neededFor: "Intake, reply drafts, write-back to threads",
     required: true,
-    via: "Slack user token in the Keychain",
-    fix: {
-      url: "https://api.slack.com/apps?new_app=1",
-      steps: [
-        'Create an app "Factory (local)" from scratch in your workspace (or reuse it).',
-        "Under OAuth & Permissions, add user scopes: search:read, im:history, mpim:history, im:read, mpim:read, users:read, chat:write.",
-        "Install it to the workspace (an admin may need to approve it), then copy the User OAuth Token (xoxp-...).",
-        "Paste it when factory connect slack asks. It's stored in your Keychain.",
-      ],
-    },
+    via: "The Slack connector in Claude",
+    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Slack") },
   },
   notion: {
     label: "Notion",
     neededFor: "Review docs, comments, decisions, the factory board, learn-tagged artifacts",
     required: true,
-    via: "Notion internal integration token in the Keychain",
-    fix: {
-      url: "https://www.notion.so/profile/integrations",
-      steps: [
-        'Create an internal integration called "Factory" for your workspace and copy its secret.',
-        "Make or pick a private page for the factory, open its ... menu, Connections, and add Factory.",
-        "Paste the secret and the page's link when factory connect notion asks.",
-      ],
-    },
+    via: "The Notion connector in Claude",
+    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Notion") },
   },
   jira: {
     label: "Jira",
     neededFor: "Intake of tickets assigned to you, write-back",
     required: false,
-    via: "Atlassian API token in the Keychain",
-    fix: {
-      url: "https://id.atlassian.com/manage-profile/security/api-tokens",
-      steps: ["Create an API token named Factory.", "Paste it with your Atlassian email and site (yourco.atlassian.net) when factory connect jira asks."],
-    },
+    via: "The Atlassian connector in Claude",
+    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Jira", " (the Atlassian connector)") },
   },
   claude: {
     label: "Claude Code",
-    neededFor: "Every session",
+    neededFor: "Every session, and the Slack, Notion and Jira connectors",
     required: true,
     via: "The claude command, signed in with your subscription",
     fix: { steps: ["Run claude in a terminal and sign in with your Claude account (not an API key)."] },
@@ -104,11 +89,15 @@ export const realTester =
   async (name) => {
     switch (name) {
       case "slack":
-        return slack.test();
       case "notion":
-        return notion.test();
-      case "jira":
-        return jira.test(engine.store.setting("jira", {}));
+      case "jira": {
+        // Free: `claude mcp list` checks each server's connection without a model call.
+        const s = await serverFor(engine.store, name);
+        if (!s) throw new HttpError(404, connectorSettings(engine.store).server?.[name] === "" ? "turned off by you (factory connect " + name + " turns it back on)" : `no ${INFO[name].label} connector in Claude Code`);
+        if (s.status === "needs-auth") throw new HttpError(401, `${s.name} needs you to sign in again in Claude`);
+        if (s.status === "failed") throw new HttpError(502, `${s.name}: ${s.detail}`);
+        return `via ${s.name}`;
+      }
       case "claude": {
         const v = await run(process.env.FACTORY_CLAUDE ?? "claude", ["--version"]);
         if (v.status !== 0) throw new HttpError(404, "the claude command isn't installed or isn't on PATH");
@@ -154,27 +143,22 @@ export class Connections {
     return this.get(name).status === "connected";
   }
 
-  /** Is the connection set up at all (a token exists)? Unset optional ones aren't tested. */
+  /** Was a connector found at the last check? Optional ones without one don't raise alerts. */
   configured(name: ConnectionName): boolean {
     if (name === "claude" || name === "github") return true;
-    return !!getSecret(name);
+    return this.get(name).status !== "missing";
   }
 
   async test(name: ConnectionName): Promise<Connection> {
     const before = this.get(name);
     let status: ConnectionStatus;
     let detail: string;
-    if (!this.configured(name)) {
-      status = "missing";
-      detail = "not set up";
-    } else {
-      try {
-        detail = await this.tester(name);
-        status = "connected";
-      } catch (e) {
-        status = e instanceof HttpError && e.auth ? "expired" : e instanceof HttpError && e.status === 404 ? "missing" : "error";
-        detail = e instanceof Error ? e.message : String(e);
-      }
+    try {
+      detail = await this.tester(name);
+      status = "connected";
+    } catch (e) {
+      status = e instanceof HttpError && e.auth ? "expired" : e instanceof HttpError && e.status === 404 ? "missing" : "error";
+      detail = e instanceof Error ? e.message : String(e);
     }
     const t = now();
     this.store.db
@@ -187,9 +171,9 @@ export class Connections {
     const after = this.get(name);
     if (before.status !== after.status) {
       this.engine.emit("connection", { connection: after });
-      const needed = INFO[name].required || this.configured(name);
+      const needed = INFO[name].required || after.status !== "missing";
       if (after.status !== "connected" && needed && !this.snoozed(after))
-        this.engine.emit("alert", { level: "error", sticky: true, connection: name, message: `${INFO[name].label} is ${after.status}: ${detail}. Fix: factory connect ${name}` });
+        this.engine.emit("alert", { level: "error", sticky: true, connection: name, message: `${INFO[name].label} is ${after.status}: ${detail}. Fix it in Claude, then run factory connect ${name}` });
       if (after.status === "connected" && before.status !== "missing") this.engine.emit("alert", { level: "info", connection: name, clear: true, message: `${INFO[name].label} is connected again.` });
     }
     return after;
@@ -201,22 +185,36 @@ export class Connections {
     return out;
   }
 
-  /**
-   * Forgets a connection's token (deletes its Keychain item). Work that needs it pauses, as with any
-   * missing connection. Claude Code and GitHub use their own sign-in, so there's nothing to forget.
-   */
-  disconnect(name: ConnectionName): Connection {
+  /** `factory connect`: checks the connector with one cheap read (a small Haiku call) and remembers its tools. */
+  async connect(name: ConnectionName, server?: string): Promise<Connection> {
+    if (name === "claude" || name === "github") return this.test(name);
+    if (server !== undefined) {
+      const s = connectorSettings(this.store);
+      this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server } });
+    } else {
+      // Connecting again undoes a disconnect: back to the first matching server.
+      const s = connectorSettings(this.store);
+      if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
+    }
+    await servers(true);
+    const c = await this.test(name);
+    if (c.status !== "connected") return c;
+    try {
+      const r = await probe(this.store, name);
+      this.store.db.prepare("UPDATE connections SET detail = ? WHERE name = ?").run(`${r.who}, via ${r.server}`, name);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      this.store.db.prepare("UPDATE connections SET status = ?, detail = ? WHERE name = ?").run(e instanceof HttpError && e.auth ? "expired" : "error", detail, name);
+    }
+    return this.get(name);
+  }
+
+  /** Stops the factory using a connector. Claude itself keeps it; remove it there to revoke access. */
+  async disconnect(name: ConnectionName): Promise<Connection> {
     if (name === "claude" || name === "github") throw new Error(`${INFO[name].label} uses its own sign-in; sign out there instead`);
-    deleteSecret(name);
-    this.store.db
-      .prepare(
-        `INSERT INTO connections (name, status, detail, checked_at) VALUES (?, 'missing', 'disconnected by you', ?)
-         ON CONFLICT(name) DO UPDATE SET status = 'missing', detail = excluded.detail, checked_at = excluded.checked_at`,
-      )
-      .run(name, now());
-    const c = this.get(name);
-    this.engine.emit("connection", { connection: c });
-    return c;
+    const s = connectorSettings(this.store);
+    this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: "" } });
+    return this.test(name);
   }
 
   snooze(name: ConnectionName, hours: number) {
@@ -231,6 +229,6 @@ export class Connections {
 
   /** Sticky alerts still standing: required connections that aren't working and aren't snoozed. */
   alerts(): Connection[] {
-    return this.list().filter((c) => c.checkedAt && c.status !== "connected" && (c.required || this.configured(c.name)) && !this.snoozed(c));
+    return this.list().filter((c) => c.checkedAt && c.status !== "connected" && (c.required || c.status !== "missing") && !this.snoozed(c));
   }
 }

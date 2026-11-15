@@ -8,10 +8,10 @@ import { type Event, type State, initial, step } from "./statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "./store.js";
 
 /*
- * Intake and triage. Polling, not webhooks (a webhook needs a public URL). Every few minutes in
- * working hours the engine asks Slack and Jira for anything newer than its cursor; obvious noise is
- * dropped by plain rules; the rest goes to one batched Haiku call that sorts each item into ignore,
- * reply, task or urgent. An empty poll costs no tokens.
+ * Intake and triage. Polling, not webhooks (a webhook needs a public URL). Every half hour in working
+ * hours a small Haiku call reads Slack and Jira through your connectors in Claude for anything newer
+ * than the cursor; plain rules sort what they can; the rest goes to one batched Haiku call that sorts
+ * each item into ignore, reply, task or urgent.
  *
  * Each item follows the first part of the task statechart (Inbox, Triage, Ignored, ReplyDrafted,
  * Replied, Queued), checked with the same step function.
@@ -145,22 +145,23 @@ export class Intake {
   async poll(source: "slack" | "jira"): Promise<{ added: number; skipped?: string }> {
     const c = await this.connections.test(source);
     if (c.status !== "connected") return { added: 0, skipped: `${source} is ${c.status}; intake waits and catches up from its cursor once it's fixed` };
+    // The next run looks back a little before this one started, so nothing sent mid-run is missed;
+    // duplicates are dropped by their source id.
+    const started = new Date(Date.now() - 10 * 60_000).toISOString();
     let added = 0;
     if (source === "slack") {
-      const muted = this.store.setting<string[]>("slack_muted", []);
-      const r = await slack.poll(this.cursor("slack"), { mutedChannels: muted });
-      for (const m of r.items)
+      const since = this.cursor("slack") || new Date(Date.now() - 86_400_000).toISOString();
+      const items = await slack.poll(this.store, since, { mutedChannels: this.store.setting<string[]>("slack_muted", []) });
+      for (const m of items)
         if (this.add({ source: "slack", sourceId: m.sourceId, author: m.author, channel: m.channel, text: m.text, url: m.url, meta: { channelId: m.channelId, threadTs: m.threadTs ?? m.ts } })) added++;
-      this.setCursor("slack", r.cursor);
     } else {
-      const cfg = this.store.setting<jira.JiraConfig>("jira", {});
-      const r = await jira.poll(cfg, this.cursor("jira"));
-      for (const i of r.items) {
+      const since = this.cursor("jira") || new Date(Date.now() - 7 * 86_400_000).toISOString();
+      for (const i of await jira.poll(this.store, since)) {
         const meta: Record<string, string> = { key: i.key, ...(i.priority ? { priority: i.priority } : {}), ...(i.due ? { due: i.due } : {}) };
         if (this.add({ source: "jira", sourceId: i.key, author: i.reporter, channel: "Jira", text: `${i.key}: ${i.summary}\n\n${i.text}`.trim(), url: i.url, meta })) added++;
       }
-      this.setCursor("jira", r.cursor);
     }
+    this.setCursor(source, started);
     return { added };
   }
 
@@ -300,8 +301,8 @@ export class Intake {
     if (item.status !== "ReplyDrafted") throw new Error(`only a drafted reply can be sent (this item is ${item.status})`);
     const body = (text ?? item.draft ?? "").trim();
     if (!body) throw new Error("the reply is empty");
-    if (item.source === "slack") await slack.reply(item.meta.channelId!, item.meta.threadTs!, body);
-    else if (item.source === "jira") await jira.comment(this.store.setting("jira", {}), item.meta.key!, body);
+    if (item.source === "slack") await slack.reply(this.store, item.meta.channelId!, item.meta.threadTs!, body);
+    else if (item.source === "jira") await jira.comment(this.store, item.meta.key!, body);
     else throw new Error(`can't reply to ${item.source}`);
     return this.moveItem(id, { type: "send_reply" }, { draft: body });
   }

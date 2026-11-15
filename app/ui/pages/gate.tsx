@@ -7,7 +7,7 @@
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openUrl } from "../bridge";
-import { Brand, Btn, Ic, Pips, Tags, taskSource } from "../kit";
+import { Brand, Btn, Ic, Pips, Tags, ago, taskSource } from "../kit";
 import { act, useApp, useCall } from "../store";
 import { CAP, type Task } from "../types";
 import { FileView } from "./task";
@@ -16,6 +16,7 @@ interface Summary {
   url?: string;
   comments: number;
   discussions: number;
+  commentsReadAt?: string;
   summary: string;
   tlc?: string;
   statechart?: string;
@@ -125,7 +126,7 @@ function DocGate({ t }: { t: Task }) {
         </article>
         <aside class="decide">
           <div class="decide-sec">
-            <div class="row"><b>Comments in Notion</b><span class="chip warn">{s?.url ? `${s.discussions} open` : "–"}</span><span class="grow" /><span class="faint xs">{s?.url ? "read when this page opened" : ""}</span></div>
+            <div class="row"><b>Comments in Notion</b><span class="chip warn">{s?.url ? `${s.discussions} open` : "–"}</span><span class="grow" /><span class="faint xs">{s?.url ? (s.commentsReadAt ? `read ${ago(s.commentsReadAt)}` : "reading…") : ""}</span></div>
             <div class="small dim" style={{ marginTop: 4 }}>Counted from the Notion page. You add and edit them there; they all go back with a send-back.</div>
             <div class="row" style={{ marginTop: 6 }}><Btn disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}><Ic n="message-square" s={14} />Open comments in Notion</Btn></div>
           </div>

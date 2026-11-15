@@ -6,7 +6,6 @@ import { CONNECTIONS, type Connection, type ConnectionName, INFO } from "./conne
 import { table } from "./format.js";
 import type { IntakeItem, TriageRule } from "./intake.js";
 import type { Routine } from "./routines.js";
-import { setSecret } from "./secrets.js";
 
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
@@ -47,36 +46,32 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   connect: {
-    usage: "connect slack|notion|jira|claude|github",
-    help: "Opens the right page in your browser, shows the steps, and stores the token in your Keychain",
-    async run(args) {
+    usage: "connect slack|notion|jira|claude|github [--server NAME]",
+    help: "Checks that Claude Code can reach Slack, Notion or Jira through your connectors (one small Haiku call), and sets up the Notion board",
+    async run(args, f) {
       const name = args[0] as ConnectionName;
       if (!(CONNECTIONS as readonly string[]).includes(name)) throw new Error(`connect one of: ${CONNECTIONS.join(", ")}`);
       const info = INFO[name];
-      out(`${info.label}: ${info.neededFor}\n`);
-      info.fix.steps.forEach((s, i) => out(`  ${i + 1}. ${s}`));
-      if (info.fix.url) {
-        out(`\nOpening ${info.fix.url}`);
-        openUrl(info.fix.url);
+      out(`${info.label}: ${info.neededFor}.${info.via ? ` Uses: ${info.via}.` : ""}`);
+      out("Checking...");
+      const c = await call<Connection>("connections.connect", { name, server: str(f.server) });
+      out(`${info.label}: ${c.status}${c.detail ? ` (${c.detail})` : ""}`);
+      if (c.status !== "connected") {
+        out("\nTo fix it:");
+        info.fix.steps.forEach((s, i) => out(`  ${i + 1}. ${s}`));
+        if (info.fix.url) {
+          out(`\nOpening ${info.fix.url}`);
+          openUrl(info.fix.url);
+        }
+        if (name !== "claude" && name !== "github") out("\nIf Claude Code has more than one, pick it with --server \"<name from claude mcp list>\".");
+        return;
       }
-      if (name === "claude" || name === "github") return out("\nWhen you're done, run factory connections --test.");
-      out("");
-      if (name === "jira") {
-        const site = await ask("Jira site (yourco.atlassian.net): ");
-        const email = await ask("Your Atlassian email: ");
-        const token = await ask("API token: ");
-        setSecret("jira", token);
-        const [c] = [await call<Connection>("jira.configure", { site, email })];
-        return out(`Jira: ${c.status}${c.detail ? ` (${c.detail})` : ""}`);
-      }
-      const token = await ask(name === "slack" ? "User OAuth Token (xoxp-...): " : "Integration secret: ");
-      if (!token) throw new Error("no token given; nothing changed");
-      setSecret(name, token);
-      const [c] = await call<Connection[]>("connections.test", { name });
-      out(`${info.label}: ${c!.status}${c!.detail ? ` (${c!.detail})` : ""}`);
-      if (name === "notion" && c!.status === "connected") {
-        const page = await ask("Link to the page you shared with the integration (the factory board goes there): ");
+      if (name === "notion") {
+        const status = await call<{ ready: boolean }>("notion.status");
+        if (status.ready) return out("Your factory board is already set up.");
+        const page = await ask("Link to a Notion page for your factory board (Jobs, Tickets and Reviews go there), or Enter to skip: ");
         if (page) {
+          out("Creating the board (one call to Notion)...");
           await call("notion.setup", { page });
           out("Created Jobs, Tickets and Reviews on that page.");
         }
@@ -85,18 +80,13 @@ export const connectCommands: Record<string, Command> = {
   },
   disconnect: {
     usage: "disconnect slack|notion|jira",
-    help: "Forget a connection's token (deletes it from your Keychain); work that needs it pauses",
+    help: "Stop the factory using a connector; Claude keeps it (remove it in Claude to revoke access)",
     async run(args) {
       const name = args[0] as ConnectionName;
       if (!["slack", "notion", "jira"].includes(name)) throw new Error("disconnect one of: slack, notion, jira");
       const c = await call<Connection>("connections.disconnect", { name });
-      out(`${c.label}: token removed from your Keychain. Work that needs ${c.label} is paused until you run factory connect ${name}.`);
-      const revoke: Record<string, string> = {
-        slack: "To revoke the token itself, remove the Factory (local) app at https://api.slack.com/apps",
-        notion: "To revoke access itself, delete the Factory integration at https://www.notion.so/profile/integrations",
-        jira: "To revoke the token itself, delete it at https://id.atlassian.com/manage-profile/security/api-tokens",
-      };
-      out(revoke[name]!);
+      out(`${c.label}: the factory no longer uses it, and work that needs it is paused. factory connect ${name} turns it back on.`);
+      out("Claude still has the connector. To remove Claude's access too: https://claude.ai/settings/connectors");
     },
   },
   inbox: {
@@ -155,7 +145,7 @@ export const connectCommands: Record<string, Command> = {
   },
   notion: {
     usage: "notion setup PAGE_LINK | status",
-    help: "Create your factory board (Jobs, Tickets, Reviews) on a page shared with the integration",
+    help: "Create your factory board (Jobs, Tickets, Reviews) on a Notion page you can edit",
     async run(args) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
       out(JSON.stringify(await call("notion.status"), null, 2));

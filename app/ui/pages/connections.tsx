@@ -1,6 +1,7 @@
 /*
- * Connections and health. Before each intake run the engine checks each connection with one cheap
- * call, no Claude. A failure raises a sticky alert; work that needs it pauses instead of failing.
+ * Connections and health. Slack, Notion and Jira are the connectors you already have in Claude; the
+ * factory holds no tokens. Health checks read `claude mcp list` (no model call). A failure raises a
+ * sticky alert; work that needs it pauses instead of failing.
  */
 import { useState } from "preact/hooks";
 import { openTerminal, openUrl } from "../bridge";
@@ -20,7 +21,7 @@ export function Connections() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const alert = app.alerts[0];
   const doctor = useCall<{ checks: { status: "ok" | "warn" | "err"; name: string; detail: string; fix?: string }[] }>("doctor.run");
-  const notion = useCall<{ ready: boolean; pending: number; rootPageId?: string }>("notion.status");
+  const notion = useCall<{ ready: boolean; pending: number; parentPageId?: string }>("notion.status");
   const skills = useCall<{ name: string; description: string; status: "ok" | "missing" | "no-source"; version?: string; provides: string[] }[]>("skills.list");
   const fix = (c: Connection) => {
     if (c.fix.url) void openUrl(c.fix.url);
@@ -37,7 +38,7 @@ export function Connections() {
             <Btn kind="btn-ghost" onClick={() => act("connections.snooze", { name: alert.name, hours: 1 }, ["connections"])}>Snooze 1h</Btn>
           </div>
         )}
-        <div class="main-h"><h2>Connections</h2><span class="grow" /><span class="small dim">Retests every 5 min</span><Btn onClick={() => act("connections.test", {}, ["connections"])}><Ic n="heart-pulse" s={14} />Test all</Btn></div>
+        <div class="main-h"><h2>Connections</h2><span class="grow" /><span class="small dim">Checks Claude's connectors every 5 min, no model calls</span><Btn onClick={() => act("connections.test", {}, ["connections"])}><Ic n="heart-pulse" s={14} />Test all</Btn></div>
         <div class="list conn">
           <div class="cn-row cn-head"><span /><span>Connection</span><span>Used for</span><span>Status</span><span>Last worked</span><span /></div>
           {app.connections.map((c) => {
@@ -55,7 +56,7 @@ export function Connections() {
                 </div>
                 {isOpen && (
                   <div class="cn-body">
-                    <div class="cn-meta"><span class="label">Connected through</span><span class="small">{c.via}</span></div>
+                    <div class="cn-meta"><span class="label">Through</span><span class="small">{c.via}{c.name !== "claude" && c.name !== "github" ? ". The factory holds no token; it uses Claude's access." : ""}</span></div>
                     {c.status === "connected" ? (
                       <div class="cn-meta"><span class="label">Last test</span><span class="small">{ago(c.checkedAt)}: {c.detail}</span></div>
                     ) : (
@@ -101,9 +102,9 @@ export function Connections() {
             <div class="card-b layers">
               {notion.data ? (
                 <>
-                  <div><span class={`dot ${notion.data.ready ? "ok" : "off"}`} />{notion.data.ready ? "Jobs, Tickets and Reviews databases ready" : "Not set up yet"}<span class="grow" />{notion.data.rootPageId && <a href="#" onClick={(e) => (e.preventDefault(), openUrl(`https://www.notion.so/${notion.data!.rootPageId!.replace(/-/g, "")}`))} class="xs">Open</a>}</div>
+                  <div><span class={`dot ${notion.data.ready ? "ok" : "off"}`} />{notion.data.ready ? "Jobs, Tickets and Reviews databases ready" : "Not set up yet"}<span class="grow" />{notion.data.parentPageId && <a href="#" onClick={(e) => (e.preventDefault(), openUrl(`https://www.notion.so/${notion.data!.parentPageId!.replace(/-/g, "")}`))} class="xs">Open</a>}</div>
                   <div><span class={`dot ${notion.data.pending ? "needs" : "ok"}`} />{notion.data.pending ? `${notion.data.pending} changes waiting to sync` : "Everything synced"}</div>
-                  {!notion.data.ready && <div class="xs faint">Run <code>factory notion setup &lt;page link&gt;</code> with a page shared with your Factory integration.</div>}
+                  {!notion.data.ready && <div class="xs faint">Run <code>factory connect notion</code> (or <code>factory notion setup &lt;page link&gt;</code>) with a Notion page you can edit.</div>}
                 </>
               ) : <div class="small dim">{notion.error ?? "Loading…"}</div>}
             </div>

@@ -48,8 +48,17 @@ const ALWAYS_DENY = [
   "Bash(rm -rf /:*)", "Bash(sudo:*)", "Bash(curl:*|*sh)", "Read(~/.ssh/**)", "Read(~/.aws/**)",
 ];
 
-/** What each station may do without asking. Anything else asks you in the panel (or in the session). */
-export function permissionsFor(role: Role, jobDir: string): { allow: string[]; deny: string[] } {
+/**
+ * What each station may do without asking. Anything else asks you in the panel (or in the session).
+ * `reads` are the read-only tools of your Slack, Notion and Jira connectors in Claude, so every station
+ * can look things up there; posting or editing still asks.
+ */
+export function permissionsFor(role: Role, jobDir: string, reads: string[] = []): { allow: string[]; deny: string[] } {
+  const p = stationPermissions(role, jobDir);
+  return { ...p, allow: [...p.allow, ...reads] };
+}
+
+function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny: string[] } {
   const job = [`Write(/${jobDir}/**)`, `Edit(/${jobDir}/**)`];
   const coord = ["Bash(factory coord:*)", "Bash(factory ticket:*)"];
   const base = { deny: ALWAYS_DENY };
@@ -71,10 +80,10 @@ export function permissionsFor(role: Role, jobDir: string): { allow: string[]; d
   }
 }
 
-export function stageSettings(role: Role, jobDir: string) {
+export function stageSettings(role: Role, jobDir: string, reads: string[] = []) {
   const f = factoryCommand();
   return {
-    permissions: permissionsFor(role, jobDir),
+    permissions: permissionsFor(role, jobDir, reads),
     hooks: {
       // The session finished a turn: the engine checks the stage's output file and wakes the coordinator.
       Stop: [{ hooks: [{ type: "command", command: `${f} hook stop` }] }],
@@ -98,13 +107,15 @@ export interface Launch {
   jobDir: string;
   systemPromptFile: string;
   prompt?: string;
+  /** Read-only connector tools (Slack, Notion, Jira) the session may use without asking. */
+  connectorReads?: string[];
 }
 
 /** The `claude` command for a stage, plus the settings file it reads. */
 export function claudeCommand(l: Launch): string[] {
   const settingsFile = join(l.jobDir, ".factory", `${l.role}.settings.json`);
   mkdirSync(dirname(settingsFile), { recursive: true });
-  writeFileSync(settingsFile, JSON.stringify(stageSettings(l.role, l.jobDir), null, 2));
+  writeFileSync(settingsFile, JSON.stringify(stageSettings(l.role, l.jobDir, l.connectorReads), null, 2));
   const plugin = join(paths.home(), "plugin");
   return [
     process.env.FACTORY_CLAUDE ?? "claude",

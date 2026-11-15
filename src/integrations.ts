@@ -5,6 +5,7 @@ import type { Decision, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "./jira.js";
+import { pageUrl as notionPageUrl } from "./notion.js";
 import { NotionSync } from "./notion-sync.js";
 import { paths } from "./paths.js";
 import { type Builtin, Routines } from "./routines.js";
@@ -40,7 +41,7 @@ export const integrationsPart =
       {
         id: "health-check",
         name: "Health check",
-        description: "One cheap test call per connection; raises a sticky alert when one breaks",
+        description: "Checks Claude Code's connectors and the claude and gh commands (no model calls); raises a sticky alert when one breaks",
         everySeconds: 300,
         run: async () => {
           const all = await connections.testAll();
@@ -51,28 +52,28 @@ export const integrationsPart =
       {
         id: "intake-slack",
         name: "Slack intake",
-        description: "DMs and @-mentions newer than the last cursor, then triage",
+        description: "A small Haiku call reads DMs and @-mentions since the last run through your Slack connector, then triage",
         everySeconds: engine.settings().pollMinutes * 60,
         workingHours: true,
         run: async () => {
           const r = await intake.poll("slack");
           if (r.skipped) return `skip: ${r.skipped}`;
           const t = r.added ? await intake.triage() : { triaged: 0 };
-          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new (no tokens used)";
+          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new";
         },
       },
       {
         id: "intake-jira",
         name: "Jira intake",
-        description: "Tickets assigned to you that changed since the last cursor, then triage",
+        description: "A small Haiku call reads tickets assigned to you that changed since the last run, through your Atlassian connector, then triage",
         everySeconds: engine.settings().pollMinutes * 60,
         workingHours: true,
         run: async () => {
-          if (!connections.configured("jira")) return "skip: Jira isn't set up (optional)";
+          if (!connections.configured("jira")) return "skip: no Atlassian connector in Claude (optional)";
           const r = await intake.poll("jira");
           if (r.skipped) return `skip: ${r.skipped}`;
           const t = r.added ? await intake.triage() : { triaged: 0 };
-          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new (no tokens used)";
+          return r.added ? `${r.added} new, ${t.triaged} triaged` : "nothing new";
         },
       },
       {
@@ -88,14 +89,25 @@ export const integrationsPart =
       {
         id: "notion-sync",
         name: "Notion sync",
-        description: "Mirrors jobs and tickets, picks up tickets you added, retries anything pending",
-        everySeconds: 120,
+        description: "Sends queued board changes in one batched call; makes no call when nothing changed",
+        everySeconds: 600,
         run: async () => {
           if (!sync.ready()) return "skip: the Notion board isn't set up (factory notion setup <page link>)";
           if (!connections.ok("notion")) return "skip: Notion isn't connected; changes wait";
-          const flushed = await sync.flush();
-          const added = await sync.pullTickets();
-          return `${flushed} pending sent, ${added} tickets picked up from Notion`;
+          if (!sync.pendingCount()) return "nothing to send";
+          return `${await sync.flush()} board changes sent`;
+        },
+      },
+      {
+        id: "notion-pull",
+        name: "Notion tickets",
+        description: "Picks up tickets you added or edited on the Notion board",
+        everySeconds: 7200,
+        workingHours: true,
+        run: async () => {
+          if (!sync.ready()) return "skip: the Notion board isn't set up";
+          if (!connections.ok("notion")) return "skip: Notion isn't connected";
+          return `${await sync.pullTickets()} tickets picked up from Notion`;
         },
       },
       {
@@ -134,19 +146,19 @@ export const integrationsPart =
     const writeBack = async (t: TaskView, text: string) => {
       const cfg = store.setting<{ slack?: boolean; jira?: boolean }>("write_back", { slack: true, jira: true });
       const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
-      if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store.setting("jira", {}), item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
-      if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(item.meta.channelId, item.meta.threadTs!, text);
+      if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
+      if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
     const onChange = (c: { kind: string; task?: TaskView; action?: string }) => {
       const t = c.task;
       if (c.kind !== "task" || !t) return;
-      sync.later("job", t.id, () => sync.mirrorJob(t));
+      sync.later("job", t.id);
       if (t.machine.state === "ResearchGate" || t.machine.state === "PlanGate") sync.later("review", t.id, () => sync.publishReview(t));
     };
-    const onTicket = (d: { ticket: Ticket }) => sync.later("ticket", d.ticket.id, () => sync.mirrorTicket(d.ticket));
+    const onTicket = (d: { ticket: Ticket }) => sync.later("ticket", d.ticket.id);
     const onDecision = (d: Decision) => {
-      void sync.recordVerdict(d.task, d.verdict).catch(() => {});
+      sync.recordVerdict(d.task, d.verdict);
       const t = d.task;
       const where = t.prUrl ? ` ${t.prUrl}` : "";
       const text =
@@ -155,7 +167,7 @@ export const integrationsPart =
           : t.machine.state === "Dropped"
             ? `Dropped this one${d.note ? `: ${d.note}` : "."}`
             : d.verdict === "approve" && t.machine.state === "Planning" && t.tags.includes("learn") && t.notionReviewId
-              ? `Research write-up (statechart and formal check included): https://www.notion.so/${t.notionReviewId.replace(/-/g, "")}`
+              ? `Research write-up (statechart and formal check included): ${notionPageUrl(t.notionReviewId)}`
               : "";
       if (text) void writeBack(t, text).catch((e) => engine.emit("alert", { level: "warn", taskId: t.id, message: `Couldn't write back to ${t.source}: ${e instanceof Error ? e.message : e}` }));
     };
@@ -176,13 +188,10 @@ export const integrationsPart =
       api: {
         "connections.list": () => connections.list(),
         "connections.test": async (p: { name?: ConnectionName }) => (p.name ? [await connections.test(p.name)] : connections.testAll()),
+        "connections.connect": (p: { name: ConnectionName; server?: string }) => connections.connect(p.name, p.server),
         "connections.disconnect": (p: { name: ConnectionName }) => connections.disconnect(p.name),
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
-        "jira.configure": (p: { site: string; email: string }) => {
-          store.setSetting("jira", { site: p.site, email: p.email });
-          return connections.test("jira");
-        },
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
         "intake.poll": async (p: { source: "slack" | "jira" }) => {
           const r = await intake.poll(p.source);
