@@ -96,17 +96,20 @@ export class Engine extends EventEmitter {
   view(t: Task): TaskView {
     const m = t.machine;
     const s = m.state;
-    const rounds = isGateState(s)
-      ? `${m.tries[s]}/3`
-      : s === "Researching" || s === "ResearchCheck"
-        ? `${m.loops.check}/3`
-        : s === "Planning" || s === "RequirementsReview"
-          ? `${m.loops.requirements}/3`
-          : s === "Building" || s === "Reviewing"
-            ? `${m.loops.review}/3`
-            : s === "Confirming"
-              ? `${m.loops.confirm}/3`
-              : undefined;
+    const rounds =
+      s === "ResearchGate"
+        ? undefined
+        : isGateState(s)
+          ? `${m.tries[s]}/3`
+          : s === "Researching" || s === "ResearchCheck"
+            ? `${m.loops.check}/3`
+            : s === "Planning" || s === "RequirementsReview"
+              ? `${m.loops.requirements}/3`
+              : s === "Building" || s === "Reviewing"
+                ? `${m.loops.review}/3`
+                : s === "Confirming"
+                  ? `${m.loops.confirm}/3`
+                  : undefined;
     const moves = allowed(m).map((e) => (e.type === "send_back" ? `send_back:${e.to}` : e.type === "triage" ? `triage:${e.as}` : e.type));
     return { ...t, column: column(s), rounds, allowed: [...new Set(moves)] };
   }

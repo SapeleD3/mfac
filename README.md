@@ -281,6 +281,8 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
 At the research and plan gates the review doc is published there. Comment in Notion on every issue,
 then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every
 comment and the words it's anchored to go to the stage, and the next round lands on the same page.
+You can send research back as often as you like, since nothing gets planned or built until you agree with it;
+plan and build send-backs stop at three, and sending work back to research starts those counts over.
 Board changes queue up and go in one batched call every 10 minutes (none when nothing changed); review
 pages are published as soon as a gate opens, and tickets you add on the board are picked up every 2 hours.
 

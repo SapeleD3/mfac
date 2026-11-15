@@ -45,6 +45,7 @@ export function Gate({ id }: { id: string }) {
 
 function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.ComponentChildren }) {
   const s = t.machine.state as "ResearchGate" | "PlanGate" | "PRGate";
+  const capped = s !== "ResearchGate";
   const used = t.machine.tries[s];
   const left = CAP - used;
   const targets = t.allowed.filter((a) => a.startsWith("send_back:")).map((a) => a.slice(10));
@@ -70,9 +71,13 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
       <div class="row" style={{ marginBottom: 8 }}>
         <b>Decide</b>
         <span class="grow" />
-        <span class="xs dim">
-          send-backs <Pips used={used} /> {used} of {CAP} used
-        </span>
+        {capped ? (
+          <span class="xs dim">
+            send-backs <Pips used={used} /> {used} of {CAP} used
+          </span>
+        ) : (
+          <span class="xs dim">research can go back as often as you like</span>
+        )}
       </div>
       {c(
         "approve",
@@ -82,7 +87,7 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
       {c(
         "back",
         "Send back",
-        left > 0 ? "Goes back with your evaluation and every open comment. The stage updates the same page as a new round." : "No send-backs left at this gate: approve or drop.",
+        targets.length ? "Goes back with your evaluation and every open comment. The stage updates the same page as a new round." : "No send-backs left at this gate: approve or drop.",
         !targets.length,
       )}
       {choice === "back" && targets.length > 0 && (
@@ -102,7 +107,7 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
       {extra}
       <div class="row" style={{ marginTop: 8 }}>
         <Btn kind="btn-primary" onClick={decide}>
-          {choice === "approve" ? "Approve" : choice === "drop" ? "Drop task" : `Send back · ${left - 1} left after this`}
+          {choice === "approve" ? "Approve" : choice === "drop" ? "Drop task" : !capped || to === "Researching" ? "Send back" : `Send back · ${left - 1} left after this`}
         </Btn>
         <span class="grow" />
         <span class="kbd">⌘↵</span>
@@ -146,9 +151,7 @@ function DocGate({ t }: { t: Task }) {
           <h1>{t.title}</h1>
           <div class="props">
             <span>Stage</span>
-            <b>
-              {isPlan ? "Plan" : "Research"} · round {round} of up to {CAP + 1}
-            </b>
+            <b>{isPlan ? `Plan · round ${round} of up to ${CAP + 1}` : `Research · round ${round}`}</b>
             <span>Task</span>
             <b>
               {t.id} <Tags ts={t.tags} />

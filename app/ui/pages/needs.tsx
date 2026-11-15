@@ -115,7 +115,7 @@ function NeedsCard({ t }: { t: Task }) {
           </Btn>
         </div>
         {buildBlocked && <div class="xs faint">Retry the build is off: research and plan aren't both approved yet (build rule).</div>}
-        {used >= CAP && <div class="xs faint">No send-backs left here: drop it, or move it to the bin to come back later.</div>}
+        {used >= CAP && <div class="xs faint">No retries left here. You can still send it back to research, drop it, or move it to the bin to come back later.</div>}
       </div>
     </div>
   );
