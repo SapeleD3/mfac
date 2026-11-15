@@ -5,12 +5,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./paths.js";
 
-/*
- * The launch agent: macOS starts the engine at login, as you, with no admin rights. It restarts the
- * engine if it crashes, but not after a clean `factory engine stop`. A second agent opens the app at
- * login (the app quits by itself when Settings say headless).
- */
-
 export const ENGINE_LABEL = "com.sapeled3.factoryd";
 export const APP_LABEL = "com.sapeled3.factory.app";
 
@@ -67,7 +61,6 @@ export function installed(label = ENGINE_LABEL): boolean {
   return existsSync(plistPath(label));
 }
 
-/** Writes and loads the engine's launch agent (and the app's, if the app is installed). */
 export function install(opts: { app?: string } = {}): string[] {
   if (process.platform !== "darwin") throw new Error("the launch agent is macOS only; on Linux run `factory engine start` from your session");
   mkdirSync(agents(), { recursive: true });
@@ -97,7 +90,6 @@ export function uninstall(): string[] {
   return removed;
 }
 
-/** Start (or restart) the engine through launchd, so it stays supervised. */
 export function kickstart(restart = false): boolean {
   if (process.platform !== "darwin" || !installed()) return false;
   return launchctl("kickstart", ...(restart ? ["-k"] : []), `gui/${uid()}/${ENGINE_LABEL}`).status === 0;

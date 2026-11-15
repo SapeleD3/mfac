@@ -1,7 +1,3 @@
-/*
- * What the UI reads from the engine. A view-side copy of the engine's shapes (src/store.ts, engine.ts,
- * runner.ts, intake.ts...), kept small on purpose: the app only displays the engine and asks it to act.
- */
 export type State =
   | "Inbox" | "Triage" | "Ignored" | "ReplyDrafted" | "Replied" | "Queued"
   | "Researching" | "ResearchCheck" | "ResearchGate" | "Planning" | "PlanGate"

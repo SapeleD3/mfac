@@ -1,9 +1,3 @@
-/*
- * Review gates. Research and plan are reviewed in Notion: the in-depth review and every comment
- * happen on the Notion page, and the factory reads them from there. Here you read a summary, give one
- * overall evaluation of the whole document, and decide. PR ready is the first look at code: evidence,
- * the compiled review, and the diff in VS Code.
- */
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openUrl } from "../bridge";

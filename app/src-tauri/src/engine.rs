@@ -1,7 +1,3 @@
-//! The bridge to the engine. The app never touches factory.db: every call goes over the engine's Unix
-//! socket (one JSON message per line), and a subscription relays the engine's events to the windows.
-//! If the engine isn't running, the app starts it the same way the CLI does (`factory engine start`).
-
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -14,7 +10,6 @@ use tauri::{AppHandle, Emitter};
 static SEQ: AtomicU64 = AtomicU64::new(1);
 static STARTING: AtomicBool = AtomicBool::new(false);
 
-/// Same rules as the engine's src/paths.ts: FACTORY_SOCKET, else FACTORY_HOME/run, else ~/.factory/run.
 pub fn socket_path() -> PathBuf {
     if let Ok(s) = std::env::var("FACTORY_SOCKET") {
         return PathBuf::from(s);
@@ -25,7 +20,6 @@ pub fn socket_path() -> PathBuf {
     home.join("run").join("factoryd.sock")
 }
 
-/// One request, one answer. A fresh connection per call keeps this simple and crash-proof.
 pub fn call(method: &str, params: Value) -> Result<Value, String> {
     let mut stream = UnixStream::connect(socket_path()).map_err(|_| "the engine isn't running; the app is starting it".to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(120))).ok();
@@ -56,7 +50,6 @@ pub fn alive() -> bool {
     UnixStream::connect(socket_path()).is_ok()
 }
 
-/// Starts the engine through a login shell, so PATH has node and the `factory` command as in Terminal.
 pub fn ensure_running() {
     if alive() || STARTING.swap(true, Ordering::SeqCst) {
         return;
@@ -75,8 +68,6 @@ pub fn ensure_running() {
     STARTING.store(false, Ordering::SeqCst);
 }
 
-/// Relays engine events to every window as "engine" events, and the connection state as
-/// "engine-state". Reconnects (and restarts the engine) whenever the socket drops.
 pub fn subscribe(app: AppHandle) {
     std::thread::spawn(move || loop {
         if let Ok(mut stream) = UnixStream::connect(socket_path()) {

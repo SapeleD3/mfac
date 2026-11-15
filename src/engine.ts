@@ -2,29 +2,13 @@ import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
 import { type Actor, type Recipe, type Source, Store, TAGS, type Tag, type Task } from "./store.js";
 
-/*
- * The engine: the only code that changes a task's state. Every caller (the coordinator over the
- * socket, the app, the CLI, intake) goes through `move`, which checks the statechart, writes the
- * new state and an audit event in one transaction, and tells subscribers.
- *
- * Design principle: the coordinator decides, the engine enforces. Plain code picks what runs next;
- * Claude only runs where judgement is needed.
- */
-
 export interface Settings {
-  /** How many tasks may run a Claude session at once. */
   slots: number;
-  /** Model per role. Opus coordinates and writes the spec; Sonnet builds and reviews; Haiku triages. */
   models: Record<string, string>;
-  /** Intake polls only inside these hours (local), Monday to Friday. */
   workingHours: { start: number; end: number; weekends: boolean };
-  /** Minutes between intake polls. */
   pollMinutes: number;
-  /** Pause starting new work above this share of the plan's usage window (0..1). */
   usageCeiling: number;
-  /** Where the factory files Notion pages (filled in on first run). */
   notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string };
-  /** How the app shows itself: the widget pill (default), the full window, or nothing (headless). */
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
 }
 
@@ -40,7 +24,6 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export interface TaskView extends Task {
   column: string;
-  /** Rounds used at the current gate or loop, e.g. "2/3". */
   rounds?: string;
   allowed: string[];
 }
@@ -55,10 +38,6 @@ export interface Decision {
 }
 
 export class Engine extends EventEmitter {
-  /**
-   * Run after a person's verdict and before the coordinator hears about it (for example, pulling the
-   * Notion comments into review-comments.md). Each gets 60 seconds; a failure doesn't block the task.
-   */
   readonly beforeWake: ((d: Decision) => Promise<void>)[] = [];
 
   constructor(readonly store: Store) {
@@ -116,15 +95,12 @@ export class Engine extends EventEmitter {
     return this.store.tasks({ includeFinished: !!opts.all }).map((t) => this.view(t));
   }
 
-  /** The one door for state changes. */
   move(id: string, event: Event, actor: Actor, data: Record<string, unknown> = {}): MoveResult {
     const result = this.store.tx((): MoveResult => {
       const t = this.store.task(id);
       if (!t) return { ok: false, reason: `no task ${id}` };
       const r = step(t.machine, event);
       if (!r.ok) {
-        // Refusals are recorded too: the retro counts them, and "the engine refused" is the
-        // signal that a coordinator is trying to skip a rule.
         this.store.addEvent(t.id, "refused", actor, { event, reason: r.reason, ...data }, t.machine.state);
         return { ok: false, reason: r.reason, task: this.view(t) };
       }
@@ -137,7 +113,6 @@ export class Engine extends EventEmitter {
     return result;
   }
 
-  /** A person's verdict at a gate: approve, send back (to a stage), or drop, with an optional note. */
   decide(id: string, verdict: "approve" | "send_back" | "drop", opts: { to?: State; note?: string } = {}): MoveResult {
     const t = this.store.task(id);
     if (!t) return { ok: false, reason: `no task ${id}` };
@@ -167,7 +142,6 @@ export class Engine extends EventEmitter {
     return v;
   }
 
-  /** Patch non-state fields (repo, branch, PR link...) and tell subscribers. */
   update(id: string, patch: Parameters<Store["updateTask"]>[1]): TaskView {
     this.store.updateTask(id, patch);
     const v = this.get(id);
@@ -180,7 +154,6 @@ export class Engine extends EventEmitter {
     return this.store.events(id);
   }
 
-  /** Machine-readable rules for a task, for the coordinator's prompt and the UI. */
   rules(id: string) {
     const t = this.store.task(id);
     if (!t) throw new Error(`no task ${id}`);
@@ -188,7 +161,6 @@ export class Engine extends EventEmitter {
   }
 }
 
-/** The usual target of a plain "send back" at each gate: the stage that produced the work. */
 export function defaultSendBack(m: Machine): State | undefined {
   switch (m.state) {
     case "ResearchGate":

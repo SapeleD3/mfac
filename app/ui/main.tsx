@@ -1,4 +1,3 @@
-/* Entry: the same bundle serves the full app window and the widget window (?view=widget). */
 import { render } from "preact";
 import { App } from "./app";
 import { start } from "./store";

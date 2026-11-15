@@ -1,7 +1,3 @@
-/*
- * The widget: a pill that floats on screen and opens into the grouped list (Needs you, Running, Up
- * next). Gates can be decided right here; anything deeper opens the full app at that task.
- */
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { openInVSCode, openTerminal, openUrl, setWidgetOpen, showMain } from "./bridge";
@@ -129,7 +125,6 @@ function GateRow({ t }: { t: Task }) {
   );
 }
 
-/** A permission prompt or a question from a session, answered right here. */
 export function AskBody({ p }: { p: Prompt }) {
   const [pick, setPick] = useState(1);
   if (p.kind === "permission") {

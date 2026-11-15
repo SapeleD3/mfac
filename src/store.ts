@@ -3,15 +3,6 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { type Machine, type State, initial } from "./statechart.js";
 
-/*
- * factory.db: the single source of truth for status and caps. SQLite in WAL mode, so the app, the
- * CLI and hooks can read while the engine writes. Notion mirrors it; if they disagree, the engine
- * wins on status and Notion wins on content.
- *
- * Design principle: single source of truth; crash-only (every write is a transaction, so the engine
- * can die at any moment and come back to a consistent queue).
- */
-
 export const TAGS = ["learn", "urgent", "ui", "sensitive", "harden"] as const;
 export type Tag = (typeof TAGS)[number];
 export const RECIPES = ["feature", "bugfix", "research", "review", "harden"] as const;
@@ -36,7 +27,6 @@ export interface Task {
   notionJobId?: string;
   notionReviewId?: string;
   tokens: number;
-  /** A person is typing in the session; the coordinator waits. */
   takenOver: boolean;
   createdAt: string;
   updatedAt: string;
@@ -53,7 +43,6 @@ export interface TaskEvent {
   data: Record<string, unknown>;
 }
 
-/** Who asked for a move. Recorded on every event, and used by the retro and the metrics. */
 export type Actor = "engine" | "coordinator" | "human" | "stage" | "triage" | "routine";
 
 const SCHEMA = `
@@ -247,7 +236,6 @@ export class Store {
     this.db.close();
   }
 
-  /** Run `fn` in one transaction; a crash halfway leaves nothing behind. */
   tx<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -259,8 +247,6 @@ export class Store {
       throw e;
     }
   }
-
-  // ---------- tasks ----------
 
   private nextTaskId(): string {
     const row = this.db.prepare("SELECT value FROM meta WHERE key = 'task_seq'").get() as Row | undefined;
@@ -339,8 +325,6 @@ export class Store {
     this.db.prepare("UPDATE tasks SET tokens = tokens + ? WHERE id = ?").run(tokens, id);
   }
 
-  // ---------- events ----------
-
   addEvent(taskId: string, kind: string, actor: Actor, data: Record<string, unknown> = {}, from?: State, to?: State): number {
     const r = this.db
       .prepare("INSERT INTO events (task_id, at, kind, from_state, to_state, actor, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
@@ -360,8 +344,6 @@ export class Store {
       data: j(r.data, {}),
     }));
   }
-
-  // ---------- settings ----------
 
   setting<T>(key: string, fallback: T): T {
     const r = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Row | undefined;

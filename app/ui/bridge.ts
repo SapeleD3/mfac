@@ -1,8 +1,3 @@
-/*
- * The only way the UI reaches the engine. Inside the app, Rust forwards each call to the engine's
- * Unix socket and relays its events; in the dev preview (preview.mjs) the same calls go over HTTP.
- * Design principle: one managed environment. The UI holds no state of its own that matters.
- */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -16,7 +11,6 @@ export async function call<T = unknown>(method: string, params: Record<string, u
   return body.result as T;
 }
 
-/** Engine events (change, prompt, alert, routine, session...). Returns an unsubscribe. */
 export function onEngineEvent(fn: (event: string, data: unknown) => void): () => void {
   if (inApp) {
     const p = listen<{ event: string; data: unknown }>("engine", (e) => fn(e.payload.event, e.payload.data));
@@ -30,14 +24,12 @@ export function onEngineEvent(fn: (event: string, data: unknown) => void): () =>
   return () => es.close();
 }
 
-/** Whether the engine answered recently (the app restarts it if not). */
 export function onEngineState(fn: (up: boolean) => void): () => void {
   if (!inApp) return () => {};
   const p = listen<boolean>("engine-state", (e) => fn(e.payload));
   return () => void p.then((un) => un());
 }
 
-/** Notion pages, PR links, vscode:// links: always the default app, never inside the factory. */
 export async function openUrl(url: string) {
   if (inApp) {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -48,13 +40,11 @@ export async function openUrl(url: string) {
 
 export const openInVSCode = (path: string) => openUrl(`vscode://file${path.startsWith("/") ? "" : "/"}${encodeURI(path)}`);
 
-/** Opens Terminal.app running a factory command (for example `factory attach F-001`). */
 export async function openTerminal(command: string) {
   if (inApp) return invoke("open_terminal", { command });
   await navigator.clipboard?.writeText(command).catch(() => {});
 }
 
-/** Window helpers: the widget opens the full app at a route; the full app can hide or show the widget. */
 export async function showMain(route?: string) {
   if (inApp) return invoke("show_main", { route: route ?? "" });
   window.open(`/#${route ?? ""}`, "_blank");

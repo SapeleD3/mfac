@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CAP, type Event, type Machine, STATES, TERMINAL, initial, invariants, step } from "../src/statechart.js";
 
-/** Every event with every payload, so the walk below explores the same branching as TLC. */
 const EVENTS: Event[] = [
   { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" },
   { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
@@ -17,7 +16,6 @@ const EVENTS: Event[] = [
 
 const key = (m: Machine) => JSON.stringify({ ...m, approved: [...m.approved].sort() });
 
-/** Cap 1 keeps the walk small (TLC covers cap 3 on the spec); the rules are the same at any cap. */
 const WALK_CAP = 1;
 
 function explore() {
@@ -53,7 +51,6 @@ test("the code's state space is finite and every reachable state keeps the spec'
 });
 
 test("every task ends or waits in Parked: without parking moves the graph has no cycles and no dead ends", () => {
-  // The only cycles allowed are Park -> Unpark; dropping those moves, every path must reach a terminal state.
   const color = new Map<string, number>();
   const visit = (k: string): void => {
     color.set(k, 1);

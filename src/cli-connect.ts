@@ -25,7 +25,6 @@ function openUrl(url: string) {
   spawn(cmd, [url], { stdio: "ignore", detached: true }).on("error", () => {}).unref();
 }
 
-/** Claude Code's own sign-in for an MCP server or claude.ai connector, in this terminal. */
 function mcpLogin(server: string): Promise<void> {
   return new Promise((resolve) => {
     const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", ["mcp", "login", server], { stdio: "inherit" });
@@ -74,8 +73,6 @@ export const connectCommands: Record<string, Command> = {
       let c = await check();
       const connector = name !== "claude" && name !== "github";
       if (connector && c.server && (c.status !== "connected" || f.login)) {
-        // Claude Code's own sign-in for this server (an MCP server's OAuth, or a claude.ai connector's
-        // authorization page). The factory never sees the credentials.
         out(`\nSigning in to ${c.server} with Claude Code (claude mcp login). Finish in your browser.`);
         await mcpLogin(c.server);
         await ask("Press Enter once you've finished signing in: ");

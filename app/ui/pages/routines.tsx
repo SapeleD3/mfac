@@ -1,7 +1,3 @@
-/*
- * Routines: everything the factory does on a schedule, built in or yours, in one place. Each shows its
- * schedule, last run and result, next run, and whether it's on. Most are plain engine code, no tokens.
- */
 import { useState } from "preact/hooks";
 import { Btn, Ic, IconBtn, ago, clock, every, until } from "../kit";
 import { act, useApp, useCall } from "../store";

@@ -2,14 +2,6 @@ import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { type Server, type Socket, connect, createServer } from "node:net";
 import { dirname } from "node:path";
 
-/*
- * The engine's only door: a Unix socket file only this user can open (mode 0600 in a 0700 folder).
- * One JSON object per line each way. A request is {id, method, params}; a reply is {id, ok, result}
- * or {id, ok: false, error}. A client that calls "subscribe" also gets {event, data} lines pushed.
- *
- * Design principle: local-first with no network between parts. Nothing here listens on a TCP port.
- */
-
 export type Handler = (params: any, ctx: { socket: Socket }) => unknown | Promise<unknown>;
 
 export interface Request {
@@ -18,7 +10,6 @@ export interface Request {
   params?: unknown;
 }
 
-/** Largest single message we accept; protects the engine from a runaway client. */
 const MAX_LINE = 4 * 1024 * 1024;
 
 export class SocketServer {
@@ -30,7 +21,6 @@ export class SocketServer {
     private handlers: Record<string, Handler>,
   ) {}
 
-  /** Push an event to every subscribed client. */
   broadcast(event: string, data: unknown) {
     const line = `${JSON.stringify({ event, data })}\n`;
     for (const s of this.subscribers) {
@@ -64,7 +54,6 @@ export class SocketServer {
     try {
       unlinkSync(this.path);
     } catch {
-      // Already gone.
     }
   }
 
@@ -114,7 +103,6 @@ function reply(socket: Socket, msg: unknown) {
   if (!socket.destroyed) socket.write(`${JSON.stringify(msg)}\n`);
 }
 
-/** True when something answers on the socket. */
 export function isAlive(path: string, timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {
     const s = connect(path);

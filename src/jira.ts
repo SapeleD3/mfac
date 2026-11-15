@@ -1,11 +1,6 @@
 import { ask } from "./connectors.js";
 import type { Store } from "./store.js";
 
-/*
- * Jira, read through the Atlassian connector you have in Claude (see connectors.ts): tickets assigned
- * to you that changed since the cursor. Comments go back only on a gate decision or when you press Send.
- */
-
 export interface JiraItem {
   sourceId: string;
   key: string;

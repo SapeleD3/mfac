@@ -31,7 +31,6 @@ test("reuses Claude Code's copy only when it comes from the same source, newest 
     skill(cache(`mkt/superpowers/${v}/skills/tdd`));
     manifest(cache(`mkt/superpowers/${v}`), "https://github.com/obra/superpowers");
   }
-  // A port of pstack from someone else is never taken for the original.
   skill(cache("port/pstack/1.0.0/plugins/pstack/skills/statechart"));
   manifest(cache("port/pstack/1.0.0"), "https://github.com/someone-else/pstack-claude");
   skill(join(dir, "claude/skills/graphify"));
@@ -39,7 +38,6 @@ test("reuses Claude Code's copy only when it comes from the same source, newest 
   assert.equal(existingInstall(spec("superpowers")), cache("mkt/superpowers/10.0.0"));
   assert.equal(existingInstall(spec("pstack")), undefined);
   assert.equal(existingInstall(spec("graphify")), join(dir, "claude/skills/graphify"));
-  // A loose skill folder has no manifest to check, so only single-file skills are reused from there.
   assert.equal(existingInstall(spec("ponytail")), undefined);
 });
 
@@ -48,7 +46,6 @@ test("install links existing copies, takes a repo's subfolder, and never writes 
   assert.match(lines[0]!, /already in Claude Code/);
   assert.equal(readlinkSync(join(dir, "home/skills/superpowers")), cache("mkt/superpowers/10.0.0"));
 
-  // A local git repo standing in for cursor/plugins, with pstack in a subfolder.
   const repo = join(dir, "plugins-repo");
   skill(join(repo, "pstack/skills/statechart"));
   skill(join(repo, "pstack/skills/create-formal-verification-skill"));

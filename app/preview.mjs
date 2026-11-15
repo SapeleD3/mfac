@@ -1,8 +1,3 @@
-/*
- * Dev only: previews the UI in an ordinary browser against the real engine, so it can be built and
- * screenshotted without Tauri. Binds 127.0.0.1 and is never part of the app (the app has no ports;
- * it talks to the engine's Unix socket from Rust). Needs the engine built (npm run build at the root).
- */
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";

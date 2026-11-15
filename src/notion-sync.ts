@@ -7,22 +7,6 @@ import { paths } from "./paths.js";
 import type { Store } from "./store.js";
 import type { Ticket, Tickets } from "./tickets.js";
 
-/*
- * Your Notion factory board, and the research and plan reviews, through the Notion connector in Claude.
- *
- * On first run the factory makes three databases on a page you choose: Jobs (one per task), Tickets
- * (small units of work, tagged with their job, the stage that created them and the stage picking them
- * up) and Reviews (the research and plan docs you comment on).
- *
- * Comments live in Notion, not in the app. When you send work back, every comment on the review page,
- * with the words it's anchored to, goes to the stage as review-comments.md; the next round is added to
- * the same page, with a reply under each comment.
- *
- * factory.db stays the source of truth for status; Notion mirrors it and feeds back your comments and
- * any tickets you add there. Board changes queue up and go in one batched call per sync, so a quiet
- * factory makes no calls; review pages are published as soon as a gate opens.
- */
-
 export interface NotionIds {
   parentPageId?: string;
   jobsDb?: string;
@@ -33,7 +17,6 @@ export interface NotionIds {
 const STAGES = ["research", "plan", "build", "code review", "security review", "ui review", "confirm", "you"];
 const stageName = (role?: string) => (role ? role.replace("_", " ").replace("researcher", "research").replace("planner", "plan").replace("builder", "build") : undefined);
 
-/** A Notion page link or id to its id. */
 export function pageIdFrom(link: string): string {
   const hex = link.replace(/-/g, "").match(/[0-9a-f]{32}(?=[^0-9a-f]*$|\?|#)/i)?.[0] ?? link.replace(/-/g, "").match(/[0-9a-f]{32}/i)?.[0];
   if (!hex) throw new Error("that doesn't look like a Notion page link");
@@ -41,7 +24,6 @@ export function pageIdFrom(link: string): string {
 }
 
 export class NotionSync {
-  /** Board rows waiting for the next sync: "job:<task id>", "ticket:<ticket id>", "review:<task id>". */
   private pending = new Set<string>();
   private refreshing = new Set<string>();
 
@@ -67,7 +49,6 @@ export class NotionSync {
     return { jobsDb: ids.jobsDb, ticketsDb: ids.ticketsDb, reviewsDb: ids.reviewsDb };
   }
 
-  /** First run: three linked databases on the page you chose, then every existing task queued for the board. */
   async setup(parentLink: string): Promise<NotionIds> {
     const parentPageId = pageIdFrom(parentLink);
     const existing = this.ids();
@@ -78,8 +59,6 @@ export class NotionSync {
     for (const t of this.engine.list()) this.pending.add(`job:${t.id}`);
     return ids;
   }
-
-  // ---------- mirror: engine to Notion, batched ----------
 
   private jobRow(t: TaskView): notion.RowUpdate {
     return {
@@ -109,7 +88,6 @@ export class NotionSync {
     };
   }
 
-  /** Sends every queued board change in one call. Jobs go first so tickets can point at their pages. */
   async flush(): Promise<number> {
     if (!this.ready() || !this.connections.ok("notion") || !this.pending.size) return 0;
     let n = await this.retryPublish();
@@ -139,11 +117,8 @@ export class NotionSync {
     return n;
   }
 
-  // ---------- reviews ----------
-
   private publishing = new Set<string>();
 
-  /** A research or plan gate opened: publish (or add a round to) the review page, right away. */
   async publishReview(t: TaskView): Promise<string | undefined> {
     if (!this.ready() || this.publishing.has(t.id)) return undefined;
     this.publishing.add(t.id);
@@ -185,7 +160,6 @@ export class NotionSync {
     return pageId;
   }
 
-  /** Before a sent-back stage reruns: every comment with its anchor, into review-comments.md. */
   async collectComments(t: TaskView, note: string): Promise<number> {
     const pageId = t.notionReviewId;
     if (!pageId) return 0;
@@ -201,17 +175,12 @@ export class NotionSync {
     this.store.setSetting(`comments_${taskId}`, { count: list.length, discussions: new Set(list.map((c) => c.discussionId)).size, at: new Date().toISOString() });
   }
 
-  /** The verdict goes on the review page with the next sync. */
   recordVerdict(t: TaskView, verdict: string) {
     if (!t.notionReviewId) return;
     this.store.setSetting(`verdict_${t.id}`, verdict === "approve" ? "Approved" : verdict === "drop" ? "Dropped" : "Sent back");
     this.pending.add(`review:${t.id}`);
   }
 
-  /**
-   * What the app's review tab shows: a summary, the comment count and the page link. The count comes
-   * from the last read; if that's over ten minutes old, a fresh read starts in the background.
-   */
   summary(taskId: string) {
     const t = this.engine.get(taskId);
     if (!t) throw new Error(`no task ${taskId}`);
@@ -242,9 +211,6 @@ export class NotionSync {
     };
   }
 
-  // ---------- pull: Notion to engine ----------
-
-  /** Tickets you added on the board (no factory id yet) become tickets of their job; edits to titles and checks come back. */
   async pullTickets(): Promise<number> {
     if (!this.ready()) return 0;
     const rows = await notion.ticketRows(this.store, this.board());
@@ -252,7 +218,6 @@ export class NotionSync {
     let added = 0;
     for (const r of rows) {
       if (r.ticket) {
-        // Notion wins on content: pick up title and check edits.
         const k = this.tickets.get(r.ticket);
         if (k && r.title && (r.title !== k.title || (r.check ?? "") !== k.check)) this.tickets.update(k.id, { title: r.title, check: r.check ?? "" });
         continue;
@@ -267,14 +232,12 @@ export class NotionSync {
     return added;
   }
 
-  /** Queue a board change for the next sync; a review page is published right away (and queued if that fails). */
   later(kind: "job" | "ticket" | "review", id: string, work?: () => Promise<unknown>) {
     if (!this.ready()) return;
     if (kind === "review" && work) work().catch(() => this.pending.add(`publish:${id}`));
     else this.pending.add(`${kind}:${id}`);
   }
 
-  /** Review pages that couldn't be published when their gate opened. */
   async retryPublish(): Promise<number> {
     let n = 0;
     for (const key of [...this.pending].filter((k) => k.startsWith("publish:"))) {
@@ -284,7 +247,6 @@ export class NotionSync {
         this.pending.delete(key);
         n++;
       } catch {
-        // Stays queued for the next sync.
       }
     }
     return n;

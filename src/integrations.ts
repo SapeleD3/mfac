@@ -14,18 +14,11 @@ import * as slack from "./slack.js";
 import type { Tag } from "./store.js";
 import { type Ticket, Tickets } from "./tickets.js";
 
-/*
- * Wires intake, triage, connections, Notion and routines into the engine, and writes gate outcomes
- * back to the Slack thread or Jira ticket the work came from.
- */
-
 export interface IntegrationOptions {
   tester?: Tester;
-  /** Extra built-in routines from later parts (doctor, usage guard, retros, improve-factory). */
   extraRoutines?: (ctx: { routines: Routines }) => Builtin[];
 }
 
-/** Shared with later parts (self-improving loop, doctor). */
 export const shared: { routines?: Routines; connections?: Connections; notion?: NotionSync; intake?: Intake } = {};
 
 export const integrationsPart =
@@ -143,8 +136,6 @@ export const integrationsPart =
       },
       ...(opts.extraRoutines?.({ routines }) ?? []),
     ];
-
-    // ---------- write-back and Notion mirroring, driven by engine events ----------
 
     const writeBack = async (t: TaskView, text: string) => {
       const cfg = store.setting<{ slack?: boolean; jira?: boolean }>("write_back", { slack: true, jira: true });

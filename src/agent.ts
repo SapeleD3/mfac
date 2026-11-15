@@ -3,22 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./paths.js";
 
-/*
- * The adapter between the factory and Claude Code. Everything that knows about the `claude`
- * command line lives here, so a Codex adapter later is one more file with the same shape.
- *
- * Sessions run the official `claude` command on the person's subscription (no API key), inside the
- * task's worktree, so the repo's CLAUDE.md files, .claude/settings.json, skills and hooks all apply.
- * The factory adds its own hooks, a per-role permission allowlist and its stage prompt on top.
- *
- * Design principles: ports and adapters; least privilege (an allowlist per station, never
- * --dangerously-skip-permissions).
- */
-
 export const ROLES = ["coordinator", "researcher", "planner", "builder", "code_review", "security_review", "ui_review", "confirm"] as const;
 export type Role = (typeof ROLES)[number];
 
-/** The output file each role must write in the job folder; the engine checks it exists. */
 export const OUTPUT: Record<Role, string> = {
   coordinator: "decision.md",
   researcher: "research.md",
@@ -48,11 +35,6 @@ const ALWAYS_DENY = [
   "Bash(rm -rf /:*)", "Bash(sudo:*)", "Bash(curl:*|*sh)", "Read(~/.ssh/**)", "Read(~/.aws/**)",
 ];
 
-/**
- * What each station may do without asking. Anything else asks you in the panel (or in the session).
- * `reads` are the read-only tools of your Slack, Notion and Jira connectors in Claude, so every station
- * can look things up there; posting or editing still asks.
- */
 export function permissionsFor(role: Role, jobDir: string, reads: string[] = []): { allow: string[]; deny: string[] } {
   const p = stationPermissions(role, jobDir);
   return { ...p, allow: [...p.allow, ...reads] };
@@ -84,12 +66,11 @@ export function stageSettings(role: Role, jobDir: string, reads: string[] = []) 
   const f = factoryCommand();
   return {
     permissions: permissionsFor(role, jobDir, reads),
+    includeCoAuthoredBy: false,
+    attribution: { commit: "", pr: "" },
     hooks: {
-      // The session finished a turn: the engine checks the stage's output file and wakes the coordinator.
       Stop: [{ hooks: [{ type: "command", command: `${f} hook stop` }] }],
-      // A tool outside the allowlist: ask in the panel, and wait for your click.
       PermissionRequest: [{ matcher: "*", hooks: [{ type: "command", command: `${f} hook permission`, timeout: 900 }] }],
-      // Claude asked a multiple-choice question: show it in the panel; your answer is typed into the pane.
       PreToolUse: [{ matcher: "AskUserQuestion", hooks: [{ type: "command", command: `${f} hook question` }] }],
     },
   };
@@ -107,11 +88,9 @@ export interface Launch {
   jobDir: string;
   systemPromptFile: string;
   prompt?: string;
-  /** Read-only connector tools (Slack, Notion, Jira) the session may use without asking. */
   connectorReads?: string[];
 }
 
-/** The `claude` command for a stage, plus the settings file it reads. */
 export function claudeCommand(l: Launch): string[] {
   const settingsFile = join(l.jobDir, ".factory", `${l.role}.settings.json`);
   mkdirSync(dirname(settingsFile), { recursive: true });

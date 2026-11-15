@@ -1,7 +1,3 @@
-/*
- * The UI's copy of what the engine knows, refreshed from engine events. Nothing here is a source of
- * truth: on any event the affected lists are re-read from the engine (factory.db is the truth).
- */
 import { useEffect, useState } from "preact/hooks";
 import { call, notify, onEngineEvent, onEngineState } from "./bridge";
 import type { Alert, Connection, IntakeItem, Prompt, Routine, Settings, Status, Task, TriageRule } from "./types";
@@ -26,7 +22,6 @@ export interface AppState {
   intake: IntakeItem[];
   rules: TriageRule[];
   toasts: Toast[];
-  /** Bumped on every engine change, so open pages can re-read what they show. */
   tick: number;
 }
 
@@ -70,7 +65,6 @@ export function toast(message: string, level: Alert["level"] = "info") {
   setTimeout(() => set({ toasts: state.toasts.filter((x) => x.id !== t.id) }), level === "error" ? 9000 : 5000);
 }
 
-/** Run an engine call from a button: errors become a toast, success refreshes what changed. */
 export async function act<T>(method: string, params: Record<string, unknown> = {}, after: Key[] = []): Promise<T | undefined> {
   try {
     const r = await call<T>(method, params);
@@ -132,7 +126,6 @@ export function start(opts: { notifications?: boolean } = {}) {
         break;
     }
   });
-  // A slow heartbeat, in case an event was missed while the engine restarted.
   setInterval(() => refresh("tasks", "prompts", "status", "connections"), 30_000);
 }
 
@@ -154,7 +147,6 @@ export function useApp(): AppState {
   return state;
 }
 
-/** Re-reads an engine call whenever anything changes (or `deps` change). */
 export function useCall<T>(method: string | undefined, params: Record<string, unknown> = {}, deps: unknown[] = []): { data?: T; error?: string; reload: () => void } {
   const app = useApp();
   const [data, setData] = useState<T>();

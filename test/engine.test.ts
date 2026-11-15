@@ -34,7 +34,6 @@ test("a task walks the whole line through the socket, with the engine refusing s
   assert.equal(t.column, "Queued");
   const move = (event: object, actor = "coordinator") => call<{ ok: boolean; reason?: string; task?: TaskView }>("task.move", { id: t.id, event, actor }, socket);
 
-  // The coordinator can't jump to building, and can't approve its own work.
   const skip = await move({ type: "build_done" });
   assert.equal(skip.ok, false);
   await assert.rejects(move({ type: "approve" }), /person's decision/);

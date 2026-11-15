@@ -1,4 +1,3 @@
-/* Small pieces shared by every page: icons, tags, pips, the mini rail, buttons. Ported from the mockups. */
 import type { ComponentChildren, JSX } from "preact";
 import { BRANDS } from "./brands";
 import { ICONS } from "./icons";
@@ -42,8 +41,6 @@ export const IconBtn = ({ n, title, onClick, s = 15 }: { n: string; title: strin
   <button type="button" class="icon-btn" title={title} onClick={(e) => (e.stopPropagation(), onClick?.())}><Ic n={n} s={s} /></button>
 );
 
-// ---------- where a task is on its recipe ----------
-
 export const RECIPE = [
   { id: "triage", name: "Triage" },
   { id: "research", name: "Research" },
@@ -63,7 +60,6 @@ const AT: Partial<Record<State, number>> = {
   Building: 6, Reviewing: 7, Confirming: 8, PRGate: 9, Done: 11, Dropped: 0, Ignored: 0, Replied: 0,
 };
 
-/** Index of the current step on the rail, and how it's shown. */
 export function position(m: Machine): { at: number; kind: "now" | "gate" | "fail" | "queued" | "done" | "parked" } {
   const s = m.state === "Parked" ? m.parkedFrom : m.state;
   let at = AT[s];
@@ -83,7 +79,6 @@ export const MiniRail = ({ t }: { t: Task }) => {
   );
 };
 
-/** One line on what a task is doing now, in plain words. */
 export function doing(t: Task): string {
   const m = t.machine;
   switch (m.state) {

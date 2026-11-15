@@ -1,7 +1,3 @@
-/*
- * The factory app's styles. Tokens are Sapele's, so the factory and Sapele read as one family;
- * components only use tokens. Ported from the approved mockups; app-only rules are at the end.
- */
 :root {
   --bg: #16171b;
   --bg-panel: #1b1c21;
@@ -43,8 +39,7 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --fast: 120ms;
 
-  /* Tag colours (dark-validated, distinct from status colours) */
-  --tag-learn: #8fb5ff;
+    --tag-learn: #8fb5ff;
   --tag-urgent: #ff8a7a;
   --tag-ui: #c79bf2;
   --tag-sensitive: #f2b366;
@@ -85,7 +80,6 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 .note { max-width: 860px; color: var(--text-muted); font-size: var(--text-sm); border-left: 2px solid var(--border-strong); padding-left: var(--s3); margin: var(--s4) 0; }
 .note b { color: var(--text); }
 
-/* ---------- Kit ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   font-size: var(--text-md); background: var(--bg-raised); border: 1px solid var(--border);
@@ -162,7 +156,6 @@ textarea.in { resize: vertical; }
 .switch.on::after { left: 14px; background: var(--accent-fg); }
 .lock { color: var(--text-faint); font-size: var(--text-xs); }
 
-/* ---------- Mac window chrome ---------- */
 .mac { border-radius: 12px; overflow: hidden; border: 1px solid var(--border-strong); box-shadow: var(--shadow-pop); background: var(--bg); }
 .mac-bar { height: 36px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s3); background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .lights { display: flex; gap: 7px; }
@@ -171,7 +164,6 @@ textarea.in { resize: vertical; }
 .lights i:nth-child(3) { background: #28c840; }
 .mac-title { flex: 1; text-align: center; color: var(--text-muted); font-size: var(--text-sm); margin-right: 60px; }
 
-/* ---------- Floating widget panel ---------- */
 .panel {
   width: 400px; background: color-mix(in srgb, var(--bg-panel) 94%, transparent); backdrop-filter: blur(24px);
   border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.6); overflow: hidden;
@@ -213,7 +205,6 @@ textarea.in { resize: vertical; }
 .p-collapsed { width: 220px; }
 .p-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 20px; background: var(--bg-panel); border: 1px solid var(--border-strong); box-shadow: var(--shadow-pop); font-size: var(--text-sm); }
 
-/* ---------- Full app ---------- */
 .app { --side: 210px; display: grid; grid-template-columns: var(--side) 1fr; min-height: 720px; transition: grid-template-columns 160ms var(--ease); }
 .app.with-detail { grid-template-columns: var(--side) 380px 1fr; }
 .side { background: var(--bg-panel); border-right: 1px solid var(--border); padding: var(--s3) var(--s2); display: flex; flex-direction: column; gap: 1px; font-size: var(--text-md); }
@@ -244,7 +235,6 @@ textarea.in { resize: vertical; }
 .detail { border-left: 1px solid var(--border); overflow: auto; padding: var(--s4) var(--s5); }
 .detail h3 { font-size: var(--text-lg); }
 
-/* Stage rail */
 .rail { position: relative; margin: var(--s3) 0; }
 .st { display: grid; grid-template-columns: 20px 1fr; gap: var(--s2); position: relative; padding-bottom: var(--s3); }
 .st::before { content: ""; position: absolute; left: 9px; top: 16px; bottom: -2px; width: 2px; background: var(--border); }
@@ -271,7 +261,6 @@ textarea.in { resize: vertical; }
 .coord-line .t { color: var(--text-faint); font-family: var(--font-mono); font-size: 10.5px; }
 .engine-no { color: var(--danger); }
 
-/* ---------- Review gate ---------- */
 .gate-wrap { display: grid; grid-template-columns: 1fr 360px; height: 760px; }
 .doc { overflow: auto; padding: var(--s5) var(--s6); background: #191919; color: #e6e6e6; font-family: ui-sans-serif, -apple-system, sans-serif; position: relative; }
 .doc h1 { font-size: 30px; font-weight: 700; margin: var(--s3) 0 var(--s2); }
@@ -302,7 +291,6 @@ textarea.in { resize: vertical; }
 .seg button.on { background: var(--bg-selected); color: var(--text); }
 .harden-note { background: color-mix(in srgb, var(--tag-harden) 10%, transparent); border: 1px solid color-mix(in srgb, var(--tag-harden) 35%, transparent); border-radius: var(--radius); padding: var(--s2); font-size: var(--text-sm); }
 
-/* Diff gate */
 .evid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
 .shot { aspect-ratio: 16 / 10; border-radius: var(--radius); border: 1px solid var(--border); background: linear-gradient(160deg, #22252d, #191b20); position: relative; overflow: hidden; }
 .shot::after { content: attr(data-label); position: absolute; left: 6px; bottom: 5px; font-size: 10px; color: var(--text-muted); }
@@ -313,7 +301,6 @@ textarea.in { resize: vertical; }
 .find { font-size: var(--text-sm); display: grid; grid-template-columns: 16px 1fr auto; gap: var(--s2); padding: 4px 0; border-bottom: 1px dashed var(--border); }
 .find:last-child { border-bottom: 0; }
 
-/* ---------- Terminal (headless) ---------- */
 .term { background: #0c0d10; border: 1px solid var(--border); border-radius: 0 0 12px 12px; padding: var(--s4); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; color: #c9d1d9; white-space: pre; overflow: auto; height: 560px; }
 .term .p { color: var(--ok); }
 .term .d { color: var(--text-faint); }
@@ -321,7 +308,6 @@ textarea.in { resize: vertical; }
 .term .b { color: var(--working); }
 .term .r { color: var(--danger); }
 
-/* ---------- Library ---------- */
 .lib-sec { margin-bottom: var(--s6); max-width: 1100px; }
 .lib-sec h2 { font-size: var(--text-lg); margin-bottom: var(--s1); }
 .lib-sec > p { margin: 0 0 var(--s3); }
@@ -348,9 +334,6 @@ textarea.in { resize: vertical; }
 .fix-steps { margin: 6px 0 0; padding-left: 18px; font-size: var(--text-sm); color: var(--text-muted); }
 .app-ic { width: 30px; height: 30px; border-radius: 7px; background: #24262c; display: grid; place-items: center; }
 
-/* ---------- Rounded buttons, from the Agent Huddle video (Mo, 15 Nov) ----------
- * Fully rounded pills, filled and borderless. Primary is the accent fill;
- * secondary is a quiet grey fill. Applies everywhere, not just the widget. */
 .btn { border-radius: 999px; border: 0; background: var(--bg-selected); padding: 6px 14px; font-weight: 600; }
 .btn:hover { background: var(--bg-hover); filter: brightness(1.15); }
 .btn-sm { padding: 4px 12px; }
@@ -360,7 +343,6 @@ textarea.in { resize: vertical; }
 .seg button { border-radius: 999px; padding: 3px 10px; }
 .seg button.on { background: var(--bg-selected); }
 
-/* Rows asking for you get a full rounded accent outline, like the video */
 .p-list { padding: 6px; display: flex; flex-direction: column; gap: 6px; }
 .p-list .p-row { border: 1px solid transparent; border-radius: 12px; background: var(--bg-raised); }
 .p-list .p-row.ask { background: var(--bg-raised); box-shadow: none; border-color: var(--accent); }
@@ -373,14 +355,12 @@ textarea.in { resize: vertical; }
 .p-opt.on .rad { box-shadow: none; }
 .p-kind { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--accent); color: var(--accent-fg); border-radius: 4px; padding: 1px 6px; margin-bottom: 4px; }
 
-/* The pill and the list it opens into */
 .pill-wrap { position: absolute; right: 28px; top: 44px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .p-pill { cursor: pointer; padding: 7px 8px 7px 12px; gap: 10px; }
 .p-pill .chev { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-selected); color: var(--text-muted); font-size: 11px; }
 .p-pill.amber { border-color: var(--accent); }
 .pill-wrap .panel { position: static; }
 
-/* ---------- Queue board ---------- */
 .kb { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: start; }
 .kb-col { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px; min-height: 420px; display: flex; flex-direction: column; gap: 8px; position: relative; }
 .kb-col.needs { border-color: color-mix(in srgb, var(--needs-you) 45%, var(--border)); }
@@ -397,14 +377,12 @@ textarea.in { resize: vertical; }
 .kb-card .mini-rail i { width: 11px; }
 .kb-drop { border: 1.5px dashed var(--border-strong); border-radius: 10px; padding: 18px 8px; text-align: center; color: var(--text-faint); font-size: var(--text-xs); }
 
-/* ---------- Review gate routes to Notion ---------- */
 .notion-route { display: flex; gap: 14px; align-items: flex-start; padding: 14px 18px; background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel)); border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); font-size: var(--text-md); }
 .nr-ic { width: 34px; height: 34px; border-radius: 8px; background: #e3e3e3; color: #111; font-weight: 800; display: grid; place-items: center; font-size: 18px; flex: none; }
 .nr-steps { margin: 6px 0 0; padding-left: 18px; color: var(--text-muted); font-size: var(--text-sm); }
 .doc.readonly { user-select: text; }
 .ro-band { display: inline-block; font-size: 11px; color: #9b9b9b; border: 1px dashed #444; border-radius: 999px; padding: 2px 10px; }
 
-/* ---------- Notion board ---------- */
 .notion { background: #191919; color: #e6e6e6; padding: 22px 28px 28px; font-family: ui-sans-serif, -apple-system, sans-serif; }
 .notion h1 { font-size: 30px; margin: 10px 0 12px; }
 .n-crumb { font-size: 12px; color: #9b9b9b; }
@@ -426,7 +404,6 @@ textarea.in { resize: vertical; }
 .n-job { color: #e6e6e6; text-decoration: underline; text-decoration-color: #555; }
 .n-tag { display: inline-block; border-radius: 4px; padding: 0 6px; font-size: 11.5px; font-weight: 500; justify-self: start; }
 
-/* ---------- Icons (Lucide) ---------- */
 .ic { flex: none; display: inline-block; vertical-align: -0.2em; }
 .side a .ic { color: var(--text-faint); }
 .side a.on .ic, .side a:hover .ic { color: var(--text); }
@@ -439,7 +416,6 @@ textarea.in { resize: vertical; }
 .n-views span { display: inline-flex; gap: 5px; align-items: center; }
 .tag.add { gap: 2px; }
 
-/* ---------- Routines ---------- */
 .rt-row { display: grid; grid-template-columns: 28px 1.6fr 1.1fr 1fr 0.9fr 0.95fr 90px; gap: 10px; align-items: start; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .rt-row.bad { background: color-mix(in srgb, var(--danger) 7%, transparent); }
 .rt-head { font-size: var(--text-xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 6px 12px; }
@@ -451,14 +427,12 @@ textarea.in { resize: vertical; }
 .run.fail { background: var(--danger); }
 .run.skip { background: transparent; border: 1.5px dashed var(--border-strong); }
 
-/* ---------- Brand marks ---------- */
 .brand-tile { display: inline-grid; place-items: center; border-radius: 6px; background: #fff; flex: none; vertical-align: middle; }
 .brand-tile.b-jira, .brand-tile.b-claude { background: #fff; }
 .brand-tile.you { background: var(--bg-selected); color: var(--text-muted); }
 .src { gap: 6px; }
 .src .brand-tile { border-radius: 4px; }
 
-/* ---------- Connections: aligned rows with an accordion ---------- */
 .cn-row { display: grid; grid-template-columns: 28px 150px 1fr 110px 110px 24px; gap: 14px; align-items: center; padding: 12px 14px; }
 .cn-head { font-size: var(--text-xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 8px 14px; border-bottom: 1px solid var(--border); }
 .cn { border-bottom: 1px solid var(--border); }
@@ -471,7 +445,6 @@ textarea.in { resize: vertical; }
 .cn-meta { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: start; }
 .cn-meta .fix-steps { margin: 0; }
 
-/* ---------- Live session ---------- */
 .live { display: grid; grid-template-columns: 220px 1fr; min-height: 640px; }
 .live-side { background: var(--bg-panel); border-right: 1px solid var(--border); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
 .ls { display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: start; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: var(--text-sm); }
@@ -491,7 +464,6 @@ textarea.in { resize: vertical; }
 @keyframes blink { 50% { opacity: 0; } }
 .live-acts { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-panel); }
 
-/* ---------- Collapsible sidebar ---------- */
 .side-top { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px 8px; }
 .side-toggle { width: 24px; height: 24px; }
 .side a { position: relative; }
@@ -510,7 +482,6 @@ textarea.in { resize: vertical; }
 .side-min .usage .bar { width: 28px; }
 .side-min .mini-pct { display: block; font-size: 10px; color: var(--text-muted); text-align: center; }
 
-/* ---------- Window chrome like Sapele: lights + toggle in the sidebar strip, mark + title in the top bar ---------- */
 .app-win .app { min-height: 760px; }
 .pane { display: flex; flex-direction: column; min-width: 0; }
 .pane-body { flex: 1; min-height: 0; overflow: auto; }
@@ -525,7 +496,6 @@ textarea.in { resize: vertical; }
 .tb-engine { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted); }
 .tb-lead-gap { width: 10px; }
 .topbar .lights { margin-right: 4px; }
-/* Collapsed: Sapele's compact strip stacks the lights over the toggle. */
 .side-min .sb-top { flex-direction: column; justify-content: flex-end; height: 76px; padding: 0; gap: 10px; }
 .side-min .sb-top .grow { display: none; }
 .side-min .sb-top .lights { gap: 5px; }
@@ -533,15 +503,12 @@ textarea.in { resize: vertical; }
 .kb-card .mini-rail { display: flex; width: 100%; overflow: hidden; }
 .kb-card .mini-rail i { flex: 1; width: auto; min-width: 4px; }
 
-
-/* ---------- The real app (not the mockups): fill the window, real macOS chrome ---------- */
 html, body { height: 100%; }
 body { overflow: hidden; }
 #root { height: 100%; }
 .app { height: 100vh; min-height: 0; }
 .app > .side, .pane { min-height: 0; }
 .side { overflow-y: auto; }
-/* macOS draws the real traffic lights over this space (titleBarStyle: Overlay). */
 .lights-space { width: 64px; height: 12px; flex: none; }
 .side-min .lights-space { width: 12px; height: 18px; }
 [data-tauri-drag-region] { -webkit-user-select: none; user-select: none; }
@@ -570,7 +537,6 @@ body { overflow: hidden; }
 .modal { width: min(520px, 92vw); background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow-pop); padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
 .modal h3 { font-size: var(--text-lg); }
 
-/* ---------- The widget window: transparent, only the pill and its panel are drawn ---------- */
 body.widget { background: transparent; }
 body.widget #root { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 6px; }
 body.widget .panel { max-height: calc(100vh - 64px); overflow-y: auto; width: 100%; }

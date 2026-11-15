@@ -1,7 +1,6 @@
 import { type Socket, connect } from "node:net";
 import { paths } from "./paths.js";
 
-/** Talks to factoryd over its Unix socket. Used by the CLI, hooks, and stage sessions. */
 export class Client {
   private socket?: Socket;
   private seq = 0;
@@ -83,7 +82,6 @@ export class Client {
   }
 }
 
-/** One call and done: connect, ask, close. */
 export async function call<T = unknown>(method: string, params: unknown = {}, path?: string): Promise<T> {
   const c = await new Client(path).connect();
   try {

@@ -3,12 +3,6 @@ import type { Engine } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
 import { type Row, type Store, now, opt, parseJson } from "./store.js";
 
-/*
- * Tickets: small units of work inside a job, each sized for one builder session. Every ticket says
- * which stage created it and which stage is picking it up, so the Notion factory board shows who
- * raised what and who's on it. The engine's table is the source of truth for status; Notion mirrors it.
- */
-
 export const TICKET_STATUSES = ["Backlog", "In progress", "In review", "Blocked", "Done"] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 

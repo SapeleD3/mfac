@@ -21,10 +21,6 @@ process.env.FACTORY_HOME = dir;
 const socket = join(dir, "run", "factoryd.sock");
 process.env.FACTORY_SOCKET = socket;
 
-/*
- * A fake Claude Code: `claude mcp list` shows a Slack and a Notion connector, and connector calls
- * (a `claude -p` with allowedTools) answer from canned Slack data. No tokens anywhere.
- */
 let mcpList = "Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nclaude.ai Notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n";
 setMcpLister(async () => mcpList);
 const SLACK = toolPrefix("claude.ai Slack");
@@ -79,7 +75,6 @@ test("connect finds Claude's Slack connector, checks it with one call, and remem
   assert.match(conn.detail!, /me at Acme, via claude\.ai Slack/);
   assert.equal(connectorCalls.length, 1);
   assert.deepEqual(connectorCalls[0]!.allowed, [SLACK], "before the tools are known, only the Slack server's tools");
-  // Stage sessions may read Slack without asking, but never send.
   const reads = connectorReads(running.store);
   assert.deepEqual(reads, [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`]);
   assert.deepEqual(permissionsFor("researcher", "/tmp/job", reads).allow.filter((a) => a.startsWith("mcp__")), reads);
@@ -105,7 +100,6 @@ test("Slack intake reads through the connector with read-only tools, and triage 
   assert.equal(reply.status, "ReplyDrafted");
   assert.equal(reply.draft, "Yes, it ships tomorrow at 10.");
 
-  // The same messages again are duplicates: nothing new, no triage call.
   const again = await c<{ added: number }>("intake.poll", { source: "slack" });
   assert.equal(again.added, 0);
   assert.equal(triageCalls.filter((m) => m === "haiku").length, 1);
@@ -160,7 +154,6 @@ test("health checks read claude mcp list with no model call: signed out is expir
   assert.equal(n!.status, "expired");
   assert.ok(alerts.some((a) => a.sticky && /Notion is expired/.test(a.message)));
   assert.ok((await c<Connection[]>("connections.alerts")).some((x) => x.name === "notion"));
-  // factory connect gets the server's name back, to run `claude mcp login "claude.ai Notion"` with.
   const needsLogin = await c<Connection & { server?: string }>("connections.connect", { name: "notion" });
   assert.equal(needsLogin.status, "expired");
   assert.equal(needsLogin.server, "claude.ai Notion");

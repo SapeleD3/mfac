@@ -1,12 +1,6 @@
 import { ask } from "./connectors.js";
 import type { Store } from "./store.js";
 
-/*
- * Notion through the Notion connector you have in Claude (see connectors.ts). The engine never holds a
- * Notion token: each operation is one small Claude call that may use only Notion's tools and answers
- * in JSON. Board updates are batched into one call per sync, so a quiet factory makes no calls.
- */
-
 export const pageUrl = (id: string) => (id.startsWith("http") ? id : `https://www.notion.so/${id.replace(/-/g, "")}`);
 
 export interface BoardIds {
@@ -18,10 +12,8 @@ export interface BoardIds {
 export type Value = string | number | string[] | null | undefined;
 
 export interface RowUpdate {
-  /** Which database, and the factory's own id for the row (task or ticket id). */
   db: keyof BoardIds;
   key: string;
-  /** The row's Notion page, once it has one. */
   pageId?: string;
   properties: Record<string, Value>;
 }
@@ -31,7 +23,6 @@ export interface NotionComment {
   text: string;
   author: string;
   createdAt: string;
-  /** The words the comment is anchored to; empty for a comment on the whole page. */
   anchor?: string;
 }
 
@@ -39,7 +30,6 @@ const SCHEMA = `Jobs: Name (title), Task (text), State (select), Column (select)
 Tickets: Name (title), Ticket (text), Job (relation to Jobs), Created by (select), Picked up by (select), Status (select: Backlog, In progress, In review, Blocked, Done), Tags (multi-select, as in Jobs), Check (text), Links (text).
 Reviews: Name (title), Job (relation to Jobs), Gate (select: Research, Plan), Round (number), Verdict (select: Waiting, Approved, Sent back, Dropped).`;
 
-/** First run: the three databases of the factory board, on a page you can edit. */
 export async function setupBoard(store: Store, parentPage: string): Promise<BoardIds> {
   const r = await ask<Partial<BoardIds>>(
     store,
@@ -51,7 +41,6 @@ export async function setupBoard(store: Store, parentPage: string): Promise<Boar
   return r as BoardIds;
 }
 
-/** Creates or updates board rows, all in one call. Returns each row's page id. */
 export async function upsertRows(store: Store, ids: BoardIds, rows: RowUpdate[]): Promise<{ key: string; pageId: string }[]> {
   if (!rows.length) return [];
   const r = await ask<{ rows?: { key: string; pageId: string }[] }>(
@@ -69,7 +58,6 @@ export async function upsertRows(store: Store, ids: BoardIds, rows: RowUpdate[])
   return (r.rows ?? []).filter((x) => x.key && x.pageId);
 }
 
-/** A review gate opened: a page in Reviews with the doc as its content. */
 export async function createReview(store: Store, ids: BoardIds, properties: Record<string, Value>, markdown: string): Promise<string> {
   const r = await ask<{ pageId?: string }>(
     store,
@@ -81,7 +69,6 @@ export async function createReview(store: Store, ids: BoardIds, properties: Reco
   return r.pageId;
 }
 
-/** A sent-back stage reran: the new round goes at the end of the same page, and every open comment gets a reply. */
 export async function addRound(store: Store, pageId: string, properties: Record<string, Value>, markdown: string, reply: string) {
   await ask(
     store,
@@ -91,7 +78,6 @@ export async function addRound(store: Store, pageId: string, properties: Record<
   );
 }
 
-/** Every comment on a review page, with the words each one is anchored to. */
 export async function comments(store: Store, pageId: string): Promise<NotionComment[]> {
   const r = await ask<{ comments?: NotionComment[] }>(
     store,
@@ -101,7 +87,6 @@ export async function comments(store: Store, pageId: string): Promise<NotionComm
   return (r.comments ?? []).filter((c) => typeof c.text === "string");
 }
 
-/** The rows of the Tickets database, so tickets you add or edit in Notion come back. */
 export async function ticketRows(store: Store, ids: BoardIds): Promise<{ pageId: string; ticket?: string; title: string; check?: string; jobPageId?: string }[]> {
   const r = await ask<{ rows?: { pageId: string; ticket?: string; title: string; check?: string; jobPageId?: string }[] }>(
     store,

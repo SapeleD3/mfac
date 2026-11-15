@@ -1,7 +1,3 @@
-/*
- * Settings: how the factory shows itself, how much runs at once, which model does what, and what each
- * tag changes. Caps and gates are shown but locked: they're engine rules.
- */
 import { useState } from "preact/hooks";
 import { Btn, Pips, TagChip } from "../kit";
 import { act, useApp, useCall } from "../store";

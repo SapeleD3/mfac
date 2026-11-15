@@ -2,24 +2,16 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/*
- * The core rule, as a check in the engine rather than advice in a prompt: research must ship a
- * statechart and a TLA+ model that passes TLC. The engine runs TLC itself and only then reports
- * research_done to the statechart, so no session can claim a proof it doesn't have.
- */
-
 export interface CheckResult {
   chart: boolean;
   proved: boolean;
   model?: string;
   states?: number;
-  /** Plain-language reason, fed back to the researcher on a retry. */
   detail: string;
 }
 
 export type Tlc = (spec: string) => Promise<{ ok: boolean; states: number; output: string }>;
 
-/** Runs scripts/tlc.mjs from this checkout. */
 export const realTlc: Tlc = async (spec) => {
   const script = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "tlc.mjs");
   const mod = (await import(pathToFileURL(script).href)) as { check: Tlc };
@@ -55,7 +47,6 @@ function record(jobDir: string, r: CheckResult): CheckResult {
   try {
     writeFileSync(join(jobDir, "tlc-result.md"), `# Research check\n\n- Statechart: ${r.chart ? "yes" : "no"}\n- TLC: ${r.proved ? "passed" : "not passed"}\n\n${r.detail}\n`);
   } catch {
-    // The job folder may not exist yet when nothing was written.
   }
   return r;
 }

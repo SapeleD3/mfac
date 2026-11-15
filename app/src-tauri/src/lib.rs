@@ -1,7 +1,3 @@
-//! The factory's Mac app. Three ways to run (Settings → How it runs): the widget pill (default), the
-//! full window, or headless (no UI; the engine runs on its own from login). All of them are views of
-//! the same engine; closing a window never stops the factory.
-
 mod engine;
 
 use serde_json::Value;
@@ -20,7 +16,6 @@ async fn engine_call(method: String, params: Option<Value>) -> Result<Value, Str
         .map_err(|e| e.to_string())?
 }
 
-/// Opens Terminal.app running a factory command, for example `factory attach F-001`.
 #[tauri::command]
 fn open_terminal(command: String) -> Result<(), String> {
     if !command.starts_with("factory ") || command.contains(['"', '\\', ';', '&', '|', '`', '$', '\n']) {
@@ -44,7 +39,6 @@ fn show_main(app: AppHandle, route: String) -> Result<(), String> {
     Ok(())
 }
 
-/// The widget window only covers the pill when closed, so it never blocks clicks underneath.
 #[tauri::command]
 fn widget_open(app: AppHandle, open: bool) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("widget") {
@@ -67,7 +61,6 @@ fn open_main(app: &AppHandle, route: &str) {
 }
 
 fn show_widget(w: &WebviewWindow) {
-    // Top right of the screen it's on, just under the menu bar.
     if let Ok(Some(m)) = w.current_monitor() {
         let scale = m.scale_factor();
         let x = m.position().x + m.size().width as i32 - ((WIDGET_W + 16.0) * scale) as i32;
@@ -92,7 +85,6 @@ pub fn run() {
                 .and_then(|s| s.pointer("/ui/mode").and_then(Value::as_str).map(String::from))
                 .unwrap_or_else(|| "widget".into());
             if mode == "headless" {
-                // The engine keeps running from its launch agent; nothing to show.
                 handle.exit(0);
                 return Ok(());
             }
@@ -107,7 +99,6 @@ pub fn run() {
                 open_main(&handle, "queue");
             }
 
-            // Menu bar icon: the same few actions as the pill.
             let open = MenuItem::with_id(app, "open", "Open Factory", true, None::<&str>)?;
             let widget = MenuItem::with_id(app, "widget", "Show or hide the widget", true, None::<&str>)?;
             let needs = MenuItem::with_id(app, "needs", "Needs you", true, None::<&str>)?;
@@ -136,7 +127,6 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing the main window hides it; the widget and the engine carry on.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();

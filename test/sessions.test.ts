@@ -7,7 +7,6 @@ import { test } from "node:test";
 const dir = mkdtempSync(join(tmpdir(), "factory-sessions-"));
 process.env.FACTORY_HOME = join(dir, "home");
 process.env.FACTORY_CLAUDE_DIR = join(dir, "claude");
-// A fake `claude` that answers with the arguments and folder it was run with.
 const fake = join(dir, "claude.sh");
 writeFileSync(fake, `#!/bin/sh\ncat >/dev/null\nnode -e 'console.log(JSON.stringify({ args: process.argv.slice(1), cwd: process.cwd() }))' -- "$@"\n`);
 chmodSync(fake, 0o755);

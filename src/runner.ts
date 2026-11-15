@@ -7,30 +7,16 @@ import { connectorReads } from "./connectors.js";
 
 import type { Decision, Engine, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
-import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree } from "./git.js";
+import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, stripBranchCredits } from "./git.js";
+import { stripCredits } from "./rules.js";
 import { paths } from "./paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
 import { RUNNING, type State } from "./statechart.js";
 import { type Row, type Store, now, opt, parseJson } from "./store.js";
 import * as realTmux from "./tmux.js";
 
-/** Every stage session is named for its task and stage, e.g. "factory-F-012-research-r2". */
 export const sessionName = (taskId: string, role: Role, round: number) =>
   `factory-${taskId}-${role.replace("_", "-").replace("researcher", "research").replace("planner", "plan").replace("builder", "build")}${round > 1 ? `-r${round}` : ""}`;
-
-/*
- * The runner: starts and supervises every Claude Code session. Each task gets one Opus coordinator
- * session that decides what happens next, and each stage runs as its own session in the task's
- * worktree. Sessions talk back through hooks and `factory coord` over the socket; the engine checks
- * every step against the statechart before it happens.
- *
- * Deciding what runs next across tasks is plain code here (queue order, free slots, usage), so an
- * idle factory spends no tokens.
- *
- * Design principles: one managed environment (the engine owns sessions, worktrees and the queue);
- * files hold the state (every stage reads and writes files, so any session can be restarted);
- * crash-only (on start, the runner resumes whatever the database says was running).
- */
 
 export interface Stage {
   id: string;
@@ -62,15 +48,12 @@ type TmuxLike = Pick<typeof realTmux, "start" | "isAlive" | "paste" | "keys" | "
 export interface RunnerOptions {
   tmux?: TmuxLike;
   tlc?: Tlc;
-  /** Seconds between scheduler ticks. */
   tickSeconds?: number;
-  /** How long a permission request waits for a click before falling back to the session's own prompt. */
   permissionTimeoutMs?: number;
 }
 
 const promptsDir = () => join(dirname(fileURLToPath(import.meta.url)), "..", "..", "prompts");
 const REVIEWERS = (t: TaskView): Role[] => ["code_review", "security_review", ...(t.tags.includes("ui") ? (["ui_review"] as Role[]) : [])];
-/** Which stage roles may run in each state. */
 const ROLE_STATE: Partial<Record<Role, State>> = {
   researcher: "Researching",
   planner: "Planning",
@@ -116,7 +99,6 @@ export class Runner {
   private tlc: Tlc;
   private timer?: NodeJS.Timeout;
   private waiters = new Map<string, (p: Prompt) => void>();
-  /** Messages for a coordinator that a person has taken over; delivered when they hand it back. */
   private held = new Map<string, string[]>();
   private ticking = false;
 
@@ -128,8 +110,6 @@ export class Runner {
     this.tmux = opts.tmux ?? realTmux;
     this.tlc = opts.tlc ?? realTlc;
   }
-
-  // ---------- stages table ----------
 
   stages(taskId?: string): Stage[] {
     const rows = taskId
@@ -162,8 +142,6 @@ export class Runner {
       .run(status, patch.output ?? s.output ?? null, ended, JSON.stringify({ nudges: patch.nudges ?? s.nudges }), id);
     this.engine.emit("session", { stage: this.stage(id) });
   }
-
-  // ---------- job files ----------
 
   jobDir(taskId: string): string {
     const dir = paths.job(taskId);
@@ -215,8 +193,6 @@ export class Runner {
     return file;
   }
 
-  // ---------- launching sessions ----------
-
   private launch(t: TaskView, role: Role, opts: { prompt: string; resume?: Stage }): Stage {
     const round = opts.resume ? opts.resume.round : this.stages(t.id).filter((s) => s.role === role).length + 1;
     const id = opts.resume?.id ?? `${t.id}-${role}-${round}`;
@@ -259,7 +235,6 @@ export class Runner {
     return this.stages(taskId).filter((s) => s.role === "coordinator").pop();
   }
 
-  /** Get a message to the task's coordinator: paste it into the live session, or resume the session with it. */
   wake(taskId: string, message: string) {
     const t = this.engine.get(taskId);
     if (!t) return;
@@ -277,7 +252,6 @@ export class Runner {
     this.store.addEvent(taskId, "coordinator_woken", "engine", { message: message.slice(0, 500) });
   }
 
-  /** Start a stage the coordinator asked for, if the statechart's current state allows that role. */
   runStage(taskId: string, role: Role, note = ""): Stage {
     const t = this.engine.get(taskId);
     if (!t) throw new Error(`no task ${taskId}`);
@@ -285,7 +259,6 @@ export class Runner {
     const need = ROLE_STATE[role];
     if (need !== t.machine.state) throw new Error(`${role} runs in ${need}, but the task is ${t.machine.state}`);
     if (["builder", "confirm"].includes(role) && !t.worktree) throw new Error(`${role} needs a repo; this task has none (set one with factory set-repo)`);
-    // Reviews run side by side; every other stage runs alone.
     const busy = this.running(taskId).filter((s) => t.machine.state !== "Reviewing" || s.role === role);
     if (busy.length) throw new Error(`${busy.map((s) => s.id).join(", ")} is still running; wait for it to finish`);
     const out = join(this.jobDir(taskId), OUTPUT[role]);
@@ -294,9 +267,6 @@ export class Runner {
     return this.launch(t, role, { prompt });
   }
 
-  // ---------- the scheduler ----------
-
-  /** Start queued tasks while slots are free and the usage guard allows. Plain code: no tokens. */
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
@@ -337,7 +307,6 @@ export class Runner {
     this.launch(r.task, "coordinator", { prompt: `Task ${t.id} is starting in Researching. Read ${this.jobDir(t.id)}/brief.md and begin.` });
   }
 
-  /** The repo's per-worktree setup (copy env files, install dependencies), from `factory repo add --setup`. */
   private repoSetup(t: TaskView) {
     const row = this.store.db.prepare("SELECT setup FROM repos WHERE path = ?").get(t.repo!) as Row | undefined;
     const setup = row?.setup ? String(row.setup) : "";
@@ -345,8 +314,6 @@ export class Runner {
     this.tmux.start(`${t.id}-setup`, t.worktree, ["/bin/sh", "-c", `${setup}; echo; echo "setup exited $?"; sleep 5`], { FACTORY_REPO: t.repo! });
     this.store.addEvent(t.id, "repo_setup", "engine", { setup });
   }
-
-  // ---------- coordinator commands ----------
 
   async coord(taskId: string, command: string, args: Record<string, unknown>): Promise<string> {
     const t = this.engine.get(taskId);
@@ -465,11 +432,11 @@ export class Runner {
     ].join("\n");
   }
 
-  /** Before the PR gate: rebase onto the latest base, push, and open the PR with its evidence. */
   private preparePullRequest(t: TaskView): { prUrl?: string; prError?: string } {
     if (!t.repo || !t.worktree || !t.branch) return { prError: "no repo" };
     const base = baseBranch(t.repo);
     const rebased = rebaseOnBase(t.worktree, base);
+    stripBranchCredits(t.worktree, base);
     const job = this.jobDir(t.id);
     const section = (title: string, file: string, max = 4000) => (existsSync(join(job, file)) ? `## ${title}\n\n${readFileSync(join(job, file), "utf8").slice(0, max)}\n` : "");
     const body = [
@@ -483,13 +450,12 @@ export class Runner {
       rebased.ok ? "" : `> The branch couldn't be rebased onto ${base} cleanly; it's based on an older ${base}.\n`,
     ].join("\n");
     const bodyFile = join(job, "pr-body.md");
-    writeFileSync(bodyFile, body);
-    const pr = openPullRequest(t.worktree, { branch: t.branch, base, title: t.title, bodyFile });
+    writeFileSync(bodyFile, stripCredits(body));
+    const pr = openPullRequest(t.worktree, { branch: t.branch, base, title: stripCredits(t.title).trim() || t.id, bodyFile });
     if (pr.url) this.engine.update(t.id, { prUrl: pr.url });
     return { prUrl: pr.url, prError: pr.error };
   }
 
-  /** A gate or Needs you opened: free the coordinator's session (it resumes on your decision) and tell the person. */
   gateOpened(t: TaskView) {
     const c = this.coordinator(t.id);
     if (c && c.status === "running") this.finishStage(c, "done");
@@ -507,16 +473,12 @@ export class Runner {
     this.setStage(s.id, { status });
   }
 
-  // ---------- hooks ----------
-
-  /** Stop hook: a session finished a turn. */
   onStop(sessionId: string) {
     const s = this.stageBySession(sessionId);
     if (!s || s.status !== "running") return { ok: true };
     const t = this.engine.get(s.taskId);
     if (!t) return { ok: true };
     if (s.role === "coordinator") {
-      // Waiting is normal while a stage runs or a gate is open. Idle with nothing running is a stall.
       if (!RUNNING.includes(t.machine.state) || this.running(t.id).length || t.takenOver) return { ok: true };
       if (s.nudges >= 2) {
         this.engine.move(t.id, { type: "interrupt" }, "engine", { note: "The coordinator stopped twice with nothing running." });
@@ -554,7 +516,6 @@ export class Runner {
     return { ok: true };
   }
 
-  /** PermissionRequest hook: ask the person in the panel and wait for a click. */
   async onPermission(sessionId: string, tool: string, input: unknown): Promise<{ behavior: "allow" | "deny" | "ask"; message?: string }> {
     const s = this.stageBySession(sessionId);
     const p = this.addPrompt({ taskId: s?.taskId, stageId: s?.id, kind: "permission", payload: { tool, input, role: s?.role, title: s ? this.engine.get(s.taskId)?.title : undefined } });
@@ -578,7 +539,6 @@ export class Runner {
     return decided.status === "allow" ? { behavior: "allow" } : { behavior: "deny", message: decided.answer || "Denied from the factory panel." };
   }
 
-  /** PreToolUse(AskUserQuestion) hook: show the question in the panel; the answer is typed into the pane. */
   onQuestion(sessionId: string, input: { questions?: { question?: string; options?: { label?: string }[] }[] }) {
     const s = this.stageBySession(sessionId);
     const q = input.questions?.[0];
@@ -604,7 +564,6 @@ export class Runner {
     return (this.store.db.prepare("SELECT * FROM prompts WHERE status = ? ORDER BY created_at").all(status) as Row[]).map(toPrompt);
   }
 
-  /** Your answer from the panel: allow or deny a permission, or pick a question's option. */
   answer(id: string, answer: { allow?: boolean; option?: number; message?: string }): Prompt {
     const p = this.prompt(id);
     if (!p) throw new Error(`no prompt ${id}`);
@@ -623,8 +582,6 @@ export class Runner {
     return saved;
   }
 
-  // ---------- take over ----------
-
   takeOver(taskId: string, on: boolean) {
     const t = this.engine.update(taskId, { takenOver: on });
     this.store.addEvent(taskId, on ? "taken_over" : "handed_back", "human");
@@ -636,9 +593,6 @@ export class Runner {
     return t;
   }
 
-  // ---------- reacting to people ----------
-
-  /** A person decided at a gate: tell the coordinator, which resumes the task. */
   async onDecision(d: Decision) {
     for (const hook of this.engine.beforeWake) {
       await Promise.race([hook(d).catch(() => {}), new Promise((r) => setTimeout(r, 60_000).unref?.())]);
@@ -659,7 +613,6 @@ export class Runner {
     this.engine.emit("finished", { task: t, how });
   }
 
-  /** After a restart: any task whose sessions died gets its coordinator back with a note. */
   recover() {
     const live = this.tmux.live();
     for (const s of this.stages().filter((x) => x.status === "running" && !live.has(x.id))) {
@@ -735,7 +688,6 @@ export const runnerPart =
           return { paused: !!p.paused };
         },
         "factory.tick": () => runner.tick(),
-        /** What the pill and the sidebar show: slots in use, and why nothing new is starting, if so. */
         "factory.status": () => {
           const guard = store.setting<{ blocked?: boolean; reason?: string; share?: number; weekly?: number }>("usage_guard", {});
           const busy = engine.list().filter((t) => t.column === "Running").length;

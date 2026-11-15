@@ -1,6 +1,7 @@
 name: ci
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 jobs:
@@ -15,6 +16,7 @@ jobs:
       - run: sudo apt-get install -y tmux
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run check:rules
       - run: npm test
   model:
     runs-on: ubuntu-latest

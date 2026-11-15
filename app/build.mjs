@@ -1,4 +1,3 @@
-// Bundles the UI into dist-app/ for Tauri (and the dev preview). No server, no CDN: everything ships in the app.
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

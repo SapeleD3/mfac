@@ -6,11 +6,6 @@ import { installed as agentInstalled } from "./launchd.js";
 import { paths } from "./paths.js";
 import { status as skillStatus } from "./skills.js";
 
-/*
- * factory doctor: is this Mac ready to run the factory? Plain checks, cheapest first, with the fix
- * for each one. The same checks show on the Connections page (Setup checks).
- */
-
 export interface Check {
   name: string;
   status: "ok" | "warn" | "err";
@@ -43,7 +38,6 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
   const checks: Check[] = [];
   const mac = process.platform === "darwin";
 
-  // Base tools
   const node = process.versions.node;
   const tools = await Promise.all([run("tmux", ["-V"]), run("git", ["--version"]), run("gh", ["--version"]), run("java", ["-version"])]);
   const [tmux, git, gh, java] = tools;
@@ -57,7 +51,6 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
   checks.push({ name: "GitHub CLI", status: gh!.ok ? "ok" : "warn", detail: gh!.ok ? `gh ${version(gh!.out)}` : "missing: branches are pushed, but PRs aren't opened", fix: gh!.ok ? undefined : "brew install gh && gh auth login" });
   checks.push({ name: "Java (for TLC)", status: java!.ok ? "ok" : "err", detail: java!.ok ? version(java!.out) : "missing: the research rule can't run TLC", fix: java!.ok ? undefined : "brew install openjdk@21" });
 
-  // Claude Code on the subscription
   const claude = await run(process.env.FACTORY_CLAUDE ?? "claude", ["--version"]);
   checks.push({
     name: "Claude Code",
@@ -66,7 +59,6 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
     fix: !claude.ok ? "curl -fsSL https://claude.ai/install.sh | bash, then run claude once to sign in" : process.env.ANTHROPIC_API_KEY ? "unset ANTHROPIC_API_KEY in your shell profile" : undefined,
   });
 
-  // Engine and database
   const sock = paths.socket();
   const mode = existsSync(sock) ? (statSync(sock).mode & 0o777).toString(8) : "";
   checks.push({
@@ -83,7 +75,6 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
   });
   if (mac) checks.push({ name: "Starts at login", status: agentInstalled() ? "ok" : "warn", detail: agentInstalled() ? "launch agent installed" : "not installed", fix: agentInstalled() ? undefined : "factory engine install" });
 
-  // A throwaway session on the factory's tmux server proves sessions can start.
   if (tmux!.ok) {
     const sockName = `factory-doctor-${process.pid}`;
     const t0 = Date.now();

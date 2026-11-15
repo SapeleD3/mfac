@@ -1,8 +1,3 @@
-/*
- * The full app: Sapele-style chrome (the sidebar runs to the top of the window with the traffic lights
- * and the collapse toggle; the top bar holds the Factory mark and the page title) and one page per route.
- * Routes are #page or #page/<task id>.
- */
 import { useEffect, useState } from "preact/hooks";
 import { Ic, LOGO } from "./kit";
 import { Connections } from "./pages/connections";
