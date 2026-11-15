@@ -29,7 +29,9 @@ export function enginePlist(opts: { node: string; script: string; path: string; 
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-${Object.entries(env).map(([k, v]) => `    <key>${k}</key><string>${esc(v)}</string>`).join("\n")}
+${Object.entries(env)
+  .map(([k, v]) => `    <key>${k}</key><string>${esc(v)}</string>`)
+  .join("\n")}
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>

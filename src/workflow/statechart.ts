@@ -1,11 +1,27 @@
 export const CAP = 3;
 
 export const STATES = [
-  "Inbox", "Triage", "Ignored", "ReplyDrafted", "Replied", "Queued", "Backlog",
-  "Researching", "ResearchCheck", "ResearchGate",
-  "Planning", "RequirementsReview", "PlanGate",
-  "Building", "Reviewing", "Confirming", "PRGate",
-  "NeedsYou", "Parked", "Done", "Dropped",
+  "Inbox",
+  "Triage",
+  "Ignored",
+  "ReplyDrafted",
+  "Replied",
+  "Queued",
+  "Backlog",
+  "Researching",
+  "ResearchCheck",
+  "ResearchGate",
+  "Planning",
+  "RequirementsReview",
+  "PlanGate",
+  "Building",
+  "Reviewing",
+  "Confirming",
+  "PRGate",
+  "NeedsYou",
+  "Parked",
+  "Done",
+  "Dropped",
 ] as const;
 export type State = (typeof STATES)[number];
 
@@ -234,11 +250,29 @@ export function step(m: Machine, e: Event, cap = CAP): Step {
 
 export function allowed(m: Machine): Event[] {
   const candidates: Event[] = [
-    { type: "pick" }, { type: "triage", as: "ignore" }, { type: "triage", as: "reply" }, { type: "triage", as: "task" }, { type: "triage", as: "backlog" },
-    { type: "demote" }, { type: "prioritize" }, { type: "send_reply" }, { type: "dismiss" }, { type: "promote" }, { type: "start" },
-    { type: "research_done", chart: true, proved: true }, { type: "check" }, { type: "plan_done" },
-    { type: "requirements_done", covered: true }, { type: "approve" }, { type: "drop" }, { type: "build_done" }, { type: "reviews_done", findings: false },
-    { type: "confirm_done", confirmed: true }, { type: "interrupt" }, { type: "park" }, { type: "unpark" },
+    { type: "pick" },
+    { type: "triage", as: "ignore" },
+    { type: "triage", as: "reply" },
+    { type: "triage", as: "task" },
+    { type: "triage", as: "backlog" },
+    { type: "demote" },
+    { type: "prioritize" },
+    { type: "send_reply" },
+    { type: "dismiss" },
+    { type: "promote" },
+    { type: "start" },
+    { type: "research_done", chart: true, proved: true },
+    { type: "check" },
+    { type: "plan_done" },
+    { type: "requirements_done", covered: true },
+    { type: "approve" },
+    { type: "drop" },
+    { type: "build_done" },
+    { type: "reviews_done", findings: false },
+    { type: "confirm_done", confirmed: true },
+    { type: "interrupt" },
+    { type: "park" },
+    { type: "unpark" },
     ...STATES.map((to) => ({ type: "send_back" as const, to })),
   ];
   return candidates.filter((e) => step(m, e).ok);
@@ -246,8 +280,7 @@ export function allowed(m: Machine): Event[] {
 
 export const invariants: Record<string, (m: Machine, cap?: number) => boolean> = {
   TypeOK: (m, cap = CAP) =>
-    STATES.includes(m.state) && PARKABLE.includes(m.parkedFrom) &&
-    GATES.every((g) => m.tries[g] >= 0 && m.tries[g] <= cap) && LOOPS.every((l) => m.loops[l] >= 0 && m.loops[l] <= cap),
+    STATES.includes(m.state) && PARKABLE.includes(m.parkedFrom) && GATES.every((g) => m.tries[g] >= 0 && m.tries[g] <= cap) && LOOPS.every((l) => m.loops[l] >= 0 && m.loops[l] <= cap),
   ResearchRule: (m) => !["ResearchGate", "Planning", "RequirementsReview", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || (m.chart && m.proved),
   CoverageRule: (m) => !["PlanGate", "Building", "Reviewing", "Confirming", "PRGate", "Done"].includes(m.state) || m.covered,
   BuildRule: (m) => !["Building", "Reviewing", "Confirming", "PRGate"].includes(m.state) || (m.approved.includes("research") && m.approved.includes("plan")),

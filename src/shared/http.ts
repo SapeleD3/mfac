@@ -15,10 +15,10 @@ export class HttpError extends Error {
   }
 }
 
-export async function json<T = any>(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+export async function json<T = unknown>(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(init.timeoutMs ?? 20_000) });
   const text = await res.text();
-  let body: any;
+  let body: { message?: string; error?: string; raw?: string };
   try {
     body = text ? JSON.parse(text) : {};
   } catch {

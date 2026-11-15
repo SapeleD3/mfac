@@ -36,9 +36,11 @@ const triageCalls: string[] = [];
 setPrintRunner(async (prompt, opts) => {
   if (opts.allowedTools) {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
-    if (prompt.includes("list the exact names")) return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
+    if (prompt.includes("list the exact names"))
+      return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
-    if (prompt.includes('exactly "Ready for agent"')) return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", text: "It takes 8s to load.", url: "https://notion.so/card1", edited: "2026-11-15T10:00:00Z" }] });
+    if (prompt.includes('exactly "Ready for agent"'))
+      return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", text: "It takes 8s to load.", url: "https://notion.so/card1", edited: "2026-11-15T10:00:00Z" }] });
     if (prompt.includes("Post this exact text")) {
       posted.push(prompt);
       return '{"ok": true}';
@@ -80,7 +82,10 @@ test("connect finds Claude's Slack connector, checks it with one call, and remem
   assert.deepEqual(connectorCalls[0]!.allowed, [SLACK], "before the tools are known, only the Slack server's tools");
   const reads = connectorReads(running.store);
   assert.deepEqual(reads, [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`]);
-  assert.deepEqual(permissionsFor("researcher", "/tmp/job", reads).allow.filter((a) => a.startsWith("mcp__")), reads);
+  assert.deepEqual(
+    permissionsFor("researcher", "/tmp/job", reads).allow.filter((a) => a.startsWith("mcp__")),
+    reads,
+  );
 });
 
 test("Slack intake reads through the connector with read-only tools, and triage sorts it in one call", async () => {
@@ -124,7 +129,9 @@ test("a drafted reply is only posted when you press Send, and only that call may
 
 test("overriding triage three times the same way proposes a rule, which then sorts with no tokens", async () => {
   for (let n = 0; n < 3; n++) {
-    const item = running.store.db.prepare("INSERT INTO intake (id, source, source_id, author, channel, text, received_at, status, triage) VALUES (?, 'slack', ?, 'bot', '#standup', 'standup notes', ?, 'ReplyDrafted', 'reply')");
+    const item = running.store.db.prepare(
+      "INSERT INTO intake (id, source, source_id, author, channel, text, received_at, status, triage) VALUES (?, 'slack', ?, 'bot', '#standup', 'standup notes', ?, 'ReplyDrafted', 'reply')",
+    );
     item.run(`s${n}`, `x${n}`, new Date().toISOString());
     await c("intake.override", { id: `s${n}`, action: "ignore" });
   }
@@ -133,7 +140,9 @@ test("overriding triage three times the same way proposes a rule, which then sor
   assert.equal(rules[0]!.status, "proposed");
   assert.match(rules[0]!.description, /#standup .* ignore/);
   await c("rules.set", { id: rules[0]!.id, status: "active" });
-  running.store.db.prepare("INSERT INTO intake (id, source, source_id, channel, text, received_at, status) VALUES ('s9', 'slack', 'x9', '#standup', 'more notes', ?, 'Inbox')").run(new Date().toISOString());
+  running.store.db
+    .prepare("INSERT INTO intake (id, source, source_id, channel, text, received_at, status) VALUES ('s9', 'slack', 'x9', '#standup', 'more notes', ?, 'Inbox')")
+    .run(new Date().toISOString());
   const before = triageCalls.length;
   const r = await c<{ triaged: number; tokensUsed: boolean }>("intake.triage");
   assert.deepEqual(r, { triaged: 1, tokensUsed: false });
@@ -141,7 +150,9 @@ test("overriding triage three times the same way proposes a rule, which then sor
 });
 
 test("an ignored item can be promoted to a task, and the statechart refuses the rest", async () => {
-  running.store.db.prepare("INSERT INTO intake (id, source, source_id, channel, text, received_at, status) VALUES ('p1', 'slack', 'p1', '#x', 'Please look at the flaky test', ?, 'Ignored')").run(new Date().toISOString());
+  running.store.db
+    .prepare("INSERT INTO intake (id, source, source_id, channel, text, received_at, status) VALUES ('p1', 'slack', 'p1', '#x', 'Please look at the flaky test', ?, 'Ignored')")
+    .run(new Date().toISOString());
   await assert.rejects(c("intake.override", { id: "p1", action: "reply" }), /can become a task, not a reply/);
   const promoted = await c<IntakeItem>("intake.override", { id: "p1", action: "task" });
   assert.equal(promoted.status, "Queued");
@@ -198,7 +209,11 @@ test("disconnect stops the factory using a connector until you connect again; Cl
 
 test("routines show schedule, last result and next run, and your own run as shell commands", async () => {
   const list = await c<Routine[]>("routines.list");
-  for (const id of ["health-check", "intake-slack", "intake-jira", "intake-notion", "triage", "notion-sync", "notion-pull", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);
+  for (const id of ["health-check", "intake-slack", "intake-jira", "intake-notion", "triage", "notion-sync", "notion-pull", "cleanup", "post-merge-watch"])
+    assert.ok(
+      list.some((r) => r.id === id),
+      id,
+    );
   const ran = await c<Routine>("routines.run", { id: "notion-sync" });
   assert.equal(ran.lastResult, "skipped");
   const mine = await c<Routine>("routines.add", { name: "Nightly deps check", every: "1d", command: "echo all good" });
@@ -219,7 +234,9 @@ test("small pieces: schedules, working hours, mcp list parsing, write tools, pag
   assert.equal(inWorkingHours(new Date(2026, 10, 15, 9, 30), hours), false, "Sunday");
   assert.equal(inWorkingHours(new Date(2026, 10, 16, 20), hours), false);
   assert.deepEqual(
-    parseMcpList("Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nnotion: npx -y @notionhq/notion-mcp-server - ✗ Failed to connect\nclaude.ai Atlassian: https://mcp.atlassian.com/v1/sse (SSE) - ! Needs authentication"),
+    parseMcpList(
+      "Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nnotion: npx -y @notionhq/notion-mcp-server - ✗ Failed to connect\nclaude.ai Atlassian: https://mcp.atlassian.com/v1/sse (SSE) - ! Needs authentication",
+    ),
     [
       { name: "claude.ai Slack", status: "connected", detail: "Connected" },
       { name: "notion", status: "failed", detail: "Failed to connect" },

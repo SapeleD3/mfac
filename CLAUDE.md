@@ -7,4 +7,4 @@ These apply to every change, by people or agents, and to everything the factory 
 - No section-break or banner comments (`// ---------- x ----------`, `/* ==== */`).
 - Organize code into modules by what they do (package by feature), each with one clear job and a small surface. Nothing loose at the top of `src/`. Modules sit in layers (`LAYERS` in `src/repo/rules.ts`, described in the README) and import only from their own layer or lower ones. Entry points stay thin and only wire modules together.
 
-`npm run check:rules` checks the code and the module layout and, in CI, the PR title and body.
+`npm run check` runs everything CI runs except TLC and the Rust checks: Biome (lint and format), both typechecks, the rules check (code and module layout) and the tests. `npm run check:rust` covers the Tauri shell (rustfmt and clippy). `npm install` turns on the git hooks in `.githooks`: pre-commit checks what you staged, commit-msg rejects agent credit, pre-push runs the tests. CI also checks the PR title and body for credit.

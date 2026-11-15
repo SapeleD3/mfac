@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
-import { type Actor, type Recipe, type Source, Store, TAGS, type Tag, type Task } from "./store.js";
+import { type Actor, type Recipe, type Source, type Store, TAGS, type Tag, type Task } from "./store.js";
 
 export interface Settings {
   slots: number;
@@ -17,7 +17,18 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 export const DEFAULT_SETTINGS: Settings = {
   slots: 3,
-  models: { coordinator: "opus", researcher: "sonnet", planner: "opus", requirements_review: "opus", builder: "sonnet", code_review: "sonnet", security_review: "sonnet", confirm: "sonnet", triage: "haiku", reply: "sonnet" },
+  models: {
+    coordinator: "opus",
+    researcher: "sonnet",
+    planner: "opus",
+    requirements_review: "opus",
+    builder: "sonnet",
+    code_review: "sonnet",
+    security_review: "sonnet",
+    confirm: "sonnet",
+    triage: "haiku",
+    reply: "sonnet",
+  },
   efforts: {},
   workingHours: { start: 8, end: 19, weekends: false },
   pollMinutes: 30,
@@ -51,7 +62,14 @@ export class Engine extends EventEmitter {
 
   settings(): Settings {
     const saved = this.store.setting<Partial<Settings>>("settings", {});
-    return { ...DEFAULT_SETTINGS, ...saved, models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) }, efforts: { ...DEFAULT_SETTINGS.efforts, ...(saved.efforts ?? {}) }, notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) }, ui: { ...DEFAULT_SETTINGS.ui, ...(saved.ui ?? {}) } };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      models: { ...DEFAULT_SETTINGS.models, ...(saved.models ?? {}) },
+      efforts: { ...DEFAULT_SETTINGS.efforts, ...(saved.efforts ?? {}) },
+      notion: { ...DEFAULT_SETTINGS.notion, ...(saved.notion ?? {}) },
+      ui: { ...DEFAULT_SETTINGS.ui, ...(saved.ui ?? {}) },
+    };
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
@@ -77,10 +95,10 @@ export class Engine extends EventEmitter {
         : s === "Planning" || s === "RequirementsReview"
           ? `${m.loops.requirements}/3`
           : s === "Building" || s === "Reviewing"
-          ? `${m.loops.review}/3`
-          : s === "Confirming"
-            ? `${m.loops.confirm}/3`
-            : undefined;
+            ? `${m.loops.review}/3`
+            : s === "Confirming"
+              ? `${m.loops.confirm}/3`
+              : undefined;
     const moves = allowed(m).map((e) => (e.type === "send_back" ? `send_back:${e.to}` : e.type === "triage" ? `triage:${e.as}` : e.type));
     return { ...t, column: column(s), rounds, allowed: [...new Set(moves)] };
   }
@@ -89,7 +107,14 @@ export class Engine extends EventEmitter {
     if (!input.title?.trim()) throw new Error("a task needs a title");
     const tags = (input.tags ?? []).filter((t) => (TAGS as readonly string[]).includes(t));
     const { backlog, ...rest } = input;
-    const task = this.store.createTask({ ...rest, title: input.title.trim(), source: input.source ?? "manual", tags, priority: input.priority ?? (tags.includes("urgent") ? 10 : 0), state: backlog ? "Backlog" : "Queued" });
+    const task = this.store.createTask({
+      ...rest,
+      title: input.title.trim(),
+      source: input.source ?? "manual",
+      tags,
+      priority: input.priority ?? (tags.includes("urgent") ? 10 : 0),
+      state: backlog ? "Backlog" : "Queued",
+    });
     const v = this.view(task);
     this.emit("change", { kind: "task", task: v });
     return v;
@@ -147,7 +172,17 @@ export class Engine extends EventEmitter {
       return r.task!;
     }
     if (t.machine.state !== "Dropped") throw new Error(`${id} isn't in the bin`);
-    const copy = this.add({ title: t.title, body: `${t.body}\n\nRestored from ${t.id}, which was dropped.`.trim(), repo: t.repo, recipe: t.recipe, tags: t.tags, priority: t.priority, source: t.source, sourceUrl: t.sourceUrl, backlog: true });
+    const copy = this.add({
+      title: t.title,
+      body: `${t.body}\n\nRestored from ${t.id}, which was dropped.`.trim(),
+      repo: t.repo,
+      recipe: t.recipe,
+      tags: t.tags,
+      priority: t.priority,
+      source: t.source,
+      sourceUrl: t.sourceUrl,
+      backlog: true,
+    });
     this.store.addEvent(t.id, "restored", "human", { as: copy.id });
     return copy;
   }

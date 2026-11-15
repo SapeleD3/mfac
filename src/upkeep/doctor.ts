@@ -48,14 +48,28 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
     detail: [`node ${node}`, tmux!.ok ? version(tmux!.out).replace(/^/, "tmux ") : "no tmux", git!.ok ? `git ${version(git!.out)}` : "no git"].join(", "),
     fix: !atLeast(node, [22, 13]) ? "brew install node@22 (the factory needs 22.13+)" : missing.length ? `brew install ${missing.join(" ")}` : undefined,
   });
-  checks.push({ name: "GitHub CLI", status: gh!.ok ? "ok" : "warn", detail: gh!.ok ? `gh ${version(gh!.out)}` : "missing: branches are pushed, but PRs aren't opened", fix: gh!.ok ? undefined : "brew install gh && gh auth login" });
-  checks.push({ name: "Java (for TLC)", status: java!.ok ? "ok" : "err", detail: java!.ok ? version(java!.out) : "missing: the research rule can't run TLC", fix: java!.ok ? undefined : "brew install openjdk@21" });
+  checks.push({
+    name: "GitHub CLI",
+    status: gh!.ok ? "ok" : "warn",
+    detail: gh!.ok ? `gh ${version(gh!.out)}` : "missing: branches are pushed, but PRs aren't opened",
+    fix: gh!.ok ? undefined : "brew install gh && gh auth login",
+  });
+  checks.push({
+    name: "Java (for TLC)",
+    status: java!.ok ? "ok" : "err",
+    detail: java!.ok ? version(java!.out) : "missing: the research rule can't run TLC",
+    fix: java!.ok ? undefined : "brew install openjdk@21",
+  });
 
   const claude = await run(process.env.FACTORY_CLAUDE ?? "claude", ["--version"]);
   checks.push({
     name: "Claude Code",
     status: !claude.ok ? "err" : process.env.ANTHROPIC_API_KEY ? "err" : "ok",
-    detail: !claude.ok ? "the claude command isn't on PATH" : process.env.ANTHROPIC_API_KEY ? "ANTHROPIC_API_KEY is set: sessions would bill the API" : `${version(claude.out)}, subscription (no API key set)`,
+    detail: !claude.ok
+      ? "the claude command isn't on PATH"
+      : process.env.ANTHROPIC_API_KEY
+        ? "ANTHROPIC_API_KEY is set: sessions would bill the API"
+        : `${version(claude.out)}, subscription (no API key set)`,
     fix: !claude.ok ? "curl -fsSL https://claude.ai/install.sh | bash, then run claude once to sign in" : process.env.ANTHROPIC_API_KEY ? "unset ANTHROPIC_API_KEY in your shell profile" : undefined,
   });
 
@@ -73,7 +87,13 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
     status: existsSync(db) ? "ok" : "warn",
     detail: existsSync(db) ? `factory.db ${(statSync(db).size / 1_048_576).toFixed(1)} MB${existsSync(`${db}-wal`) ? " · WAL" : ""}` : "not created yet (the engine creates it)",
   });
-  if (mac) checks.push({ name: "Starts at login", status: agentInstalled() ? "ok" : "warn", detail: agentInstalled() ? "launch agent installed" : "not installed", fix: agentInstalled() ? undefined : "factory engine install" });
+  if (mac)
+    checks.push({
+      name: "Starts at login",
+      status: agentInstalled() ? "ok" : "warn",
+      detail: agentInstalled() ? "launch agent installed" : "not installed",
+      fix: agentInstalled() ? undefined : "factory engine install",
+    });
 
   if (tmux!.ok) {
     const sockName = `factory-doctor-${process.pid}`;
@@ -85,16 +105,31 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
   }
 
   const jar = join(paths.tools(), "tla2tools-1.8.0.jar");
-  checks.push({ name: "TLC", status: existsSync(jar) ? "ok" : "warn", detail: existsSync(jar) ? "tla2tools.jar cached" : "downloaded on first research", fix: existsSync(jar) ? undefined : "node scripts/tlc.mjs --fetch (setup.sh does this)" });
+  checks.push({
+    name: "TLC",
+    status: existsSync(jar) ? "ok" : "warn",
+    detail: existsSync(jar) ? "tla2tools.jar cached" : "downloaded on first research",
+    fix: existsSync(jar) ? undefined : "node scripts/tlc.mjs --fetch (setup.sh does this)",
+  });
 
   if (input.connections) {
     const bad = input.connections.filter((c) => c.status !== "connected" && (c.required || c.status !== "missing"));
-    checks.push({ name: "Connections", status: bad.length ? "err" : "ok", detail: bad.length ? bad.map((c) => `${c.label} ${c.status}`).join(", ") : "all working", fix: bad.length ? "see Connections, or factory connections" : undefined });
+    checks.push({
+      name: "Connections",
+      status: bad.length ? "err" : "ok",
+      detail: bad.length ? bad.map((c) => `${c.label} ${c.status}`).join(", ") : "all working",
+      fix: bad.length ? "see Connections, or factory connections" : undefined,
+    });
   }
 
   const skills = await skillStatus(input.savedSkills);
   const gaps = skills.filter((s) => s.status !== "ok");
-  checks.push({ name: "Skills", status: gaps.length ? "warn" : "ok", detail: gaps.length ? `${gaps.map((s) => s.name).join(", ")} missing` : `${skills.length} installed`, fix: gaps.length ? "factory skills install (or factory skills add <name> <source>)" : undefined });
+  checks.push({
+    name: "Skills",
+    status: gaps.length ? "warn" : "ok",
+    detail: gaps.length ? `${gaps.map((s) => s.name).join(", ")} missing` : `${skills.length} installed`,
+    fix: gaps.length ? "factory skills install (or factory skills add <name> <source>)" : undefined,
+  });
 
   if (mac) {
     const app = [join(homedir(), "Applications", "Factory.app"), "/Applications/Factory.app"].find(existsSync);

@@ -47,23 +47,47 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
 
   const head = (
     <div class="main-h">
-      <h2>{only ?? "All tasks"}</h2><span class="grow" />
+      <h2>{only ?? "All tasks"}</h2>
+      <span class="grow" />
       {!only && (
         <div class="seg">
-          {(["board", "list"] as const).map((v) => <button key={v} class={view === v ? "on" : ""} onClick={() => (setView(v), localStorage.setItem("factory.qview", v))}>{v === "board" ? "Board" : "List"}</button>)}
+          {(["board", "list"] as const).map((v) => (
+            <button key={v} class={view === v ? "on" : ""} onClick={() => (setView(v), localStorage.setItem("factory.qview", v))}>
+              {v === "board" ? "Board" : "List"}
+            </button>
+          ))}
         </div>
       )}
       <div class="seg">
-        <button class={!tag ? "on" : ""} onClick={() => setTag("")}>All tags</button>
-        {TAGS.map((t) => <button key={t} class={tag === t ? "on" : ""} onClick={() => setTag(t)}>{t}</button>)}
+        <button class={!tag ? "on" : ""} onClick={() => setTag("")}>
+          All tags
+        </button>
+        {TAGS.map((t) => (
+          <button key={t} class={tag === t ? "on" : ""} onClick={() => setTag(t)}>
+            {t}
+          </button>
+        ))}
       </div>
-      {!only && <Btn onClick={() => go("backlog")}><Ic n="archive" s={14} />Backlog {backlog}</Btn>}
-      {!only && <Btn onClick={() => go("bin")}><Ic n="trash-2" s={14} />Bin {binned}</Btn>}
-      <Btn kind="btn-primary" onClick={() => setAdding(true)}><Ic n="plus" s={14} />New task</Btn>
+      {!only && (
+        <Btn onClick={() => go("backlog")}>
+          <Ic n="archive" s={14} />
+          Backlog {backlog}
+        </Btn>
+      )}
+      {!only && (
+        <Btn onClick={() => go("bin")}>
+          <Ic n="trash-2" s={14} />
+          Bin {binned}
+        </Btn>
+      )}
+      <Btn kind="btn-primary" onClick={() => setAdding(true)}>
+        <Ic n="plus" s={14} />
+        New task
+      </Btn>
     </div>
   );
 
-  let body;
+  let body: preact.JSX.Element | preact.JSX.Element[];
   if (view === "board" && !only) {
     body = (
       <div class="kb">
@@ -78,15 +102,32 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
               onDragLeave={() => setOver(undefined)}
               onDrop={(e) => (e.preventDefault(), setOver(undefined), void drop(e.dataTransfer?.getData("text/plain") ?? "", col))}
             >
-              <div class="kb-h"><b>{col}</b><span class="chip">{tasks.filter((t) => t.column === col).length}</span></div>
+              <div class="kb-h">
+                <b>{col}</b>
+                <span class="chip">{tasks.filter((t) => t.column === col).length}</span>
+              </div>
               <div class="xs faint kb-hint">{hint}</div>
               {cards.map((t) => (
                 <div key={t.id} class="kb-card" draggable onDragStart={(e) => e.dataTransfer?.setData("text/plain", t.id)} onClick={() => go(`task/${t.id}`)}>
-                  <div class="row" style={{ gap: 6 }}><Avatar t={t} /><b class="kb-t">{t.title}</b></div>
-                  <div class="li-s">{taskSource(t)}<span class="faint">{t.id}</span></div>
-                  <div class="row wrap" style={{ gap: 4, marginTop: 4 }}><MiniRail t={t} /></div>
-                  <div class="xs dim" style={{ marginTop: 4 }}>{askOf(t) ? (askOf(t) === "permission" ? "Asking permission" : "Asking a question") : doing(t)}</div>
-                  {t.tags.length > 0 && <div class="row wrap" style={{ gap: 4, marginTop: 6 }}><Tags ts={t.tags} /></div>}
+                  <div class="row" style={{ gap: 6 }}>
+                    <Avatar t={t} />
+                    <b class="kb-t">{t.title}</b>
+                  </div>
+                  <div class="li-s">
+                    {taskSource(t)}
+                    <span class="faint">{t.id}</span>
+                  </div>
+                  <div class="row wrap" style={{ gap: 4, marginTop: 4 }}>
+                    <MiniRail t={t} />
+                  </div>
+                  <div class="xs dim" style={{ marginTop: 4 }}>
+                    {askOf(t) ? (askOf(t) === "permission" ? "Asking permission" : "Asking a question") : doing(t)}
+                  </div>
+                  {t.tags.length > 0 && (
+                    <div class="row wrap" style={{ gap: 4, marginTop: 6 }}>
+                      <Tags ts={t.tags} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -99,8 +140,14 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
     body = groups.length ? (
       groups.map(([g, ts]) => (
         <div key={g}>
-          <div class="label" style={{ margin: "14px 0 6px" }}>{g} · {ts.length}</div>
-          <div class="list">{ts.map((t) => <TaskLi key={t.id} t={t} asking={askOf(t)} />)}</div>
+          <div class="label" style={{ margin: "14px 0 6px" }}>
+            {g} · {ts.length}
+          </div>
+          <div class="list">
+            {ts.map((t) => (
+              <TaskLi key={t.id} t={t} asking={askOf(t)} />
+            ))}
+          </div>
         </div>
       ))
     ) : (
@@ -108,7 +155,14 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
         {only === "Running" ? "Nothing is running." : only === "Done" ? "Nothing finished yet." : "No active tasks."}
         {!only && (backlog > 0 || waiting > 0 || binned > 0) && (
           <div class="small dim" style={{ marginTop: 6 }}>
-            {[waiting && <a href="#inbox">{waiting} waiting in the inbox</a>, backlog && <a href="#backlog">{backlog} in the backlog</a>, binned && <a href="#bin">{binned} in the bin</a>].filter(Boolean).map((x, i) => <span key={i}>{i ? " · " : ""}{x}</span>)}
+            {[waiting && <a href="#inbox">{waiting} waiting in the inbox</a>, backlog && <a href="#backlog">{backlog} in the backlog</a>, binned && <a href="#bin">{binned} in the bin</a>]
+              .filter(Boolean)
+              .map((x, i) => (
+                <span key={i}>
+                  {i ? " · " : ""}
+                  {x}
+                </span>
+              ))}
           </div>
         )}
       </div>
@@ -116,7 +170,10 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
   }
   return (
     <div class="pane-body">
-      <main class="main board-main">{head}{body}</main>
+      <main class="main board-main">
+        {head}
+        {body}
+      </main>
       {adding && <NewTask close={() => (setAdding(false), go(only ? (only === "Running" ? "running" : "done") : "queue"))} />}
     </div>
   );
@@ -128,9 +185,17 @@ export function TaskLi({ t, on, asking }: { t: Task; on?: boolean; asking?: "per
       <StateDot t={t} asking={!!asking} />
       <div style={{ minWidth: 0 }}>
         <div class="li-t">{t.title}</div>
-        <div class="li-s">{taskSource(t)}<span class="faint">{t.id}</span><MiniRail t={t} /><span>{doing(t)}</span></div>
+        <div class="li-s">
+          {taskSource(t)}
+          <span class="faint">{t.id}</span>
+          <MiniRail t={t} />
+          <span>{doing(t)}</span>
+        </div>
       </div>
-      <div class="row"><Tags ts={t.tags} /><StateChip t={t} asking={asking} /></div>
+      <div class="row">
+        <Tags ts={t.tags} />
+        <StateChip t={t} asking={asking} />
+      </div>
     </div>
   );
 }
@@ -154,22 +219,43 @@ function NewTask({ close }: { close: () => void }) {
     <div class="modal-back" onClick={close}>
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <h3>New task</h3>
-        <input class="in" placeholder="What should change? One line." value={title} onInput={(e) => setTitle(e.currentTarget.value)} autoFocus onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && submit()} />
+        <input
+          class="in"
+          placeholder="What should change? One line."
+          value={title}
+          onInput={(e) => setTitle(e.currentTarget.value)}
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && submit()}
+        />
         <textarea class="in" rows={5} placeholder="Context, links, how you'll know it's fixed (optional)" value={body} onInput={(e) => setBody(e.currentTarget.value)} />
         <div class="row wrap">
           <span class="small dim">Repo</span>
           <select class="in" style={{ width: "auto" }} value={repo} onChange={(e) => setRepo(e.currentTarget.value)}>
             <option value="">Let research pick (or ask)</option>
-            {repos.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
+            {repos.map((r) => (
+              <option key={r.name} value={r.name}>
+                {r.name}
+              </option>
+            ))}
           </select>
         </div>
         <div class="row wrap">
           <span class="small dim">Tags</span>
           {TAGS.map((t) => (
-            <span key={t} class={`tag ${tags.includes(t) ? t : "add"}`} style={{ cursor: "pointer" }} onClick={() => setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t])}>{t}</span>
+            <span key={t} class={`tag ${tags.includes(t) ? t : "add"}`} style={{ cursor: "pointer" }} onClick={() => setTags(tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t])}>
+              {t}
+            </span>
           ))}
         </div>
-        <div class="row"><span class="grow" /><Btn kind="btn-ghost" onClick={close}>Cancel</Btn><Btn kind="btn-primary" onClick={submit} disabled={!title.trim()}>Add to queue</Btn></div>
+        <div class="row">
+          <span class="grow" />
+          <Btn kind="btn-ghost" onClick={close}>
+            Cancel
+          </Btn>
+          <Btn kind="btn-primary" onClick={submit} disabled={!title.trim()}>
+            Add to queue
+          </Btn>
+        </div>
       </div>
     </div>
   );

@@ -51,7 +51,7 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
     "job.read": (p: { id: string; name: string }) => {
       const dir = paths.job(p.id);
       const file = normalize(join(dir, p.name));
-      if (!file.startsWith(dir + "/") || !existsSync(file) || statSync(file).isDirectory()) throw new Error(`no file ${p.name} in ${p.id}`);
+      if (!file.startsWith(`${dir}/`) || !existsSync(file) || statSync(file).isDirectory()) throw new Error(`no file ${p.name} in ${p.id}`);
       const text = readFileSync(file, "utf8");
       return { name: p.name, path: file, text: text.slice(0, 256 * 1024), truncated: text.length > 256 * 1024 };
     },

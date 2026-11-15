@@ -39,10 +39,7 @@ export async function poll(store: Store, since: string, opts: { mutedChannels?: 
 }
 
 export async function reply(store: Store, channelId: string, threadTs: string, text: string) {
-  await ask(
-    store,
-    "slack",
-    `Post this exact text as a reply in the thread ${threadTs} of channel ${channelId}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's posted.`,
-    { write: true },
-  );
+  await ask(store, "slack", `Post this exact text as a reply in the thread ${threadTs} of channel ${channelId}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's posted.`, {
+    write: true,
+  });
 }

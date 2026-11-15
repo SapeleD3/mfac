@@ -22,16 +22,40 @@ export function Inbox() {
     <div class="pane-body">
       <main class="main">
         <div class="main-h">
-          <h2>Inbox and triage</h2><span class="grow" />
-          <span class="small dim">{slack?.lastRunAt ? `Slack ${ago(slack.lastRunAt)}: ${slack.lastDetail ?? slack.lastResult}` : "Slack intake hasn't run yet"}{jira?.lastRunAt ? ` · Jira ${ago(jira.lastRunAt)}` : ""}</span>
-          <div class="seg"><button class={filter === "open" ? "on" : ""} onClick={() => setFilter("open")}>Open</button><button class={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>All</button></div>
-          <Btn onClick={poll}><Ic n="refresh-cw" s={14} />Run intake now</Btn>
+          <h2>Inbox and triage</h2>
+          <span class="grow" />
+          <span class="small dim">
+            {slack?.lastRunAt ? `Slack ${ago(slack.lastRunAt)}: ${slack.lastDetail ?? slack.lastResult}` : "Slack intake hasn't run yet"}
+            {jira?.lastRunAt ? ` · Jira ${ago(jira.lastRunAt)}` : ""}
+          </span>
+          <div class="seg">
+            <button class={filter === "open" ? "on" : ""} onClick={() => setFilter("open")}>
+              Open
+            </button>
+            <button class={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>
+              All
+            </button>
+          </div>
+          <Btn onClick={poll}>
+            <Ic n="refresh-cw" s={14} />
+            Run intake now
+          </Btn>
         </div>
         <div class="list">
-          {items.map((i) => <Item key={i.id} i={i} />)}
-          {items.length === 0 && <div class="empty">{filter === "open" ? "Nothing waiting. New Slack messages to you, Jira tickets assigned to you and cards you move to Ready for agent on your Notion board land here." : "Nothing taken in yet."}</div>}
+          {items.map((i) => (
+            <Item key={i.id} i={i} />
+          ))}
+          {items.length === 0 && (
+            <div class="empty">
+              {filter === "open"
+                ? "Nothing waiting. New Slack messages to you, Jira tickets assigned to you and cards you move to Ready for agent on your Notion board land here."
+                : "Nothing taken in yet."}
+            </div>
+          )}
         </div>
-        <p class="note" style={{ marginTop: 12 }}><b>Overrides teach triage.</b> Changing a verdict here is logged; the same correction three times becomes a rule you approve on Rules and learning. It never posts as you without a click.</p>
+        <p class="note" style={{ marginTop: 12 }}>
+          <b>Overrides teach triage.</b> Changing a verdict here is logged; the same correction three times becomes a rule you approve on Rules and learning. It never posts as you without a click.
+        </p>
       </main>
     </div>
   );
@@ -44,21 +68,50 @@ function Item({ i }: { i: IntakeItem }) {
   return (
     <div class="li" style={{ gridTemplateColumns: "1fr auto", alignItems: "start", cursor: "default" }}>
       <div>
-        <div class="li-s" style={{ margin: "0 0 3px" }}><Src s={i.source} label={from || i.source} /><span class="faint">{ago(i.receivedAt)}</span>{i.url && <a href="#" onClick={(e) => (e.preventDefault(), openUrl(i.url!))} class="faint"><Ic n="external-link" s={12} /></a>}</div>
+        <div class="li-s" style={{ margin: "0 0 3px" }}>
+          <Src s={i.source} label={from || i.source} />
+          <span class="faint">{ago(i.receivedAt)}</span>
+          {i.url && (
+            <a href="#" onClick={(e) => (e.preventDefault(), openUrl(i.url!))} class="faint">
+              <Ic n="external-link" s={12} />
+            </a>
+          )}
+        </div>
         <div style={{ whiteSpace: "pre-wrap" }}>{i.text.length > 600 ? `${i.text.slice(0, 600)}…` : i.text}</div>
         <div class="xs faint" style={{ marginTop: 3 }}>
-          {i.reason ?? (i.triage ? "" : "Waiting for triage")}{i.overridden ? " · changed by you" : ""}
-          {i.taskId && <> · became <a href={`#task/${i.taskId}`}><b>{i.taskId}</b></a></>}
-          {i.tags.length > 0 && <> · <Tags ts={i.tags} /></>}
+          {i.reason ?? (i.triage ? "" : "Waiting for triage")}
+          {i.overridden ? " · changed by you" : ""}
+          {i.taskId && (
+            <>
+              {" "}
+              · became{" "}
+              <a href={`#task/${i.taskId}`}>
+                <b>{i.taskId}</b>
+              </a>
+            </>
+          )}
+          {i.tags.length > 0 && (
+            <>
+              {" "}
+              · <Tags ts={i.tags} />
+            </>
+          )}
         </div>
         {i.status === "ReplyDrafted" && (
           <div class="coord" style={{ marginTop: 6 }}>
-            <div class="label" style={{ marginBottom: 4 }}>Draft reply</div>
+            <div class="label" style={{ marginBottom: 4 }}>
+              Draft reply
+            </div>
             {editing ? <textarea class="in" rows={4} value={draft} onInput={(e) => setDraft(e.currentTarget.value)} /> : <div style={{ whiteSpace: "pre-wrap" }}>{draft}</div>}
             <div class="row" style={{ marginTop: 6 }}>
-              <Btn kind="btn-primary" onClick={() => act("intake.send", { id: i.id, text: draft }, ["intake"])}><Ic n="message-square" s={14} />Send to thread</Btn>
+              <Btn kind="btn-primary" onClick={() => act("intake.send", { id: i.id, text: draft }, ["intake"])}>
+                <Ic n="message-square" s={14} />
+                Send to thread
+              </Btn>
               <Btn onClick={() => setEditing(!editing)}>{editing ? "Done editing" : "Edit"}</Btn>
-              <Btn kind="btn-ghost" onClick={() => act("intake.override", { id: i.id, action: "task" }, ["intake", "tasks"])}>Make it a task</Btn>
+              <Btn kind="btn-ghost" onClick={() => act("intake.override", { id: i.id, action: "task" }, ["intake", "tasks"])}>
+                Make it a task
+              </Btn>
             </div>
           </div>
         )}
@@ -66,12 +119,27 @@ function Item({ i }: { i: IntakeItem }) {
       <div class="col" style={{ alignItems: "flex-end" }}>
         {i.triage ? <span class={V[i.triage]}>{i.triage}</span> : <span class="chip">new</span>}
         {!i.taskId && i.status !== "Replied" && (
-          <select class="in xs" style={{ width: "auto", padding: "2px 4px" }} value="" onChange={(e) => e.currentTarget.value && act("intake.override", { id: i.id, action: e.currentTarget.value }, ["intake", "tasks", "rules"])}>
+          <select
+            class="in xs"
+            style={{ width: "auto", padding: "2px 4px" }}
+            value=""
+            onChange={(e) => e.currentTarget.value && act("intake.override", { id: i.id, action: e.currentTarget.value }, ["intake", "tasks", "rules"])}
+          >
             <option value="">Change…</option>
-            {["ignore", "reply", "backlog", "task", "urgent"].filter((x) => x !== i.triage).map((x) => <option key={x} value={x}>{x}</option>)}
+            {["ignore", "reply", "backlog", "task", "urgent"]
+              .filter((x) => x !== i.triage)
+              .map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
           </select>
         )}
-        {i.taskId && <Btn kind="btn-ghost" onClick={() => go(`task/${i.taskId}`)}>Open</Btn>}
+        {i.taskId && (
+          <Btn kind="btn-ghost" onClick={() => go(`task/${i.taskId}`)}>
+            Open
+          </Btn>
+        )}
       </div>
     </div>
   );

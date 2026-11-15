@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+npx biome check --staged --no-errors-on-unmatched
+npm run -s typecheck
+if echo "$staged" | grep -q '^app/ui/'; then npm --prefix app run -s typecheck; fi
+npm run -s check:rules
+if echo "$staged" | grep -q '^app/src-tauri/.*\.rs$' && command -v cargo >/dev/null; then cargo fmt --check --manifest-path app/src-tauri/Cargo.toml; fi

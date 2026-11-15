@@ -14,7 +14,6 @@ export interface NotionIds {
   reviewsDb?: string;
 }
 
-const STAGES = ["research", "plan", "build", "code review", "security review", "ui review", "confirm", "you"];
 const stageName = (role?: string) => (role ? role.replace("_", " ").replace("researcher", "research").replace("planner", "plan").replace("builder", "build") : undefined);
 
 export function pageIdFrom(link: string): string {
@@ -83,7 +82,9 @@ export class NotionSync {
         Status: k.status,
         Tags: k.tags,
         Check: k.check,
-        Links: Object.entries(k.links).map(([a, b]) => `${a}: ${b}`).join("\n"),
+        Links: Object.entries(k.links)
+          .map(([a, b]) => `${a}: ${b}`)
+          .join("\n"),
       },
     };
   }
@@ -140,19 +141,38 @@ export class NotionSync {
     if (this.store.setting<string | undefined>(done, undefined) === `${gate}:${round}`) return t.notionReviewId;
     const md =
       gate === "Research"
-        ? [read("requirements.md"), read("research.md"), "## Statechart", read("statechart.md"), "## Formal check", read("tlc-result.md"), t.tags.includes("learn") ? read("explainer.md") : ""].join("\n\n")
-        : [read("plan.md"), "## Requirements review", read("review-requirements.md"), "## Tickets", ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`)].join("\n");
+        ? [read("requirements.md"), read("research.md"), "## Statechart", read("statechart.md"), "## Formal check", read("tlc-result.md"), t.tags.includes("learn") ? read("explainer.md") : ""].join(
+            "\n\n",
+          )
+        : [
+            read("plan.md"),
+            "## Requirements review",
+            read("review-requirements.md"),
+            "## Tickets",
+            ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`),
+          ].join("\n");
     const intro = `> 💬 Leave a comment on every issue, on the words it's about. Then give one overall verdict in the factory app or with factory approve, send-back or drop ${t.id}.`;
     const key = `review_${t.id}_${gate}`;
     const existing = this.store.setting<string | undefined>(key, undefined);
     this.store.setSetting(`verdict_${t.id}`, "Waiting");
     if (existing) {
-      await notion.addRound(this.store, existing, { Round: round, Verdict: "Waiting" }, `# Round ${round}\n\n${intro}\n\n${md}`, `Round ${round} is added below and addresses this. Check the new section and resolve this if it's handled.`);
+      await notion.addRound(
+        this.store,
+        existing,
+        { Round: round, Verdict: "Waiting" },
+        `# Round ${round}\n\n${intro}\n\n${md}`,
+        `Round ${round} is added below and addresses this. Check the new section and resolve this if it's handled.`,
+      );
       this.engine.store.updateTask(t.id, { notionReviewId: existing });
       this.store.setSetting(done, `${gate}:${round}`);
       return existing;
     }
-    const pageId = await notion.createReview(this.store, this.board(), { Name: `${t.id} ${gate}: ${t.title}`, Gate: gate, Round: round, Verdict: "Waiting", Job: t.notionJobId ?? null }, `${intro}\n\n${md}`);
+    const pageId = await notion.createReview(
+      this.store,
+      this.board(),
+      { Name: `${t.id} ${gate}: ${t.title}`, Gate: gate, Round: round, Verdict: "Waiting", Job: t.notionJobId ?? null },
+      `${intro}\n\n${md}`,
+    );
     this.store.setSetting(key, pageId);
     this.store.setSetting(done, `${gate}:${round}`);
     this.engine.store.updateTask(t.id, { notionReviewId: pageId });
@@ -205,7 +225,11 @@ export class NotionSync {
       comments: cached.count,
       discussions: cached.discussions,
       commentsReadAt: cached.at,
-      summary: text.split("\n").filter((l) => l.trim() && !l.startsWith("```")).slice(0, 14).join("\n"),
+      summary: text
+        .split("\n")
+        .filter((l) => l.trim() && !l.startsWith("```"))
+        .slice(0, 14)
+        .join("\n"),
       tlc: existsSync(join(job, "tlc-result.md")) ? readFileSync(join(job, "tlc-result.md"), "utf8") : undefined,
       statechart: existsSync(join(job, "statechart.md")) ? readFileSync(join(job, "statechart.md"), "utf8") : undefined,
     };
@@ -214,7 +238,12 @@ export class NotionSync {
   async pullTickets(): Promise<number> {
     if (!this.ready()) return 0;
     const rows = await notion.ticketRows(this.store, this.board());
-    const byJob = new Map(this.engine.list({ all: true }).filter((t) => t.notionJobId).map((t) => [t.notionJobId!.replace(/-/g, ""), t]));
+    const byJob = new Map(
+      this.engine
+        .list({ all: true })
+        .filter((t) => t.notionJobId)
+        .map((t) => [t.notionJobId!.replace(/-/g, ""), t]),
+    );
     let added = 0;
     for (const r of rows) {
       if (r.ticket) {
@@ -246,8 +275,7 @@ export class NotionSync {
         if (t && ["ResearchGate", "PlanGate"].includes(t.machine.state)) await this.publishReview(t);
         this.pending.delete(key);
         n++;
-      } catch {
-      }
+      } catch {}
     }
     return n;
   }

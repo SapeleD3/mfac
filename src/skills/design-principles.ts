@@ -4,8 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "../shared/paths.js";
 
-export const designPrinciplesDir = () =>
-  join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "plugin", "skills", "design-principles");
+export const designPrinciplesDir = () => join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "plugin", "skills", "design-principles");
 
 export const designPrinciplesCache = () => join(paths.home(), "cache", "design-principles");
 
@@ -39,7 +38,11 @@ export function loadSources(dir = designPrinciplesDir()): Source[] {
 }
 
 const list = (v: string | undefined) =>
-  (v ?? "").replace(/^\[|\]$/g, "").split(",").map((s) => s.trim()).filter(Boolean);
+  (v ?? "")
+    .replace(/^\[|\]$/g, "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 export function parsePrinciple(text: string): Principle {
   const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
@@ -76,24 +79,22 @@ export interface FetchReport {
   failed: { id: string; error: string }[];
 }
 
-interface CacheEntry { url: string; bytes: number; sha256: string; fetchedAt: string }
+interface CacheEntry {
+  url: string;
+  bytes: number;
+  sha256: string;
+  fetchedAt: string;
+}
 
 const isPdf = (b: Uint8Array) => b.length > 5 && Buffer.from(b.subarray(0, 5)).toString("latin1") === "%PDF-";
 
-export async function fetchDesignPrincipleSources(opts: {
-  fetch?: typeof fetch;
-  dir?: string;
-  cacheDir?: string;
-  log?: (line: string) => void;
-} = {}): Promise<FetchReport> {
+export async function fetchDesignPrincipleSources(opts: { fetch?: typeof fetch; dir?: string; cacheDir?: string; log?: (line: string) => void } = {}): Promise<FetchReport> {
   const get = opts.fetch ?? fetch;
   const cache = opts.cacheDir ?? designPrinciplesCache();
   const log = opts.log ?? (() => {});
   mkdirSync(cache, { recursive: true });
   const manifestFile = join(cache, "manifest.json");
-  const manifest: Record<string, CacheEntry> = existsSync(manifestFile)
-    ? JSON.parse(readFileSync(manifestFile, "utf8"))
-    : {};
+  const manifest: Record<string, CacheEntry> = existsSync(manifestFile) ? JSON.parse(readFileSync(manifestFile, "utf8")) : {};
   const report: FetchReport = { fetched: [], cached: [], failed: [] };
 
   for (const s of loadSources(opts.dir)) {

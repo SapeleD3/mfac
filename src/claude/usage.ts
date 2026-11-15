@@ -35,8 +35,7 @@ function parse(file: string): Entry[] {
       seen.add(key);
       const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
       entries.push({ at: Date.parse(m.timestamp), tokens, session });
-    } catch {
-    }
+    } catch {}
   }
   cache.set(file, { size: st.size, mtime: st.mtimeMs, entries });
   return entries;
@@ -56,8 +55,7 @@ export function readUsage(days = 14, dir = claudeDir()): Entry[] {
       try {
         if (statSync(file).mtimeMs < since) continue;
         for (const e of parse(file)) if (e.at >= since) out.push(e);
-      } catch {
-      }
+      } catch {}
     }
   }
   return out.sort((a, b) => a.at - b.at);
@@ -113,7 +111,10 @@ export function guard(engine: Engine, store: Store): string {
   const before = store.setting<{ blocked?: boolean }>("usage_guard", {});
   store.setSetting("usage_guard", r);
   if (r.blocked !== !!before.blocked) {
-    engine.emit("alert", { level: r.blocked ? "warn" : "info", message: r.blocked ? `Queue paused: ${r.reason}. Running stages finish.` : "Plan usage is back under the ceiling; the queue is running again." });
+    engine.emit("alert", {
+      level: r.blocked ? "warn" : "info",
+      message: r.blocked ? `Queue paused: ${r.reason}. Running stages finish.` : "Plan usage is back under the ceiling; the queue is running again.",
+    });
   }
 
   const stages = store.db.prepare("SELECT id, task_id, session_id, tokens FROM stages").all() as { id: string; task_id: string; session_id: string; tokens: number }[];

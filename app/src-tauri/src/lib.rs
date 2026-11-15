@@ -27,7 +27,10 @@ fn open_terminal(command: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let script = format!("tell application \"Terminal\"\n activate\n do script \"{command}\"\nend tell");
-        std::process::Command::new("osascript").args(["-e", &script]).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -45,7 +48,8 @@ fn show_main(app: AppHandle, route: String) -> Result<(), String> {
 #[tauri::command]
 fn widget_open(app: AppHandle, open: bool) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("widget") {
-        w.set_size(LogicalSize::new(WIDGET_W, if open { WIDGET_OPEN_H } else { WIDGET_CLOSED_H })).map_err(|e| e.to_string())?;
+        w.set_size(LogicalSize::new(WIDGET_W, if open { WIDGET_OPEN_H } else { WIDGET_CLOSED_H }))
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -56,7 +60,7 @@ fn open_main(app: &AppHandle, route: &str) {
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
     if !route.is_empty() {
         let hash = serde_json::to_string(route).unwrap_or_else(|_| "\"\"".into());
-        let _ = w.eval(&format!("location.hash = {hash}"));
+        let _ = w.eval(format!("location.hash = {hash}"));
     }
     let _ = w.unminimize();
     let _ = w.show();
@@ -110,7 +114,7 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             if mode == "widget" {
-                handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                let _ = handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
             if mode == "app" {
                 open_main(&handle, "queue");

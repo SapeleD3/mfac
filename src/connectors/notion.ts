@@ -117,5 +117,7 @@ export async function readyCards(store: Store, board: string, status: string): P
 }
 
 export async function commentOn(store: Store, pageId: string, text: string) {
-  await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, { write: true });
+  await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, {
+    write: true,
+  });
 }

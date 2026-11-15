@@ -34,7 +34,11 @@ test("a work repo's commit, PR and branch rules are all found", () => {
   const md = conventionsMarkdown(found, ["feature/ABC-12-login"]);
   assert.match(md, /## Testing/);
   assert.match(md, /feature\/ABC-12-login/);
-  assert.equal(found.find((c) => c.kind === "branch" && c.path === "CONTRIBUTING.md")?.excerpt, "Branch names use the prefix feature/ or bugfix/ and the Jira key.", "only a guide's branch lines are quoted under branch naming");
+  assert.equal(
+    found.find((c) => c.kind === "branch" && c.path === "CONTRIBUTING.md")?.excerpt,
+    "Branch names use the prefix feature/ or bugfix/ and the Jira key.",
+    "only a guide's branch lines are quoted under branch naming",
+  );
 });
 
 test("a repo with no conventions gets the factory defaults", () => {

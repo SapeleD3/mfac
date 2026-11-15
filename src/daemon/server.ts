@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { type Server, type Socket, connect, createServer } from "node:net";
 import { dirname } from "node:path";
 
-export type Handler = (params: any, ctx: { socket: Socket }) => unknown | Promise<unknown>;
+export type Handler = (params: never, ctx: { socket: Socket }) => unknown | Promise<unknown>;
 
 export interface Request {
   id?: number | string;
@@ -53,8 +53,7 @@ export class SocketServer {
     await new Promise<void>((resolve) => (this.server ? this.server.close(() => resolve()) : resolve()));
     try {
       unlinkSync(this.path);
-    } catch {
-    }
+    } catch {}
   }
 
   private accept(socket: Socket) {
@@ -91,7 +90,7 @@ export class SocketServer {
     const handler = this.handlers[req.method];
     if (!handler) return reply(socket, { id: req.id, ok: false, error: `unknown method ${req.method}` });
     try {
-      const result = await handler(req.params ?? {}, { socket });
+      const result = await handler((req.params ?? {}) as never, { socket });
       reply(socket, { id: req.id, ok: true, result: result ?? null });
     } catch (e) {
       reply(socket, { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) });

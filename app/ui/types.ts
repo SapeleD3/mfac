@@ -1,7 +1,25 @@
 export type State =
-  | "Inbox" | "Triage" | "Ignored" | "ReplyDrafted" | "Replied" | "Queued" | "Backlog"
-  | "Researching" | "ResearchCheck" | "ResearchGate" | "Planning" | "RequirementsReview" | "PlanGate"
-  | "Building" | "Reviewing" | "Confirming" | "PRGate" | "NeedsYou" | "Parked" | "Done" | "Dropped";
+  | "Inbox"
+  | "Triage"
+  | "Ignored"
+  | "ReplyDrafted"
+  | "Replied"
+  | "Queued"
+  | "Backlog"
+  | "Researching"
+  | "ResearchCheck"
+  | "ResearchGate"
+  | "Planning"
+  | "RequirementsReview"
+  | "PlanGate"
+  | "Building"
+  | "Reviewing"
+  | "Confirming"
+  | "PRGate"
+  | "NeedsYou"
+  | "Parked"
+  | "Done"
+  | "Dropped";
 export type Gate = "ResearchGate" | "PlanGate" | "PRGate" | "NeedsYou";
 export type Tag = "learn" | "urgent" | "ui" | "sensitive" | "harden";
 export const TAGS: Tag[] = ["learn", "urgent", "ui", "sensitive", "harden"];
