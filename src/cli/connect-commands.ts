@@ -206,12 +206,17 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] | status',
-    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake watches your own board and queues cards moved to the ready column",
+    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | status',
+    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake watches your own board (through --server when its workspace differs) and queues cards moved to the ready column",
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
       if (args[0] === "intake") {
-        const r = await call<{ board: string; status: string; routine: { lastResult?: string; lastDetail?: string } }>("notion.intake", { board: args[1], status: f.status, wait: true });
+        const r = await call<{ board: string; status: string; routine: { lastResult?: string; lastDetail?: string } }>("notion.intake", {
+          board: args[1],
+          status: f.status,
+          server: str(f.server),
+          wait: true,
+        });
         const { lastResult, lastDetail } = r.routine;
         return out(lastResult === "ok" ? `Watching ${r.board}. Cards moved to "${r.status}" go to the queue. Now: ${lastDetail}.` : `Saved, but the check ${lastResult}: ${lastDetail}`);
       }

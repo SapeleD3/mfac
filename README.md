@@ -269,7 +269,10 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
   which opens your browser; the factory never sees the credentials. If Claude has no such connector yet,
   it opens [Claude's connector settings](https://claude.ai/customize/connectors). Then it makes one small
   Haiku call to confirm it can read and remembers the connector's tool names. With more than one match,
-  pick with `--server "<name>"`. Inside Claude Code, `/mcp` does the same sign-in by hand.
+  pick with `--server "<name>"` or the **Use** picker on the Connections page, which also shows the
+  workspace each server is signed in to. A server you pick is the only one the factory uses; left on
+  Automatic, it tries Claude's own connector first and falls through to the next when one's tools don't
+  load. Inside Claude Code, `/mcp` does the same sign-in by hand.
 - Every factory session may use the connectors' **read-only** tools without asking, so stations can look
   up the thread or ticket a task came from. Posting, commenting and editing still ask you, except the
   factory's own write-back at gates and replies you press Send on.
@@ -290,6 +293,15 @@ Your own Notion kanban board can be a source of work too: `factory notion intake
 Connections page); the name is looked up once through the Notion connector, and a link works too. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
 `--status`) go straight to the queue without triage, once each, and the factory comments on the card when
 the task finishes.
+
+**Two Notion workspaces.** Claude's own Notion connector is signed in to one workspace. To read a board in
+another, add Notion's MCP server to Claude Code under its own name and sign it in to that workspace:
+
+1. `claude mcp add --transport http --scope user notion-work https://mcp.notion.com/mcp`
+2. In `claude`, run `/mcp`, pick `notion-work`, choose Authenticate, and pick the other workspace on
+   Notion's consent page.
+3. `factory notion intake "<board name>" --server notion-work`, or pick it under "Read it through" on the
+   Connections page. The factory board keeps using the server on the Notion row.
 
 ## Routines
 

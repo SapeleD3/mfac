@@ -80,6 +80,8 @@ export interface ConnectorSettings {
   server?: Partial<Record<Service, string>>;
   pinned?: Partial<Record<Service, boolean>>;
   tools?: Partial<Record<Service, string[]>>;
+  workspaces?: Record<string, string>;
+  serverTools?: Record<string, string[]>;
 }
 
 export interface ConnectorCall {
@@ -140,7 +142,8 @@ function recordCall(store: Store, service: Service, server: string, error?: stri
 }
 
 export function allowedTools(store: Store, service: Service, server: string, write: boolean): string[] {
-  const known = connectorSettings(store).tools?.[service] ?? [];
+  const s = connectorSettings(store);
+  const known = s.serverTools?.[server] ?? s.tools?.[service] ?? [];
   const prefix = toolPrefix(server);
   if (write || !known.length) return [prefix];
   const reads = known.filter((t) => t.startsWith(prefix) && !isWriteTool(t.slice(prefix.length)));
@@ -181,15 +184,32 @@ async function askOne<T>(store: Store, service: Service, server: McpServer, task
 }
 
 export interface AskOptions {
+  /** Only this server: a board lives in one workspace, and another server may be signed in to a different one. */
+  server?: string;
   write?: boolean;
   model?: string;
   session?: string;
   timeoutMs?: number;
 }
 
-/** Tries each candidate server in turn when one's tools don't load in a headless session, and remembers the one that answered. */
-export async function askVia<T>(store: Store, service: Service, task: string, opts: AskOptions = {}): Promise<{ out: T; server: string }> {
+/** The servers a call may use: only the one asked for or pinned, else every candidate, best first. */
+async function serversToTry(store: Store, service: Service, only?: string): Promise<McpServer[]> {
   const all = await candidates(store, service);
+  const s = connectorSettings(store);
+  const pick = only ?? (s.pinned?.[service] ? s.server?.[service] : undefined);
+  if (!pick) return all;
+  const found = all.find((x) => x.name === pick) ?? (await servers(true)).find((x) => x.name === pick);
+  if (!found) throw new HttpError(404, `no MCP server called ${pick} in claude mcp list`);
+  return [found];
+}
+
+/**
+ * With no server pinned, tries each candidate in turn when one's tools don't load in a headless session.
+ * A pinned server is never swapped for another: Claude's own connector may be signed in to a different
+ * workspace, and reading the wrong workspace is worse than failing.
+ */
+export async function askVia<T>(store: Store, service: Service, task: string, opts: AskOptions = {}): Promise<{ out: T; server: string }> {
+  const all = await serversToTry(store, service, opts.server);
   if (!all.length) throw new HttpError(404, `no ${LABEL[service]} connector in Claude Code`);
   const usable = all.filter((x) => x.status === "connected");
   if (!usable.length) {
@@ -210,6 +230,11 @@ export async function askVia<T>(store: Store, service: Service, task: string, op
       failures.push(`${server.name}: ${msg}`);
     }
   }
+  if (usable.length === 1)
+    throw new HttpError(
+      502,
+      `${usable[0]!.name} didn't load its tools in a background session (${failures[0]}). Pick another server on Connections, or run factory connect ${service} without --server`,
+    );
   throw new HttpError(502, `none of Claude's ${LABEL[service]} servers loaded their tools in a background session (${failures.join("; ")})`);
 }
 
@@ -217,21 +242,29 @@ export async function ask<T>(store: Store, service: Service, task: string, opts:
   return (await askVia<T>(store, service, task, opts)).out;
 }
 
-export async function probe(store: Store, service: Service): Promise<{ who: string; server: string; tools: string[] }> {
+export async function probe(store: Store, service: Service, only?: string): Promise<{ who: string; workspace?: string; server: string; tools: string[] }> {
   await servers(true);
-  const all = await candidates(store, service);
-  const names = all.map((x) => x.name).join(", ");
-  const { out: r, server } = await askVia<{ who?: string; tools?: string[] }>(
+  const names = only ?? (await candidates(store, service)).map((x) => x.name).join(", ");
+  const { out: r, server } = await askVia<{ who?: string; workspace?: string; tools?: string[] }>(
     store,
     service,
-    `Make one cheap read call to confirm you have access (for example, look up who I am). Then list the exact names of every tool you can use from these servers: ${names}. Answer {"who": "<the account or workspace you're signed in as>", "tools": ["<tool name>", ...]}.`,
+    `Make one cheap read call to confirm you have access (for example, look up who I am). Then list the exact names of every tool you can use from these servers: ${names}. Answer {"who": "<the account you're signed in as>", "workspace": "<the workspace or site name, or "" if there isn't one>", "tools": ["<tool name>", ...]}.`,
+    { server: only },
   );
   const prefix = toolPrefix(server);
   const tools = (r.tools ?? []).filter((t) => typeof t === "string" && t.startsWith(prefix));
+  const workspace = typeof r.workspace === "string" && r.workspace.trim() ? r.workspace.trim().slice(0, 80) : undefined;
   const s = connectorSettings(store);
-  store.setSetting("connectors", { ...s, tools: { ...s.tools, [service]: tools } });
-  return { who: r.who ?? "connected", server, tools };
+  store.setSetting("connectors", {
+    ...s,
+    ...(only ? {} : { tools: { ...s.tools, [service]: tools } }),
+    serverTools: { ...s.serverTools, [server]: tools },
+    workspaces: { ...s.workspaces, ...(workspace ? { [server]: workspace } : {}) },
+  });
+  return { who: r.who ?? "connected", workspace, server, tools };
 }
+
+export const workspaceOf = (store: Store, server?: string) => (server ? connectorSettings(store).workspaces?.[server] : undefined);
 
 export function connectorReads(store: Store): string[] {
   const s = connectorSettings(store);

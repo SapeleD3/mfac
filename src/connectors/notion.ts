@@ -107,12 +107,12 @@ const INTAKE = { session: "factory-mcp-notion-intake", timeoutMs: 150_000 };
 export const looksLikeLink = (s: string) => /^https?:\/\//i.test(s) || /^[0-9a-f]{32}$/i.test(s.replace(/-/g, ""));
 
 /** Resolved once when the board is saved, so each poll reads the board by id instead of searching again. */
-export async function findBoard(store: Store, name: string): Promise<{ url: string; title: string }> {
+export async function findBoard(store: Store, name: string, server?: string): Promise<{ url: string; title: string }> {
   const r = await ask<{ boards?: { title?: string; url?: string }[] }>(
     store,
     "notion",
     `Search Notion for databases (boards) named "${name}". Answer {"boards": [{"title", "url"}]} with up to 5 databases whose title matches it best, closest first. If none, {"boards": []}.`,
-    INTAKE,
+    { ...INTAKE, server },
   );
   const boards = (r.boards ?? []).filter((b): b is { title: string; url: string } => !!b.title && !!b.url);
   const norm = (s: string) =>
@@ -129,7 +129,7 @@ export async function findBoard(store: Store, name: string): Promise<{ url: stri
 }
 
 /** Lists only ids and titles in one filtered query; page bodies are read separately, and only for cards the factory hasn't seen. */
-export async function readyCards(store: Store, board: string, status: string): Promise<BoardCard[]> {
+export async function readyCards(store: Store, board: string, status: string, server?: string): Promise<BoardCard[]> {
   const r = await ask<{ cards?: Partial<BoardCard>[] }>(
     store,
     "notion",
@@ -138,21 +138,23 @@ export async function readyCards(store: Store, board: string, status: string): P
       `Then query it for the cards whose status is "${status}" (ignore case and any emoji). Use one filtered query; don't open the pages.`,
       'At most 30. Answer {"cards": [{"pageId", "title", "url"}]}. If none match, {"cards": []}.',
     ].join("\n"),
-    INTAKE,
+    { ...INTAKE, server },
   );
   return (r.cards ?? []).filter((c) => c.pageId && c.title).map((c) => ({ pageId: c.pageId!, title: c.title!, url: c.url ?? pageUrl(c.pageId!) }));
 }
 
-export async function cardText(store: Store, pageId: string): Promise<string> {
+export async function cardText(store: Store, pageId: string, server?: string): Promise<string> {
   const r = await ask<{ text?: string }>(store, "notion", `Read the Notion page ${pageUrl(pageId)}. Answer {"text": "<its content as plain text, at most 3000 characters>"}.`, {
     ...INTAKE,
+    server,
     timeoutMs: 90_000,
   });
   return typeof r.text === "string" ? r.text : "";
 }
 
-export async function commentOn(store: Store, pageId: string, text: string) {
+export async function commentOn(store: Store, pageId: string, text: string, server?: string) {
   await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, {
     write: true,
+    server,
   });
 }

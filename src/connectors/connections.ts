@@ -1,7 +1,22 @@
 import { execFile } from "node:child_process";
 import type { Engine } from "../workflow/engine.js";
 import { HttpError } from "../shared/http.js";
-import { type ConnectorCall, type ServerKind, type Service, cachedServer, connectorSettings, lastCall, probe, serverFor, servers, toolPrefix } from "./mcp.js";
+import {
+  type ConnectorCall,
+  type McpServer,
+  type ServerKind,
+  type Service,
+  cachedServer,
+  candidates,
+  connectorSettings,
+  lastCall,
+  probe,
+  serverFor,
+  serverKind,
+  servers,
+  toolPrefix,
+  workspaceOf,
+} from "./mcp.js";
 import { type Row, type Store, now, opt } from "../workflow/store.js";
 
 export const CONNECTIONS = ["slack", "notion", "jira", "claude", "github"] as const;
@@ -24,6 +39,16 @@ export interface Connection {
   through?: { name: string; kind: ServerKind; target?: string; state: string };
   tools?: string[];
   lastCall?: ConnectorCall;
+  workspace?: string;
+}
+
+export interface ServerChoice {
+  name: string;
+  kind: ServerKind;
+  status: McpServer["status"];
+  detail: string;
+  workspace?: string;
+  pinned: boolean;
 }
 
 const CONNECTOR_STEPS = (app: string, also = "") => [
@@ -32,7 +57,7 @@ const CONNECTOR_STEPS = (app: string, also = "") => [
   "The factory only ever uses Claude's access; it never asks for a token.",
 ];
 
-export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "used" | "through" | "tools" | "lastCall">> = {
+export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "used" | "through" | "tools" | "lastCall" | "workspace">> = {
   slack: {
     label: "Slack",
     neededFor: "Intake, reply drafts, write-back to threads",
@@ -136,7 +161,7 @@ export class Connections {
     return CONNECTIONS.map((n) => ({ ...toConnection(n, this.used(n), rows.get(n)), ...this.details(n) }));
   }
 
-  private details(name: ConnectionName): Pick<Connection, "through" | "tools" | "lastCall"> {
+  private details(name: ConnectionName): Pick<Connection, "through" | "tools" | "lastCall" | "workspace"> {
     if (name === "claude" || name === "github") return {};
     const svc = name as Service;
     const server = cachedServer(this.store, svc);
@@ -145,7 +170,31 @@ export class Connections {
       through: server ? { name: server.name, kind: server.kind, target: server.target, state: server.detail } : undefined,
       tools: (connectorSettings(this.store).tools?.[svc] ?? []).filter((t) => t.startsWith(prefix)),
       lastCall: lastCall(this.store, svc),
+      workspace: workspaceOf(this.store, lastCall(this.store, svc)?.server ?? server?.name),
     };
+  }
+
+  /** Every server that could serve this connection, for picking one: Claude's own connector and any MCP server you added. */
+  async choices(name: ConnectionName): Promise<ServerChoice[]> {
+    if (name === "claude" || name === "github") return [];
+    const s = connectorSettings(this.store);
+    const pinned = s.pinned?.[name] ? s.server?.[name] : undefined;
+    return (await candidates(this.store, name)).map((x) => ({
+      name: x.name,
+      kind: x.kind,
+      status: x.status,
+      detail: x.detail,
+      workspace: workspaceOf(this.store, x.name),
+      pinned: x.name === pinned,
+    }));
+  }
+
+  /** One read through exactly this server, to learn its workspace before you pick it. */
+  async check(name: ConnectionName, server: string): Promise<ServerChoice & { who: string }> {
+    if (name === "claude" || name === "github") throw new Error(`${INFO[name].label} has no servers to pick`);
+    const r = await probe(this.store, name, server);
+    const c = (await this.choices(name)).find((x) => x.name === server);
+    return { ...(c ?? { name: server, kind: serverKind(server), status: "connected", detail: "", pinned: false }), workspace: r.workspace, who: r.who };
   }
 
   get(name: ConnectionName): Connection {
@@ -227,7 +276,7 @@ export class Connections {
     if (c.status !== "connected") return { ...c, server: found };
     try {
       const r = await probe(this.store, name);
-      this.store.db.prepare("UPDATE connections SET detail = ? WHERE name = ?").run(`${r.who}, via ${r.server}`, name);
+      this.store.db.prepare("UPDATE connections SET detail = ? WHERE name = ?").run(`${r.who}${r.workspace ? ` in ${r.workspace}` : ""}, via ${r.server}`, name);
       return { ...this.get(name), server: r.server };
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
