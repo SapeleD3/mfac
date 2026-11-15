@@ -4,6 +4,7 @@ import { deleteTranscript } from "../claude/print.js";
 import { type ConnectionName, Connections, type Tester, realTester } from "../connectors/connections.js";
 import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
+import { CardMoves } from "./card-moves.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
 import { brokenCall } from "../connectors/mcp.js";
@@ -163,9 +164,11 @@ export const integrationsPart =
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
+    const moves = new CardMoves(store, engine, connections);
     const onChange = (c: { kind: string; task?: TaskView; action?: string }) => {
       const t = c.task;
       if (c.kind !== "task" || !t) return;
+      moves.onChange(t);
       sync.later("job", t.id);
       if (t.machine.state === "ResearchGate" || t.machine.state === "PlanGate") sync.later("review", t.id, () => sync.publishReview(t));
     };

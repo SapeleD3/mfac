@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
-import { type Actor, type Recipe, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
+import { type Actor, type Recipe, type Row, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
 
 export interface Settings {
   slots: number;
@@ -9,7 +9,17 @@ export interface Settings {
   workingHours: { start: number; end: number; weekends: boolean };
   pollMinutes: number;
   usageCeiling: number;
-  notion: { rootPageId?: string; jobsDb?: string; ticketsDb?: string; reviewsDb?: string; intakeBoard?: string; intakeBoardName?: string; intakeServer?: string; intakeStatus?: string };
+  notion: {
+    rootPageId?: string;
+    jobsDb?: string;
+    ticketsDb?: string;
+    reviewsDb?: string;
+    intakeBoard?: string;
+    intakeBoardName?: string;
+    intakeServer?: string;
+    intakeStatus?: string;
+    columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
+  };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
   defaultRepo?: string;
 }
@@ -43,6 +53,8 @@ export interface TaskView extends Task {
   column: string;
   rounds?: string;
   allowed: string[];
+  /** Where a dropped task left the loop, so its timeline keeps the stages it went through. */
+  ended?: { from: State; by: string; at: string };
 }
 
 export interface ContextResult {
@@ -111,7 +123,12 @@ export class Engine extends EventEmitter {
                   ? `${m.loops.confirm}/3`
                   : undefined;
     const moves = allowed(m).map((e) => (e.type === "send_back" ? `send_back:${e.to}` : e.type === "triage" ? `triage:${e.as}` : e.type));
-    return { ...t, column: column(s), rounds, allowed: [...new Set(moves)] };
+    return { ...t, column: column(s), rounds, allowed: [...new Set(moves)], ...(s === "Dropped" ? { ended: this.ended(t.id) } : {}) };
+  }
+
+  private ended(id: string): TaskView["ended"] {
+    const r = this.store.db.prepare("SELECT from_state, actor, at FROM events WHERE task_id = ? AND to_state = 'Dropped' ORDER BY id DESC LIMIT 1").get(id) as Row | undefined;
+    return r?.from_state ? { from: String(r.from_state) as State, by: String(r.actor), at: String(r.at) } : undefined;
   }
 
   add(input: {

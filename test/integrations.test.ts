@@ -58,6 +58,10 @@ setPrintRunner(async (prompt, opts) => {
       return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
     }
     if (prompt.startsWith("Use the") && prompt.includes("Read the Notion page")) return JSON.stringify({ text: "It takes 8s to load." });
+    if (prompt.includes("set its status property")) {
+      const exact = prompt.match(/property[^)]*\) to "([^"]+)"/)?.[1];
+      return JSON.stringify({ status: exact ?? (prompt.includes("dropped, cancelled") ? "Won't do" : "In progress") });
+    }
     if (prompt.includes("Post this exact text")) {
       posted.push(prompt);
       return '{"ok": true}';
@@ -289,6 +293,49 @@ test("each Notion server shows its workspace, and the board you watch can be rea
   await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
   mcpList = saved;
   await servers(true);
+});
+
+test("a Notion card follows its task one milestone at a time; a team Jira ticket is never moved, you're told the move instead", async () => {
+  const flush = () => new Promise((r) => setTimeout(r, 50));
+  const moves = () => connectorCalls.filter((x) => x.prompt.includes("set its status property"));
+  const before = moves().length;
+  const alerts: string[] = [];
+  const onAlert = (a: { message: string }) => alerts.push(a.message);
+  running.engine.on("alert", onAlert);
+  const walk = async (source: "notion" | "jira", ref: string) => {
+    const t = running.engine.add({ title: `Card ${ref}`, source, sourceRef: ref });
+    const move = (event: object) => running.engine.move(t.id, event as never, "coordinator");
+    move({ type: "start" });
+    await flush();
+    move({ type: "research_done", chart: true, proved: true });
+    await flush();
+    move({ type: "check" });
+    await flush();
+    await c("task.decide", { id: t.id, verdict: "drop", note: "not needed" });
+    await flush();
+    return t.id;
+  };
+  const id = await walk("notion", "card-9");
+  const made = moves().slice(before);
+  assert.deepEqual(
+    made.map((x) => x.prompt.match(/means ([^.]+)\./)?.[1] ?? x.prompt.match(/to "([^"]+)"/)?.[1]),
+    ["in progress: being worked on", "in review: waiting for the owner to review", "dropped, cancelled or won't do"],
+    "one move per milestone, not per state",
+  );
+  assert.ok(made.every((x) => x.prompt.includes("notion.so/card9")));
+  assert.equal(running.engine.settings().notion.columns?.dropped, "Won't do", "the column it picked is remembered");
+  const dropped = running.engine.get(id)!;
+  assert.equal(dropped.ended?.from, "ResearchGate");
+  assert.equal(dropped.ended?.by, "human");
+  await walk("notion", "card-10");
+  assert.match(moves().at(-1)!.prompt, /to "Won't do"/, "a remembered column is set by name");
+  const calls = connectorCalls.length;
+  await walk("jira", "ABC-7@acme");
+  assert.ok(!connectorCalls.slice(calls).some((x) => x.prompt.includes("ABC-7") && !x.prompt.includes("comment")), "nothing moves the Jira ticket");
+  assert.ok(alerts.some((m) => /Move ABC-7 to In Progress in Jira/.test(m)));
+  assert.ok(alerts.some((m) => /Move ABC-7 to Won't Do/.test(m)));
+  assert.ok(!alerts.some((m) => /ABC-7 to In Review/.test(m)), "the research gate isn't worth a Jira nudge");
+  running.engine.off("alert", onAlert);
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {

@@ -40,6 +40,7 @@ export interface Machine {
 }
 
 export interface Task {
+  ended?: { from: string; by: string; at: string };
   id: string;
   title: string;
   body: string;

@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openTerminal, openUrl } from "../bridge";
-import { Btn, Ic, Pips, RECIPE, StateChip, StateDot, TagChip, Tags, clock, doing, position, taskSource, tokens } from "../kit";
+import { Btn, Ic, Pips, ago, RECIPE, StateChip, StateDot, TagChip, Tags, clock, doing, position, taskSource, tokens } from "../kit";
 import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
 
@@ -228,7 +228,8 @@ function Detail({ t }: { t: Task }) {
 
 function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: string[]; onFile: (f: string) => void }) {
   const m = t.machine;
-  const { at, kind } = position(m);
+  const { at, kind } = position(m, t.ended);
+  const leftBy = t.ended ? (t.ended.by === "human" ? "you" : t.ended.by === "engine" ? "the factory" : `the ${t.ended.by}`) : "";
   const last = (role: string) => [...stages].reverse().find((s) => s.role === role);
   const has = (f: string) => files.includes(f);
   const rows: { id: string; sub: string; files: string[]; cap?: preact.JSX.Element }[] = [
@@ -304,10 +305,11 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
         const def = RECIPE[i]!;
         const gate = "gate" in def && def.gate;
         const auto = "auto" in def && def.auto;
-        const state = i < at ? "done" : i === at ? (kind === "fail" ? "fail" : kind === "queued" || kind === "parked" ? "todo" : kind === "done" ? "done" : "now") : "todo";
+        const state = i < at ? "done" : i === at ? (kind === "fail" || kind === "dropped" ? "fail" : kind === "queued" || kind === "parked" ? "todo" : kind === "done" ? "done" : "now") : "todo";
+        const skipped = kind === "dropped" && i > at;
         const cls = `st ${state} ${gate ? "gate" : ""} ${auto || ["build", "review", "confirm"].includes(r.id) ? "auto" : ""}`;
         return (
-          <div key={r.id} class={cls}>
+          <div key={r.id} class={cls} style={skipped ? { opacity: 0.4 } : undefined}>
             <span class="st-dot">
               <span>{state === "done" && !gate ? <Ic n="check" s={12} /> : gate ? state === "done" ? <Ic n="check" s={12} /> : "" : i + 1}</span>
             </span>
@@ -318,7 +320,7 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
                 <span class="grow" />
                 <span class="xs dim">{r.cap}</span>
               </div>
-              <div class="st-sub">{i === at && kind === "fail" ? doing(t) : r.sub}</div>
+              <div class="st-sub">{i === at && kind === "dropped" ? `Left the loop here: dropped by ${leftBy} ${ago(t.ended!.at)}` : i === at && kind === "fail" ? doing(t) : r.sub}</div>
               {r.files.length > 0 && (
                 <div class="st-files">
                   {r.files.map((f) => (
