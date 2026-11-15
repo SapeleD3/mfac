@@ -267,7 +267,13 @@ override, a rule is proposed (`factory rules`), and approved rules sort items be
 Slack, Notion and Jira come through Claude itself: the connectors (or MCP servers) your Claude Code already
 has. The factory holds no tokens, needs no Slack app and no admin approval beyond what Claude already has.
 
-- `factory connections` shows Slack, Notion, Jira, Claude Code and GitHub as connected, expired or missing.
+- `factory connections` shows Slack, Notion, Atlassian (Jira and Confluence), AWS, Gmail, Google Drive,
+  Claude Code and GitHub as connected, expired or missing. AWS, Gmail, Drive and Atlassian are optional:
+  they stay quiet until `factory connect aws` (or `gmail`, `drive`, `jira`) turns them on. Each row shows the
+  server it uses and the account or workspace that server is signed in to. With several servers for one
+  service (two Notion workspaces, three AWS accounts), pick one on the row. AWS servers can make any AWS
+  call through one generic tool, so stages may use only AWS tools that plainly read (get, list, describe,
+  search) without asking.
   The health check reads `claude mcp list` every 5 minutes, which makes no model call. A connector that
   needs you to sign in again shows as expired with a sticky alert, and the work that needs it waits and
   catches up from its cursor.

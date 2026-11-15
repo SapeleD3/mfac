@@ -3,7 +3,7 @@ import { extractJson, runner as claudePrint } from "../claude/print.js";
 import { HttpError } from "../shared/http.js";
 import type { Store } from "../workflow/store.js";
 
-export const SERVICES = ["slack", "notion", "jira"] as const;
+export const SERVICES = ["slack", "notion", "jira", "aws", "gmail", "drive"] as const;
 export type Service = (typeof SERVICES)[number];
 
 export interface McpServer {
@@ -19,8 +19,11 @@ export type ServerKind = "claude.ai" | "plugin" | "local";
 
 export const serverKind = (name: string): ServerKind => (/^claude\.ai /i.test(name) ? "claude.ai" : /^plugin:/i.test(name) ? "plugin" : "local");
 
-const MATCH: Record<Service, RegExp> = { slack: /slack/i, notion: /notion/i, jira: /atlassian|jira/i };
-const OWN: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Atlassian" };
+const MATCH: Record<Service, RegExp> = { slack: /slack/i, notion: /notion/i, jira: /atlassian|jira/i, aws: /\baws\b|amazon/i, gmail: /gmail/i, drive: /google.?drive|\bgdrive\b/i };
+const OWN: Partial<Record<Service, string>> = { slack: "Slack", notion: "Notion", jira: "Atlassian", gmail: "Gmail", drive: "Google Drive" };
+
+/** AWS servers can run any AWS call through one generic tool, so only tools that plainly only read are allowed without asking. */
+const READS_ONLY = /^(get|list|describe|search|read|query|fetch|lookup)/i;
 
 const WRITE_VERBS = new Set("send post create update delete remove add edit move archive schedule upload reply react set write comment duplicate restore transition assign invite".split(" "));
 export const isWriteTool = (name: string) =>
@@ -108,8 +111,8 @@ export async function candidates(store: Store, service: Service, fresh = false):
   const list = listed.filter((x) => MATCH[service].test(x.name) || x.name === chosen);
   // Claude's own connector loads in background sessions even on Claude Code versions whose
   // claude mcp list leaves claude.ai connectors out, so it's always worth one try.
-  const own = `claude.ai ${OWN[service]}`;
-  if (!listed.some((x) => x.name === own)) list.push({ name: own, status: "connected", detail: "Claude's own connector (not listed by claude mcp list)", kind: "claude.ai", unlisted: true });
+  const own = OWN[service] ? `claude.ai ${OWN[service]}` : "";
+  if (own && !listed.some((x) => x.name === own)) list.push({ name: own, status: "connected", detail: "Claude's own connector (not listed by claude mcp list)", kind: "claude.ai", unlisted: true });
   const rank = (x: McpServer) => (s.pinned?.[service] && x.name === chosen ? -10 : 0) + (x.status === "connected" ? 0 : 5) + KIND_RANK[x.kind] + (x.unlisted ? 1.5 : 0);
   return list.sort((a, b) => rank(a) - rank(b));
 }
@@ -125,7 +128,7 @@ export async function serverFor(store: Store, service: Service, fresh = false): 
 export function cachedServer(store: Store, service: Service): McpServer | undefined {
   const last = lastCall(store, service)?.server;
   const list = cache?.servers ?? [];
-  if (last && !list.some((x) => x.name === last) && last === `claude.ai ${OWN[service]}`)
+  if (last && !list.some((x) => x.name === last) && OWN[service] && last === `claude.ai ${OWN[service]}`)
     return { name: last, status: "connected", detail: "Claude's own connector (not listed by claude mcp list)", kind: "claude.ai", unlisted: true };
   return list.find((x) => x.name === last) ?? list.find((x) => MATCH[service].test(x.name));
 }
@@ -150,7 +153,7 @@ export function allowedTools(store: Store, service: Service, server: string, wri
   return reads.length ? reads : [prefix];
 }
 
-const LABEL: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Jira (Atlassian)" };
+const LABEL: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Atlassian (Jira and Confluence)", aws: "AWS", gmail: "Gmail", drive: "Google Drive" };
 
 const TOOLS_MISSING =
   /(?:not|n't) (?:available|loaded|exposed|present)|no (?:[\w:./-]+ )?tools|no such tool|can't find (?:the |any )?tools|don't have (?:access to )?(?:the |any )?tools|told not to use/i;
@@ -248,7 +251,7 @@ export async function probe(store: Store, service: Service, only?: string): Prom
   const { out: r, server } = await askVia<{ who?: string; workspace?: string; tools?: string[] }>(
     store,
     service,
-    `Make one cheap read call to confirm you have access (for example, look up who I am). Then list the exact names of every tool you can use from these servers: ${names}. Answer {"who": "<the account you're signed in as>", "workspace": "<the workspace or site name, or "" if there isn't one>", "tools": ["<tool name>", ...]}.`,
+    `Make one cheap read call to confirm you have access (for example, look up who I am). Then list the exact names of every tool you can use from these servers: ${names}. Answer {"who": "<the account you're signed in as>", "workspace": "<the workspace, site, or cloud account and profile it reads, or "" if there isn't one>", "tools": ["<tool name>", ...]}.`,
     { server: only },
   );
   const prefix = toolPrefix(server);
@@ -268,5 +271,10 @@ export const workspaceOf = (store: Store, server?: string) => (server ? connecto
 
 export function connectorReads(store: Store): string[] {
   const s = connectorSettings(store);
-  return SERVICES.flatMap((svc) => (s.tools?.[svc] ?? []).filter((t) => t.startsWith("mcp__") && !isWriteTool(t.split("__").slice(2).join("__"))));
+  return SERVICES.flatMap((svc) =>
+    (s.tools?.[svc] ?? []).filter((t) => {
+      const name = t.split("__").slice(2).join("__");
+      return t.startsWith("mcp__") && !isWriteTool(name) && (svc !== "aws" || READS_ONLY.test(name));
+    }),
+  );
 }
