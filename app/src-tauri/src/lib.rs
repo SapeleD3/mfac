@@ -114,7 +114,7 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             if mode == "widget" {
-                handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                let _ = handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
             if mode == "app" {
                 open_main(&handle, "queue");
