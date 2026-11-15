@@ -1,7 +1,8 @@
 import { useState } from "preact/hooks";
-import { Btn, Pips, TagChip } from "../kit";
+import { inApp, pickFolder } from "../bridge";
+import { Btn, Ic, Pips, TagChip } from "../kit";
 import { act, useApp, useCall } from "../store";
-import { CAP, type Settings } from "../types";
+import { CAP, type Repo, type Settings } from "../types";
 
 const TAG_INFO: [string, string, string][] = [
   ["learn", "You ask to understand something", "Research writes an explainer; the statechart, model and TLC result are kept as artifacts"],
@@ -35,8 +36,6 @@ const EFFORT: [string, string][] = [
 export function SettingsPage() {
   const app = useApp();
   const s = app.settings;
-  const repos = useCall<{ name: string; path: string; base: string; setup: string }[]>("repo.list");
-  const [repoPath, setRepoPath] = useState("");
   if (!s)
     return (
       <div class="pane-body">
@@ -263,46 +262,92 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
-        <div class="card" style={{ marginTop: 16 }}>
-          <div class="card-h">Repos</div>
-          <div class="card-b">
-            <table class="tbl">
-              <tr>
-                <th>Repo</th>
-                <th>Folder</th>
-                <th>Base</th>
-                <th>Setup</th>
-              </tr>
-              {(repos.data ?? []).map((r) => (
-                <tr key={r.name}>
-                  <td>
-                    <b>{r.name}</b>
-                  </td>
-                  <td class="small dim">{r.path}</td>
-                  <td class="small">{r.base}</td>
-                  <td class="small">
-                    <code>{r.setup || "–"}</code>
-                  </td>
-                </tr>
-              ))}
-            </table>
-            <div class="row" style={{ marginTop: 8 }}>
-              <input class="in" placeholder="/Users/you/code/some-repo" value={repoPath} onInput={(e) => setRepoPath(e.currentTarget.value)} />
-              <Btn
-                onClick={async () => {
-                  if (await act("repo.add", { path: repoPath.trim() })) {
-                    setRepoPath("");
-                    repos.reload();
-                  }
-                }}
-                disabled={!repoPath.trim()}
-              >
-                Add repo
-              </Btn>
-            </div>
-          </div>
-        </div>
+        <ReposCard />
       </main>
+    </div>
+  );
+}
+
+function ReposCard() {
+  const repos = useCall<Repo[]>("repo.list");
+  const [path, setPath] = useState("");
+  const add = async (p: string) => {
+    if (await act("repo.add", { path: p })) {
+      setPath("");
+      repos.reload();
+    }
+  };
+  const update = async (name: string, patch: Partial<Repo>) => {
+    if (await act("repo.update", { name, ...patch })) repos.reload();
+  };
+  const choose = async () => {
+    const picked = await pickFolder("Add a repo");
+    if (picked) await add(picked);
+  };
+  return (
+    <div class="card" style={{ marginTop: 16 }}>
+      <div class="card-h">
+        Repos{" "}
+        <span class="faint small" style={{ fontWeight: 400 }}>
+          where work from Slack, Jira and your Notion board most likely lands
+        </span>
+      </div>
+      <div class="card-b">
+        <div class="small dim" style={{ marginBottom: 8 }}>
+          Triage reads what each repo is for and puts incoming work in the one it most likely belongs to. When it can't tell, the work goes to the default repo. New tasks you add yourself start in the
+          default too, or in any folder you pick.
+        </div>
+        <table class="tbl">
+          <tr>
+            <th>Default</th>
+            <th>Repo</th>
+            <th>What it's for</th>
+            <th>Base</th>
+            <th>Setup</th>
+            <th />
+          </tr>
+          {(repos.data ?? []).map((r) => (
+            <tr key={r.name}>
+              <td>
+                <input type="radio" name="default-repo" checked={r.isDefault} onChange={() => update(r.name, { isDefault: true })} />
+              </td>
+              <td>
+                <b>{r.name}</b>
+                <div class="xs faint">{r.path}</div>
+              </td>
+              <td style={{ width: "40%" }}>
+                <input
+                  class="in"
+                  placeholder="e.g. the billing API and checkout pages"
+                  value={r.about}
+                  onBlur={(e) => e.currentTarget.value.trim() !== r.about && update(r.name, { about: e.currentTarget.value })}
+                />
+              </td>
+              <td class="small">{r.base}</td>
+              <td class="small">
+                <code>{r.setup || "–"}</code>
+              </td>
+              <td>
+                <Btn kind="btn-ghost" onClick={async () => (await act("repo.remove", { name: r.name })) && repos.reload()}>
+                  <Ic n="x" s={14} />
+                </Btn>
+              </td>
+            </tr>
+          ))}
+        </table>
+        <div class="row" style={{ marginTop: 8 }}>
+          {inApp && (
+            <Btn kind="btn-primary" onClick={choose}>
+              <Ic n="folder-plus" s={14} />
+              Choose a folder…
+            </Btn>
+          )}
+          <input class="in" placeholder="/Users/you/code/some-repo" value={path} onInput={(e) => setPath(e.currentTarget.value)} />
+          <Btn onClick={() => add(path.trim())} disabled={!path.trim()}>
+            Add repo
+          </Btn>
+        </div>
+      </div>
     </div>
   );
 }

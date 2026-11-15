@@ -58,3 +58,10 @@ export async function notify(title: string, body: string) {
   if (!(await n.isPermissionGranted()) && (await n.requestPermission()) !== "granted") return;
   n.sendNotification({ title, body });
 }
+
+export async function pickFolder(title: string): Promise<string | null> {
+  if (!inApp) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({ directory: true, multiple: false, title });
+  return typeof picked === "string" ? picked : null;
+}

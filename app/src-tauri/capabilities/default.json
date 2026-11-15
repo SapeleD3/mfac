@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the factory's windows may do: call the engine (through the app's own commands), open links, notify, drag the window.",
+  "description": "What the factory's windows may do: call the engine (through the app's own commands), open links, notify, drag the window, pick a folder.",
   "windows": ["main", "widget"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "notification:default",
+    "dialog:allow-open",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://*" }, { "url": "vscode://*" }]

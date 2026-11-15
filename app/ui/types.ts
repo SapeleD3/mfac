@@ -103,6 +103,7 @@ export interface Connection {
   label: string;
   neededFor: string;
   required: boolean;
+  used: boolean;
   status: "connected" | "expired" | "missing" | "error";
   detail?: string;
   via?: string;
@@ -192,4 +193,13 @@ export interface Alert {
   connection?: string;
   sticky?: boolean;
   clear?: boolean;
+}
+
+export interface Repo {
+  name: string;
+  path: string;
+  base: string;
+  setup: string;
+  about: string;
+  isDefault: boolean;
 }

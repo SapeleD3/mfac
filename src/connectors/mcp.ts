@@ -91,7 +91,7 @@ export function allowedTools(store: Store, service: Service, server: string, wri
 
 const LABEL: Record<Service, string> = { slack: "Slack", notion: "Notion", jira: "Jira (Atlassian)" };
 
-export async function ask<T>(store: Store, service: Service, task: string, opts: { write?: boolean; model?: string } = {}): Promise<T> {
+export async function ask<T>(store: Store, service: Service, task: string, opts: { write?: boolean; model?: string; session?: string; timeoutMs?: number } = {}): Promise<T> {
   const server = await serverFor(store, service);
   if (!server) throw new HttpError(404, `no ${LABEL[service]} connector in Claude Code`);
   if (server.status === "needs-auth") throw new HttpError(401, `${server.name} needs you to sign in again in Claude`);
@@ -100,7 +100,12 @@ export async function ask<T>(store: Store, service: Service, task: string, opts:
     task,
     'Answer with only JSON, no prose. If a tool fails or you lack access, answer {"error": "<what failed>"}.',
   ].join("\n\n");
-  const reply = await claudePrint(prompt, { model: opts.model ?? "haiku", allowedTools: allowedTools(store, service, server.name, !!opts.write), session: `factory-mcp-${service}` });
+  const reply = await claudePrint(prompt, {
+    model: opts.model ?? "haiku",
+    allowedTools: allowedTools(store, service, server.name, !!opts.write),
+    session: opts.session ?? `factory-mcp-${service}`,
+    timeoutMs: opts.timeoutMs,
+  });
   const out = extractJson<T & { error?: string }>(reply);
   if (out && typeof out === "object" && !Array.isArray(out) && typeof out.error === "string") {
     throw new HttpError(/auth|permission|unauthori|forbidden|sign in/i.test(out.error) ? 401 : 502, `${LABEL[service]}: ${out.error}`);

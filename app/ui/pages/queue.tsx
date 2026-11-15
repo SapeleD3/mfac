@@ -1,9 +1,12 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
+import { inApp, pickFolder } from "../bridge";
 import type { Route } from "../app";
 import { go } from "../app";
 import { Avatar, Btn, Ic, MiniRail, StateChip, StateDot, Tags, doing, taskSource } from "../kit";
 import { act, refresh, toast, useApp, useCall } from "../store";
-import { TAGS, type Tag, type Task } from "../types";
+import { type Repo, TAGS, type Tag, type Task } from "../types";
+
+const PICK = "choose-a-folder";
 
 const COLS: [Task["column"], string, string][] = [
   ["Queued", "queued", "Waiting for a free slot"],
@@ -200,8 +203,49 @@ export function TaskLi({ t, on, asking }: { t: Task; on?: boolean; asking?: "per
   );
 }
 
+function FolderPicker({ value, onChange }: { value: string; onChange: (path: string) => void }) {
+  const repos = useCall<Repo[]>("repo.list").data;
+  const [typing, setTyping] = useState(false);
+  const known = (repos ?? []).some((r) => r.path === value);
+  useEffect(() => {
+    const def = repos?.find((r) => r.isDefault);
+    if (def && value === "") onChange(def.path);
+  }, [repos]);
+  const choose = async () => {
+    if (!inApp) return setTyping(true);
+    const picked = await pickFolder("Folder for this task");
+    if (picked) onChange(picked);
+  };
+  return (
+    <div class="row wrap">
+      <span class="small dim">Folder</span>
+      <select
+        class="in"
+        style={{ width: "auto", maxWidth: 320 }}
+        value={value}
+        onChange={(e) => {
+          const v = e.currentTarget.value;
+          if (v !== PICK) return onChange(v);
+          e.currentTarget.value = value;
+          void choose();
+        }}
+      >
+        <option value="">None: research only</option>
+        {(repos ?? []).map((r) => (
+          <option key={r.name} value={r.path}>
+            {r.name}
+            {r.isDefault ? " (default)" : ""}
+          </option>
+        ))}
+        {value && !known && <option value={value}>{value}</option>}
+        <option value={PICK}>Choose a folder…</option>
+      </select>
+      {typing && <input class="in" style={{ flex: 1 }} placeholder="/Users/you/code/some-folder" value={known ? "" : value} onInput={(e) => onChange(e.currentTarget.value.trim())} />}
+    </div>
+  );
+}
+
 function NewTask({ close }: { close: () => void }) {
-  const repos = useCall<{ name: string }[]>("repo.list").data ?? [];
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [repo, setRepo] = useState("");
@@ -228,17 +272,7 @@ function NewTask({ close }: { close: () => void }) {
           onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && submit()}
         />
         <textarea class="in" rows={5} placeholder="Context, links, how you'll know it's fixed (optional)" value={body} onInput={(e) => setBody(e.currentTarget.value)} />
-        <div class="row wrap">
-          <span class="small dim">Repo</span>
-          <select class="in" style={{ width: "auto" }} value={repo} onChange={(e) => setRepo(e.currentTarget.value)}>
-            <option value="">Let research pick (or ask)</option>
-            {repos.map((r) => (
-              <option key={r.name} value={r.name}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FolderPicker value={repo} onChange={setRepo} />
         <div class="row wrap">
           <span class="small dim">Tags</span>
           {TAGS.map((t) => (

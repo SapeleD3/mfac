@@ -64,8 +64,8 @@ export function Connections() {
             <span />
           </div>
           {app.connections.map((c) => {
-            const isOpen = open[c.name] ?? c.status !== "connected";
-            const st = ST[c.status];
+            const isOpen = open[c.name] ?? (c.used && c.status !== "connected");
+            const st = c.used ? ST[c.status] : (["dot off", "Not used", "chip"] as const);
             return (
               <div key={c.name} class={`cn ${isOpen ? "open" : ""} ${c.status === "connected" ? "ok" : c.status}`}>
                 <div class="cn-row" onClick={() => setOpen({ ...open, [c.name]: !isOpen })}>
@@ -76,7 +76,7 @@ export function Connections() {
                   </span>
                   <span class="small dim">{c.neededFor}</span>
                   <span>
-                    <span class={st[2]}>{c.status === "missing" && !c.required ? "Not set up" : st[1]}</span>
+                    <span class={st[2]}>{c.status === "missing" && c.used ? "Not set up" : st[1]}</span>
                   </span>
                   <span class="small dim">{c.lastOkAt ? ago(c.lastOkAt) : "never"}</span>
                   <span class="cn-chev">
@@ -117,17 +117,17 @@ export function Connections() {
                       </div>
                     )}
                     <div class="row" style={{ gap: 6, marginTop: 4 }}>
-                      {c.status !== "connected" && (
+                      {(c.status !== "connected" || !c.used) && (
                         <Btn kind="btn-primary" onClick={() => fix(c)}>
                           <Ic n="wrench" s={14} />
-                          {c.status === "missing" ? "Set up" : "Fix"}
+                          {!c.used ? "Turn on" : c.status === "missing" ? "Set up" : "Fix"}
                         </Btn>
                       )}
                       <Btn onClick={() => act("connections.test", { name: c.name }, ["connections"])}>
                         <Ic n="heart-pulse" s={14} />
                         Test now
                       </Btn>
-                      {c.status !== "connected" && (
+                      {c.status !== "connected" && c.used && (
                         <Btn kind="btn-ghost" onClick={() => act("connections.snooze", { name: c.name, hours: 4 }, ["connections"])}>
                           Snooze 4h
                         </Btn>
@@ -284,17 +284,25 @@ function FactoryBoard({ s, connected, reload }: { s: NotionStatus; connected: bo
 }
 
 function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boolean; reload: () => void }) {
+  const app = useApp();
   const [board, setBoard] = useState(s.intakeBoard ?? "");
   const [status, setStatus] = useState(s.intakeStatus);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const r = app.routines.find((x) => x.id === "intake-notion");
+  const checking = saving || r?.lastResult === "running";
   const save = async () => {
-    setBusy(true);
-    const r = await act<{ added: number; skipped?: string; status: string }>("notion.intake", { board: board.trim(), status: status.trim() }, ["tasks", "intake", "routines"]);
-    if (r) setResult(r.skipped ? `Saved. ${r.skipped}` : `Checked: ${r.added} card${r.added === 1 ? "" : "s"} in "${r.status}" queued.`);
-    setBusy(false);
+    setSaving(true);
+    await act("notion.intake", { board: board.trim(), status: status.trim() }, ["routines"]);
+    setSaving(false);
     reload();
   };
+  const last =
+    s.intakeBoard && r?.lastRunAt && r.lastResult !== "running" ? (
+      <div class={`xs ${r.lastResult === "failed" || r.lastResult === "skipped" ? "err-line" : "dim"}`}>
+        {r.lastResult === "failed" ? "The last check failed: " : r.lastResult === "skipped" ? "The last check didn't run: " : "Last check: "}
+        {r.lastDetail} · {ago(r.lastRunAt)}
+      </div>
+    ) : null;
   return (
     <div class="card">
       <div class="card-h">
@@ -311,17 +319,16 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
           Open your personal kanban board in Notion, add a "{status || "Ready for agent"}" option to its status column if it doesn't have one, and copy the board's link
         </Step>
         <Step n={3} done={!!s.intakeBoard}>
-          Paste it here. Every 15 minutes in working hours, cards in that column go straight to the queue (you already chose them, so they skip triage); when the task finishes, the factory comments on
-          the card
+          Paste it here. Every 15 minutes, cards in that column go straight to the queue (you already chose them, so they skip triage); when the task finishes, the factory comments on the card
         </Step>
         <div class="row">
           <input class="in" placeholder="Board link" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected} />
           <input class="in" style={{ width: 160 }} placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected} />
-          <Btn kind="btn-primary" onClick={save} disabled={!connected || !board.trim() || busy}>
-            {busy ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}
+          <Btn kind="btn-primary" onClick={save} disabled={!connected || !board.trim() || checking}>
+            {checking ? "Checking…" : s.intakeBoard ? "Save and check" : "Watch board"}
           </Btn>
         </div>
-        {result && <div class="xs dim">{result}</div>}
+        {checking ? <div class="xs dim">Reading your board through Claude's Notion connector. This takes up to a couple of minutes; you can leave this page.</div> : last}
       </div>
     </div>
   );

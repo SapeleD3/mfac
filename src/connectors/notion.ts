@@ -99,21 +99,32 @@ export async function ticketRows(store: Store, ids: BoardIds): Promise<{ pageId:
 export interface BoardCard {
   pageId: string;
   title: string;
-  text: string;
-  url?: string;
-  edited: string;
+  url: string;
 }
 
+const INTAKE = { session: "factory-mcp-notion-intake", timeoutMs: 150_000 };
+
+/** Lists only ids and titles in one filtered query; page bodies are read separately, and only for cards the factory hasn't seen. */
 export async function readyCards(store: Store, board: string, status: string): Promise<BoardCard[]> {
   const r = await ask<{ cards?: Partial<BoardCard>[] }>(
     store,
     "notion",
     [
-      `Open the Notion database or board ${pageUrl(board)}. Find its status column (a Status or Select property, often called Status) and list every card whose value is exactly "${status}".`,
-      'At most 30. For each, read the page. Answer {"cards": [{"pageId", "title", "text" (the page content as plain text, at most 3000 characters), "url", "edited" (last edited, ISO time)}]}. If none, {"cards": []}.',
+      `${pageUrl(board)} is a Notion database (the link may point at one of its views). Fetch it once to learn its data source and its status property (a Status or Select property, usually called Status).`,
+      `Then query it for the cards whose status is "${status}" (ignore case and any emoji). Use one filtered query; don't open the pages.`,
+      'At most 30. Answer {"cards": [{"pageId", "title", "url"}]}. If none match, {"cards": []}.',
     ].join("\n"),
+    INTAKE,
   );
-  return (r.cards ?? []).filter((c) => c.pageId && c.title).map((c) => ({ pageId: c.pageId!, title: c.title!, text: c.text ?? "", url: c.url ?? pageUrl(c.pageId!), edited: c.edited ?? "" }));
+  return (r.cards ?? []).filter((c) => c.pageId && c.title).map((c) => ({ pageId: c.pageId!, title: c.title!, url: c.url ?? pageUrl(c.pageId!) }));
+}
+
+export async function cardText(store: Store, pageId: string): Promise<string> {
+  const r = await ask<{ text?: string }>(store, "notion", `Read the Notion page ${pageUrl(pageId)}. Answer {"text": "<its content as plain text, at most 3000 characters>"}.`, {
+    ...INTAKE,
+    timeoutMs: 90_000,
+  });
+  return typeof r.text === "string" ? r.text : "";
 }
 
 export async function commentOn(store: Store, pageId: string, text: string) {

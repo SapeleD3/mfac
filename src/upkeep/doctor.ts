@@ -30,7 +30,7 @@ const atLeast = (v: string, min: number[]) => {
 
 export interface DoctorInput {
   engineUp?: boolean;
-  connections?: { label: string; status: string; required: boolean }[];
+  connections?: { label: string; status: string; required: boolean; used: boolean }[];
   savedSkills?: Record<string, string>;
 }
 
@@ -113,7 +113,7 @@ export async function doctor(input: DoctorInput = {}): Promise<Check[]> {
   });
 
   if (input.connections) {
-    const bad = input.connections.filter((c) => c.status !== "connected" && (c.required || c.status !== "missing"));
+    const bad = input.connections.filter((c) => c.status !== "connected" && c.used);
     checks.push({
       name: "Connections",
       status: bad.length ? "err" : "ok",

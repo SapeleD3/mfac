@@ -107,11 +107,17 @@ npm run build
 npm link                  # puts `factory` on your PATH
 
 factory engine start      # setup.sh's login agent does this for you
+factory repo add ~/code/web --about "the customer web app and its checkout" --default
 factory add "Fix the Safari export button" --repo ~/code/web --tag ui
 factory ls
 factory show F-001
 factory watch             # stream every move as it happens
 ```
+
+Repos: triage puts work from Slack, Jira and your Notion board in the registered repo it most likely belongs to,
+judged by each repo's `--about` line and any repo named in the message, and falls back to the default repo
+(`factory repo default NAME`, or Settings). A task you add yourself starts in the default too, or in any folder
+you pick in the New task window; a folder that isn't a git repo is worked in place, with no branch or PR.
 
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),
