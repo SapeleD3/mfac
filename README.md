@@ -56,6 +56,16 @@ TLC), Claude Code, Rust, uv and the graphify CLI, builds and links `factory`, fe
 skills, builds the app, and registers two login agents (`com.sapeled3.factoryd` keeps the engine
 running; `com.sapeled3.factory.app` opens the app). It ends with `factory doctor`.
 
+### Update
+
+```sh
+factory update              # pull, rebuild, restart the engine, rebuild and reopen the app
+factory update --headless   # same, without the app
+```
+
+A plain `git pull` only changes the source. The running engine and the installed app stay on the old
+build until you run `factory update` (or `./setup.sh` again, which does the same apart from the pull).
+
 ### Skills
 
 Sessions load the factory's own skills with `--plugin-dir ~/.factory/plugin`; `~/.claude` is never written.
@@ -85,7 +95,7 @@ install replaces the factory's old copy. `factory skills` lists them,
 - **Retros**: every task that ends writes `retro.md` (send-backs at each gate, review loops, tokens, minutes, times it needed you).
   `factory retro` lists them. Weekly, once there are at least 3 new retros, the improve-factory routine
   opens a task against this repo proposing changes to prompts, rules and skills, gated like any other.
-- `factory update` pulls this repo, rebuilds and restarts the engine, then rebuilds, reinstalls and reopens Factory.app (unless `--headless`). A plain `git pull` only changes the source: the running engine and the installed app stay on the old build until you run `factory update` (or `./setup.sh` again).
+- `factory update` brings everything up to date (see [Update](#update)).
 
 ## Try the engine
 

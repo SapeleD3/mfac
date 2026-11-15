@@ -1,10 +1,9 @@
-#!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+#!/usr/bin/env -S node --no-warnings=ExperimentalWarning
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Client, call } from "../daemon/client.js";
 import type { TaskView } from "../workflow/engine.js";
+import { restartEngine, startEngine } from "./engine-control.js";
 import { table } from "./format.js";
 import { paths } from "../shared/paths.js";
 import { isAlive } from "../daemon/server.js";
@@ -62,8 +61,6 @@ function moveResult(r: { ok: boolean; reason?: string; task?: TaskView; action?:
   out(`${r.task!.id} is now ${r.task!.machine.state}${r.task!.rounds ? ` (${r.task!.rounds})` : ""}`);
   return 0;
 }
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 export const commands: Record<string, Command> = {
   add: {
@@ -216,35 +213,8 @@ export const commands: Record<string, Command> = {
         out(files.length ? files.map((f) => `${sub === "install" ? "Loaded" : "Removed"} ${f}`).join("\n") : "Nothing to remove");
         return 0;
       }
-      if (sub === "restart") {
-        const ld = await import("../upkeep/launchd.js");
-        if (ld.kickstart(true)) return out("Engine: restarted by launchd");
-        if (alive) {
-          const pid = (await call<{ pid: number }>("ping")).pid;
-          process.kill(pid, "SIGTERM");
-          for (let i = 0; i < 50 && (await isAlive(paths.socket())); i++) await new Promise((r) => setTimeout(r, 100));
-        }
-        return commands.engine!.run(["start"], {});
-      }
-      if (sub === "start") {
-        if (alive) return out("Engine: already running");
-        const ld = await import("../upkeep/launchd.js");
-        if (ld.kickstart()) {
-          for (let i = 0; i < 50; i++) {
-            await new Promise((r) => setTimeout(r, 100));
-            if (await isAlive(paths.socket())) return out("Engine: started by launchd");
-          }
-        }
-        mkdirSync(paths.home(), { recursive: true, mode: 0o700 });
-        const log = openSync(paths.log(), "a");
-        const child = spawn(process.execPath, ["--no-warnings=ExperimentalWarning", join(here, "..", "main", "factoryd.js")], { detached: true, stdio: ["ignore", log, log], env: process.env });
-        child.unref();
-        for (let i = 0; i < 50; i++) {
-          await new Promise((r) => setTimeout(r, 100));
-          if (await isAlive(paths.socket())) return out(`Engine: started (pid ${child.pid})`);
-        }
-        throw new Error(`the engine didn't start; see ${paths.log()}`);
-      }
+      if (sub === "restart") return out(await restartEngine());
+      if (sub === "start") return out(await startEngine());
       if (sub === "stop") {
         if (!alive) return out("Engine: not running");
         const pid = existsSync(paths.pid()) ? Number(readFileSync(paths.pid(), "utf8")) : (await call<{ pid: number }>("ping")).pid;
