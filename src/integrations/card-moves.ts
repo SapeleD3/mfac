@@ -61,7 +61,7 @@ export class CardMoves {
     if (!this.connections.ok("notion")) return;
     const s = this.engine.settings().notion;
     const known = s.columns?.[m];
-    const r = await notion.moveCard(this.store, t.sourceRef!, known ? { exact: known } : { meaning: MEANING[m] }, s.intakeServer);
+    const r = await notion.moveCard(this.store, t.sourceRef!.split("@")[0]!, known ? { exact: known } : { meaning: MEANING[m] }, s.intakeServer);
     this.store.addEvent(t.id, "card_moved", "engine", { to: r.status || null, milestone: m });
     const fresh = this.engine.settings().notion;
     if (r.status && !known) this.engine.updateSettings({ notion: { ...fresh, columns: { ...fresh.columns, [m]: r.status } } });

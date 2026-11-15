@@ -175,9 +175,10 @@ export const integrationsPart =
 
     const writeBack = async (t: TaskView, text: string) => {
       const cfg = store.setting<{ slack?: boolean; jira?: boolean; notion?: boolean }>("write_back", { slack: true, jira: true, notion: true });
-      const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
+      const ref = t.sourceRef?.split("@")[0];
+      const item = ref ? intake.items({ limit: 500 }).find((i) => (i.sourceId === t.sourceRef || i.sourceId === ref) && i.source === t.source) : undefined;
       if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
-      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, t.sourceRef, text, engine.settings().notion.intakeServer);
+      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, ref!, text, engine.settings().notion.intakeServer);
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 

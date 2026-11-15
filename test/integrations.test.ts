@@ -367,6 +367,20 @@ test("Notion meetings are read through the server you pick, summaries only, and 
   await servers(true);
 });
 
+test("a Notion card you put back in the ready column after its task finished becomes a follow-up, once; one never moved is left alone", async () => {
+  const first = (await c<TaskView[]>("task.list", { all: true })).find((t) => t.sourceRef === "card-1" && !t.parent)!;
+  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  running.store.saveMachine(first.id, { ...running.store.task(first.id)!.machine, state: "Dropped" });
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "dropped, but the factory never moved the card, so it hasn't been put back");
+  running.store.setSetting("card_moves", { ...running.store.setting<Record<string, string>>("card_moves", {}), [first.id]: "dropped" });
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 1);
+  const follow = (await c<TaskView[]>("task.list", {})).find((t) => t.parent === first.id)!;
+  assert.equal(follow.source, "notion");
+  assert.equal(follow.sourceRef?.split("@")[0], "card-1");
+  assert.match(follow.body, /moved this card back/);
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the follow-up is in flight, so the card isn't queued again");
+});
+
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {
   const alerts: { message: string; sticky?: boolean }[] = [];
   running.engine.on("alert", (a) => alerts.push(a));

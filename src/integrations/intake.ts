@@ -175,7 +175,10 @@ export class Intake {
     let added = 0;
     const cards = await notion.readyCards(this.store, intakeBoard, status, intakeServer);
     for (const card of cards) {
-      if (this.seen("notion", card.pageId)) continue;
+      if (this.seen("notion", card.pageId)) {
+        if (await this.reopened(card, intakeServer)) added++;
+        continue;
+      }
       const text = await notion.cardText(this.store, card.pageId, intakeServer).catch(() => "");
       const item = this.add({ source: "notion", sourceId: card.pageId, channel: "Notion board", text: `${card.title}\n\n${text}`.trim(), url: card.url, meta: { pageId: card.pageId } });
       if (!item) continue;
@@ -184,6 +187,32 @@ export class Intake {
       added++;
     }
     return { added, found: cards.length };
+  }
+
+  /**
+   * A card the factory already moved to done or dropped that is back in the ready column was put back
+   * on purpose, so it becomes a follow-up. A card still sitting in the ready column from before is not.
+   */
+  private async reopened(card: notion.BoardCard, server?: string): Promise<boolean> {
+    const row = this.store.db.prepare("SELECT id, task_id FROM intake WHERE source = 'notion' AND source_id = ? ORDER BY received_at DESC LIMIT 1").get(card.pageId) as Row | undefined;
+    const t = row?.task_id ? this.engine.get(String(row.task_id)) : undefined;
+    if (!t || !["Done", "Dropped"].includes(t.machine.state)) return false;
+    const moved = this.store.setting<Record<string, string>>("card_moves", {})[t.id];
+    if (moved !== "done" && moved !== "dropped") return false;
+    const text = await notion.cardText(this.store, card.pageId, server).catch(() => "");
+    const r = this.engine.addContext(t.id, {
+      text: `You moved this card back to the ready column.\n\n${card.title}\n\n${text}`.trim(),
+      from: "your Notion board",
+      url: card.url,
+      source: "notion",
+      sourceRef: `${card.pageId}@${t.id}`,
+      actor: "triage",
+    });
+    if (!r.followUp) return false;
+    this.store.db
+      .prepare("UPDATE intake SET task_id = ?, reason = ? WHERE id = ?")
+      .run(r.followUp.id, `you put the card back after ${t.id} ${t.machine.state === "Done" ? "finished" : "was dropped"}`, String(row!.id));
+    return true;
   }
 
   rules(status?: TriageRule["status"]): TriageRule[] {
