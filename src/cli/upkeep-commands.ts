@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Command, Flags } from "./cli.js";
@@ -10,6 +10,7 @@ import { isAlive } from "../daemon/server.js";
 import { type SkillStatus, install as installSkills, status as skillStatus } from "../skills/skills.js";
 import type { Retro } from "../upkeep/upkeep.js";
 import { factoryRepo } from "../upkeep/upkeep.js";
+import { relaunchApp } from "../upkeep/launchd.js";
 
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
@@ -84,7 +85,7 @@ export const upkeepCommands: Record<string, Command> = {
   },
   update: {
     usage: "update",
-    help: "Pull the latest factory, rebuild, restart the engine (and rebuild the app unless headless)",
+    help: "Pull the latest factory, rebuild, restart the engine, and rebuild, reinstall and reopen the app (unless --headless)",
     async run(_args, flags) {
       const repo = factoryRepo();
       const step = (label: string, cmd: string, a: string[], cwd = repo) => {
@@ -96,13 +97,22 @@ export const upkeepCommands: Record<string, Command> = {
       step("npm ci", "npm", ["ci", "--no-audit", "--no-fund"]);
       step("build", "npm", ["run", "build"]);
       const app = join(homedir(), "Applications", "Factory.app");
-      if (!flags.headless && existsSync(app) && existsSync(join(repo, "app"))) {
+      const withApp = !flags.headless && process.platform === "darwin" && existsSync(join(repo, "app"));
+      if (withApp) {
         step("app: npm ci", "npm", ["ci", "--no-audit", "--no-fund"], join(repo, "app"));
         step("app: build", "npm", ["run", "app"], join(repo, "app"));
+        rmSync(app, { recursive: true, force: true });
         step("app: install", "ditto", [join(repo, "app", "src-tauri", "target", "release", "bundle", "macos", "Factory.app"), app]);
+        writeFileSync(join(paths.home(), "app-built-from"), `${spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()}\n`);
       }
       const { commands } = await import("./cli.js");
-      return commands.engine!.run(["restart"], {});
+      const code = await commands.engine!.run(["restart"], {});
+      if (withApp) {
+        out("→ app: restart");
+        relaunchApp(app);
+        out(`Factory.app is the new build: ${app}`);
+      }
+      return code;
     },
   },
 };

@@ -85,7 +85,7 @@ install replaces the factory's old copy. `factory skills` lists them,
 - **Retros**: every task that ends writes `retro.md` (send-backs at each gate, review loops, tokens, minutes, times it needed you).
   `factory retro` lists them. Weekly, once there are at least 3 new retros, the improve-factory routine
   opens a task against this repo proposing changes to prompts, rules and skills, gated like any other.
-- `factory update` pulls this repo, rebuilds (the app too, unless headless) and restarts the engine.
+- `factory update` pulls this repo, rebuilds and restarts the engine, then rebuilds, reinstalls and reopens Factory.app (unless `--headless`). A plain `git pull` only changes the source: the running engine and the installed app stay on the old build until you run `factory update` (or `./setup.sh` again).
 
 ## Try the engine
 

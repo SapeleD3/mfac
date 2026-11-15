@@ -96,3 +96,12 @@ export function kickstart(restart = false): boolean {
   if (process.platform !== "darwin" || !installed()) return false;
   return launchctl("kickstart", ...(restart ? ["-k"] : []), `gui/${uid()}/${ENGINE_LABEL}`).status === 0;
 }
+
+export const APP_BUNDLE_ID = "com.sapeled3.factory";
+
+export function relaunchApp(app: string): void {
+  if (process.platform !== "darwin") return;
+  spawnSync("osascript", ["-e", `tell application id "${APP_BUNDLE_ID}" to quit`], { stdio: "ignore" });
+  for (let i = 0; i < 50 && spawnSync("pgrep", ["-f", `${app}/Contents/MacOS/`]).status === 0; i++) spawnSync("sleep", ["0.2"]);
+  spawnSync("open", ["-g", app], { stdio: "ignore" });
+}
