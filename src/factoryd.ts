@@ -36,7 +36,7 @@ export async function startEngine(opts: { db?: string; socket?: string; plugins?
   const server = new SocketServer(opts.socket ?? paths.socket(), handlers);
   const parts = (opts.plugins ?? plugins).map((f) => f({ engine, store, server }));
   for (const p of parts) Object.assign(handlers, p.api ?? {});
-  for (const kind of ["change", "refused", "decision", "prompt", "alert", "routine", "session"]) engine.on(kind, (data) => server.broadcast(kind, data));
+  for (const kind of ["change", "refused", "decision", "prompt", "alert", "routine", "session", "finished", "ticket"]) engine.on(kind, (data) => server.broadcast(kind, data));
   await server.listen();
   for (const p of parts) await p.start?.();
   const stop = async () => {

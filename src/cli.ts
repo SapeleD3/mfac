@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, call } from "./client.js";
 import type { TaskView } from "./engine.js";
+import { table } from "./format.js";
 import { paths } from "./paths.js";
 import { isAlive } from "./server.js";
 import { STATES, type State } from "./statechart.js";
@@ -49,10 +50,6 @@ const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const bold = (s: string) => (process.stdout.isTTY ? `\x1b[1m${s}\x1b[0m` : s);
 const dim = (s: string) => (process.stdout.isTTY ? `\x1b[2m${s}\x1b[0m` : s);
 
-export function table(rows: string[][]): string {
-  const widths = rows[0]?.map((_, i) => Math.max(...rows.map((r) => (r[i] ?? "").length))) ?? [];
-  return rows.map((r) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i]!))).join("  ")).join("\n");
-}
 
 function printTask(t: TaskView) {
   out(`${bold(t.id)}  ${t.title}`);
