@@ -3,7 +3,7 @@ import type { Engine } from "./engine.js";
 import { HttpError } from "./http.js";
 import * as jira from "./jira.js";
 import * as notion from "./notion.js";
-import { getSecret } from "./secrets.js";
+import { deleteSecret, getSecret } from "./secrets.js";
 import * as slack from "./slack.js";
 import { type Row, type Store, now, opt } from "./store.js";
 
@@ -199,6 +199,24 @@ export class Connections {
     const out: Connection[] = [];
     for (const n of CONNECTIONS) out.push(await this.test(n));
     return out;
+  }
+
+  /**
+   * Forgets a connection's token (deletes its Keychain item). Work that needs it pauses, as with any
+   * missing connection. Claude Code and GitHub use their own sign-in, so there's nothing to forget.
+   */
+  disconnect(name: ConnectionName): Connection {
+    if (name === "claude" || name === "github") throw new Error(`${INFO[name].label} uses its own sign-in; sign out there instead`);
+    deleteSecret(name);
+    this.store.db
+      .prepare(
+        `INSERT INTO connections (name, status, detail, checked_at) VALUES (?, 'missing', 'disconnected by you', ?)
+         ON CONFLICT(name) DO UPDATE SET status = 'missing', detail = excluded.detail, checked_at = excluded.checked_at`,
+      )
+      .run(name, now());
+    const c = this.get(name);
+    this.engine.emit("connection", { connection: c });
+    return c;
   }
 
   snooze(name: ConnectionName, hours: number) {

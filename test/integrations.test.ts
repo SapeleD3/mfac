@@ -149,6 +149,13 @@ test("health checks mark a revoked token expired and raise a sticky alert", asyn
   assert.equal((await c<Connection[]>("connections.alerts")).length, 0);
 });
 
+test("disconnect forgets a token and marks the connection missing; Claude Code and GitHub refuse", async () => {
+  const d = await c<Connection>("connections.disconnect", { name: "jira" });
+  assert.equal(d.status, "missing");
+  assert.equal(d.detail, "disconnected by you");
+  await assert.rejects(c("connections.disconnect", { name: "claude" }), /uses its own sign-in/);
+});
+
 test("routines show schedule, last result and next run, and your own run as shell commands", async () => {
   const list = await c<Routine[]>("routines.list");
   for (const id of ["health-check", "intake-slack", "intake-jira", "triage", "notion-sync", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);

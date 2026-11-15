@@ -176,6 +176,7 @@ export const integrationsPart =
       api: {
         "connections.list": () => connections.list(),
         "connections.test": async (p: { name?: ConnectionName }) => (p.name ? [await connections.test(p.name)] : connections.testAll()),
+        "connections.disconnect": (p: { name: ConnectionName }) => connections.disconnect(p.name),
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
         "jira.configure": (p: { site: string; email: string }) => {

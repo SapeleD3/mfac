@@ -153,7 +153,8 @@ override, a rule is proposed (`factory rules`), and approved rules sort items be
 `factory connections` shows Slack, Notion, Jira, Claude Code and GitHub as connected, expired or missing.
 `factory connect slack` (or `notion`, `jira`) opens the right page, prints the steps and stores the token
 in your Keychain. Each intake run tests its connection first; a failure raises a sticky alert, and the
-work that needs it waits and catches up from its cursor.
+work that needs it waits and catches up from its cursor. `factory disconnect slack` (or `notion`, `jira`)
+deletes the token from your Keychain and prints where to revoke it at the source.
 
 `factory connect notion` also builds your factory board on a page you share: **Jobs**, **Tickets**
 (each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.

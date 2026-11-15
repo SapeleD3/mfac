@@ -83,6 +83,22 @@ export const connectCommands: Record<string, Command> = {
       }
     },
   },
+  disconnect: {
+    usage: "disconnect slack|notion|jira",
+    help: "Forget a connection's token (deletes it from your Keychain); work that needs it pauses",
+    async run(args) {
+      const name = args[0] as ConnectionName;
+      if (!["slack", "notion", "jira"].includes(name)) throw new Error("disconnect one of: slack, notion, jira");
+      const c = await call<Connection>("connections.disconnect", { name });
+      out(`${c.label}: token removed from your Keychain. Work that needs ${c.label} is paused until you run factory connect ${name}.`);
+      const revoke: Record<string, string> = {
+        slack: "To revoke the token itself, remove the Factory (local) app at https://api.slack.com/apps",
+        notion: "To revoke access itself, delete the Factory integration at https://www.notion.so/profile/integrations",
+        jira: "To revoke the token itself, delete it at https://id.atlassian.com/manage-profile/security/api-tokens",
+      };
+      out(revoke[name]!);
+    },
+  },
   inbox: {
     usage: "inbox [--all]",
     help: "What intake picked up and how triage sorted it",
