@@ -268,6 +268,37 @@ export function SettingsPage() {
   );
 }
 
+function AboutField({ saved, save }: { saved: string; save: (about: string) => Promise<void> }) {
+  const [text, setText] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const dirty = text.trim() !== saved;
+  const commit = async () => {
+    if (!dirty || busy) return;
+    setBusy(true);
+    await save(text.trim());
+    setBusy(false);
+  };
+  return (
+    <div class="row" style={{ gap: 6 }}>
+      <input
+        class="in"
+        placeholder="e.g. the billing API and checkout pages"
+        value={text}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => e.key === "Enter" && void commit()}
+        onBlur={() => void commit()}
+      />
+      {dirty ? (
+        <Btn kind="btn-primary" onClick={commit} disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </Btn>
+      ) : (
+        saved && <span class="xs faint">Saved</span>
+      )}
+    </div>
+  );
+}
+
 function ReposCard() {
   const repos = useCall<Repo[]>("repo.list");
   const [path, setPath] = useState("");
@@ -316,12 +347,7 @@ function ReposCard() {
                 <div class="xs faint">{r.path}</div>
               </td>
               <td style={{ width: "40%" }}>
-                <input
-                  class="in"
-                  placeholder="e.g. the billing API and checkout pages"
-                  value={r.about}
-                  onBlur={(e) => e.currentTarget.value.trim() !== r.about && update(r.name, { about: e.currentTarget.value })}
-                />
+                <AboutField saved={r.about} save={(about) => update(r.name, { about })} />
               </td>
               <td class="small">{r.base}</td>
               <td class="small">
