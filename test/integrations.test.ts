@@ -36,8 +36,8 @@ const triageCalls: string[] = [];
 setPrintRunner(async (prompt, opts) => {
   if (opts.allowedTools) {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
-    if (prompt.startsWith("Use only the plugin:engineering:notion tools"))
-      return '{"error": "The plugin:engineering:notion tools are not available in this session. No tools from that server are loaded."}';
+    if (prompt.startsWith("Use the Notion tools from plugin:engineering:notion"))
+      return '{"error": "No plugin:engineering:notion tools are exposed in this session, so no access check or tool listing was possible. The only Notion tools available are from the claude.ai Notion connector (mcp__claude_ai_Notion__*), which I was told not to use."}';
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
@@ -45,7 +45,7 @@ setPrintRunner(async (prompt, opts) => {
       assert.equal(opts.session, "factory-mcp-notion-intake", "board intake never queues behind the board sync");
       return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
     }
-    if (prompt.startsWith("Use only") && prompt.includes("Read the Notion page")) return JSON.stringify({ text: "It takes 8s to load." });
+    if (prompt.startsWith("Use the") && prompt.includes("Read the Notion page")) return JSON.stringify({ text: "It takes 8s to load." });
     if (prompt.includes("Post this exact text")) {
       posted.push(prompt);
       return '{"ok": true}';
@@ -220,6 +220,35 @@ test("Claude's own connector is used before a plugin's server, and a server whos
   assert.equal(notion.through!.kind, "local");
   mcpList = saved;
   await servers(true);
+});
+
+test("a pinned plugin server whose tools never load doesn't block Claude's own connector, even when claude mcp list leaves it out; connect without --server unpins", async () => {
+  const saved = mcpList;
+  const { servers, candidates, connectorSettings } = await import("../src/connectors/mcp.js");
+  mcpList = "claude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nplugin:engineering:notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n";
+  await servers(true);
+  running.store.setSetting("connectors", { ...connectorSettings(running.store), server: { notion: "plugin:engineering:notion" }, pinned: { notion: true } });
+  assert.deepEqual(
+    (await candidates(running.store, "notion")).map((x) => x.name),
+    ["plugin:engineering:notion", "claude.ai Notion"],
+  );
+  const r = await c<{ found?: number }>("intake.poll", { source: "notion" });
+  assert.equal(r.found, 1, "the plugin's tools didn't load, so Claude's own connector answered");
+  const notion = (await c<Connection[]>("connections.list")).find((x) => x.name === "notion")!;
+  assert.equal(notion.lastCall!.server, "claude.ai Notion");
+  assert.equal(notion.through!.kind, "claude.ai");
+  const plugin = connectorCalls.filter((x) => x.prompt.includes("from plugin:engineering:notion"));
+  assert.ok(plugin.length > 0 && !plugin.some((x) => /only|don't use|not use/i.test(x.prompt.split("\n")[0]!.replace("Only read", ""))), "no prompt tells the model to avoid a connector");
+  await c("connections.connect", { name: "notion" });
+  assert.equal(connectorSettings(running.store).pinned?.notion, false);
+  assert.deepEqual(
+    (await candidates(running.store, "notion")).map((x) => x.name),
+    ["claude.ai Notion", "plugin:engineering:notion"],
+    "unpinned, Claude's own connector goes ahead of a plugin's server",
+  );
+  mcpList = saved;
+  await servers(true);
+  assert.equal((await candidates(running.store, "notion"))[0]!.name, "claude.ai Notion");
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {

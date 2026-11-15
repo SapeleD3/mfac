@@ -211,8 +211,10 @@ export class Connections {
     if (name === "claude" || name === "github") return this.test(name);
     this.enable(name, true);
     const s = connectorSettings(this.store);
-    if (server !== undefined) this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server }, pinned: { ...s.pinned, [name]: true } });
-    else if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
+    // Without --server, an earlier pick (or a server that was saved before picks were explicit) no longer
+    // holds: the factory goes back to choosing, Claude's own connector first.
+    if (server) this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: server }, pinned: { ...s.pinned, [name]: true } });
+    else this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined }, pinned: { ...s.pinned, [name]: false } });
     return this.verify(name);
   }
 
