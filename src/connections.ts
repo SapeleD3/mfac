@@ -29,9 +29,9 @@ export interface Connection {
 }
 
 const CONNECTOR_STEPS = (app: string, also = "") => [
-  `In Claude (claude.ai, Settings, Connectors), connect ${app}${also}. Claude Code uses the same connectors when it's signed in with that account.`,
-  `Or add a ${app} MCP server to Claude Code yourself (claude mcp add ...). Either way the factory uses Claude's access; it never asks for a token.`,
-  `Then run factory connect ${app.toLowerCase()} to check it works.`,
+  `Run factory connect ${app.toLowerCase()}. If Claude needs you to sign in to ${app} again, it starts Claude Code's own sign-in (claude mcp login) and opens your browser.`,
+  `If Claude doesn't have ${app}${also} at all yet, add it in Claude's connector settings (it opens them for you). Claude Code uses the same connectors when it's signed in with that account. Or add a ${app} MCP server yourself with claude mcp add.`,
+  "The factory only ever uses Claude's access; it never asks for a token.",
 ];
 
 export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status">> = {
@@ -40,21 +40,21 @@ export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status">> =
     neededFor: "Intake, reply drafts, write-back to threads",
     required: true,
     via: "The Slack connector in Claude",
-    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Slack") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Slack") },
   },
   notion: {
     label: "Notion",
     neededFor: "Review docs, comments, decisions, the factory board, learn-tagged artifacts",
     required: true,
     via: "The Notion connector in Claude",
-    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Notion") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Notion") },
   },
   jira: {
     label: "Jira",
     neededFor: "Intake of tickets assigned to you, write-back",
     required: false,
     via: "The Atlassian connector in Claude",
-    fix: { url: "https://claude.ai/settings/connectors", steps: CONNECTOR_STEPS("Jira", " (the Atlassian connector)") },
+    fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Jira", " (the Atlassian connector)") },
   },
   claude: {
     label: "Claude Code",
@@ -173,7 +173,7 @@ export class Connections {
       this.engine.emit("connection", { connection: after });
       const needed = INFO[name].required || after.status !== "missing";
       if (after.status !== "connected" && needed && !this.snoozed(after))
-        this.engine.emit("alert", { level: "error", sticky: true, connection: name, message: `${INFO[name].label} is ${after.status}: ${detail}. Fix it in Claude, then run factory connect ${name}` });
+        this.engine.emit("alert", { level: "error", sticky: true, connection: name, message: `${INFO[name].label} is ${after.status}: ${detail}. Fix: factory connect ${name}` });
       if (after.status === "connected" && before.status !== "missing") this.engine.emit("alert", { level: "info", connection: name, clear: true, message: `${INFO[name].label} is connected again.` });
     }
     return after;
@@ -186,7 +186,7 @@ export class Connections {
   }
 
   /** `factory connect`: checks the connector with one cheap read (a small Haiku call) and remembers its tools. */
-  async connect(name: ConnectionName, server?: string): Promise<Connection> {
+  async connect(name: ConnectionName, server?: string): Promise<Connection & { server?: string }> {
     if (name === "claude" || name === "github") return this.test(name);
     if (server !== undefined) {
       const s = connectorSettings(this.store);
@@ -197,8 +197,10 @@ export class Connections {
       if (s.server?.[name] === "") this.store.setSetting("connectors", { ...s, server: { ...s.server, [name]: undefined } });
     }
     await servers(true);
+    // The server's name is what `claude mcp login` needs to sign you in again.
+    const found = (await serverFor(this.store, name))?.name;
     const c = await this.test(name);
-    if (c.status !== "connected") return c;
+    if (c.status !== "connected") return { ...c, server: found };
     try {
       const r = await probe(this.store, name);
       this.store.db.prepare("UPDATE connections SET detail = ? WHERE name = ?").run(`${r.who}, via ${r.server}`, name);
@@ -206,7 +208,7 @@ export class Connections {
       const detail = e instanceof Error ? e.message : String(e);
       this.store.db.prepare("UPDATE connections SET status = ?, detail = ? WHERE name = ?").run(e instanceof HttpError && e.auth ? "expired" : "error", detail, name);
     }
-    return this.get(name);
+    return { ...this.get(name), server: found };
   }
 
   /** Stops the factory using a connector. Claude itself keeps it; remove it there to revoke access. */

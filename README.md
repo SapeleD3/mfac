@@ -165,9 +165,12 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
   The health check reads `claude mcp list` every 5 minutes, which makes no model call. A connector that
   needs you to sign in again shows as expired with a sticky alert, and the work that needs it waits and
   catches up from its cursor.
-- `factory connect slack` (or `notion`, `jira`) finds the connector in `claude mcp list`, makes one small
-  Haiku call to confirm it can read, and remembers the connector's tool names. If it's missing, it opens
-  claude.ai's connector settings. With more than one match, pick with `--server "<name>"`.
+- `factory connect slack` (or `notion`, `jira`) finds the connector in `claude mcp list`. If it needs you
+  to sign in (or you pass `--login`), it runs Claude Code's own sign-in, `claude mcp login "claude.ai Slack"`,
+  which opens your browser; the factory never sees the credentials. If Claude has no such connector yet,
+  it opens [Claude's connector settings](https://claude.ai/customize/connectors). Then it makes one small
+  Haiku call to confirm it can read and remembers the connector's tool names. With more than one match,
+  pick with `--server "<name>"`. Inside Claude Code, `/mcp` does the same sign-in by hand.
 - Every factory session may use the connectors' **read-only** tools without asking, so stations can look
   up the thread or ticket a task came from. Posting, commenting and editing still ask you, except the
   factory's own write-back at gates and replies you press Send on.

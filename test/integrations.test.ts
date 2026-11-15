@@ -73,8 +73,9 @@ after(async () => {
 });
 
 test("connect finds Claude's Slack connector, checks it with one call, and remembers its tools; no token anywhere", async () => {
-  const conn = await c<Connection>("connections.connect", { name: "slack" });
+  const conn = await c<Connection & { server?: string }>("connections.connect", { name: "slack" });
   assert.equal(conn.status, "connected");
+  assert.equal(conn.server, "claude.ai Slack");
   assert.match(conn.detail!, /me at Acme, via claude\.ai Slack/);
   assert.equal(connectorCalls.length, 1);
   assert.deepEqual(connectorCalls[0]!.allowed, [SLACK], "before the tools are known, only the Slack server's tools");
@@ -159,12 +160,16 @@ test("health checks read claude mcp list with no model call: signed out is expir
   assert.equal(n!.status, "expired");
   assert.ok(alerts.some((a) => a.sticky && /Notion is expired/.test(a.message)));
   assert.ok((await c<Connection[]>("connections.alerts")).some((x) => x.name === "notion"));
+  // factory connect gets the server's name back, to run `claude mcp login "claude.ai Notion"` with.
+  const needsLogin = await c<Connection & { server?: string }>("connections.connect", { name: "notion" });
+  assert.equal(needsLogin.status, "expired");
+  assert.equal(needsLogin.server, "claude.ai Notion");
   await c("connections.snooze", { name: "notion", hours: 2 });
   assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "notion"));
   const [j] = await c<Connection[]>("connections.test", { name: "jira" });
   assert.equal(j!.status, "missing", "no Atlassian connector: optional, so no alert");
   assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
-  assert.equal(connectorCalls.length + triageCalls.length, before, "no model calls");
+  assert.equal(connectorCalls.length + triageCalls.length, before, "no model calls, even from connect when sign-in is needed");
 });
 
 test("disconnect stops the factory using a connector until you connect again; Claude Code and GitHub refuse", async () => {
