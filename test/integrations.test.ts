@@ -52,6 +52,11 @@ setPrintRunner(async (prompt, opts) => {
         ],
       });
     }
+    if (prompt.includes("https://notion.so/broken-board is a Notion database")) return '{"error": "Notion: page not found"}';
+    if (prompt.includes("https://notion.so/second-board is a Notion database")) {
+      assert.ok(prompt.startsWith("Use the Notion tools from notion-propstrata"), "each board is read through its own server");
+      return JSON.stringify({ cards: [{ pageId: "card-2b", title: "Tidy the onboarding emails", url: "https://notion.so/card2b" }] });
+    }
     if (prompt.includes('status is "Ready for agent"')) {
       assert.match(prompt, /^Use the .*https:\/\/notion\.so\/custom-tools-board is a Notion database/s, "polls read the board found by name, without searching again");
       assert.equal(opts.session, "factory-mcp-notion-intake", "board intake never queues behind the board sync");
@@ -293,8 +298,8 @@ test("each Notion server shows its workspace, and the board you watch can be rea
   const used = connectorCalls.slice(calls);
   assert.ok(used.length >= 2 && used.every((x) => x.prompt.startsWith("Use the Notion tools from notion-propstrata")), "the search and the poll both go through the server you chose");
   assert.deepEqual(used.at(-1)!.allowed, [`${toolPrefix("notion-propstrata")}__notion-search`], "only the read tools that server listed");
-  const status = await c<{ intakeServer?: string }>("notion.status");
-  assert.equal(status.intakeServer, "notion-propstrata");
+  const status = await c<{ boards: { url: string; server?: string }[] }>("notion.status");
+  assert.equal(status.boards.find((b) => b.url === "https://notion.so/custom-tools-board")?.server, "notion-propstrata");
   await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
   mcpList = saved;
   await servers(true);
@@ -328,7 +333,7 @@ test("a Notion card follows its task one milestone at a time; a team Jira ticket
     "one move per milestone, not per state",
   );
   assert.ok(made.every((x) => x.prompt.includes("notion.so/card9")));
-  assert.equal(running.engine.settings().notion.columns?.dropped, "Won't do", "the column it picked is remembered");
+  assert.equal(running.engine.settings().notion.boards?.[0]?.columns?.dropped, "Won't do", "the column it picked is remembered, per board");
   const dropped = running.engine.get(id)!;
   assert.equal(dropped.ended?.from, "ResearchGate");
   assert.equal(dropped.ended?.by, "human");
@@ -379,6 +384,29 @@ test("a Notion card you put back in the ready column after its task finished bec
   assert.equal(follow.sourceRef?.split("@")[0], "card-1");
   assert.match(follow.body, /moved this card back/);
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the follow-up is in flight, so the card isn't queued again");
+});
+
+test("several Notion boards are watched at once, each through its own server; one failing doesn't stop the others", async () => {
+  const saved = mcpList;
+  const { servers } = await import("../src/connectors/mcp.js");
+  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  await servers(true);
+  await c("notion.intake", { board: "https://notion.so/second-board", server: "notion-propstrata" });
+  await c("notion.intake", { board: "https://notion.so/broken-board" });
+  const listed = (await c<{ boards: { url: string; server?: string }[] }>("notion.status")).boards;
+  assert.equal(listed.length, 3);
+  const r = await c<{ added: number; failed?: string[] }>("intake.poll", { source: "notion" });
+  assert.match(r.failed?.join() ?? "", /broken-board/);
+  const t = (await c<TaskView[]>("task.list", {})).find((x) => x.sourceRef === "card-2b")!;
+  assert.equal(t.title, "Tidy the onboarding emails");
+  const item = (await c<IntakeItem[]>("intake.list", {})).find((i) => i.sourceId === "card-2b")!;
+  assert.equal(item.meta.board, "https://notion.so/second-board", "the card remembers its board, so moves and comments use that board's server");
+  await assert.rejects(c("notion.unwatch", { board: "Nope" }), /don't watch a board called Nope/);
+  const left = await c<{ boards: unknown[] }>("notion.unwatch", { board: "https://notion.so/broken-board" });
+  assert.equal(left.boards.length, 2);
+  await c("notion.unwatch", { board: "https://notion.so/second-board" });
+  mcpList = saved;
+  await servers(true);
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {

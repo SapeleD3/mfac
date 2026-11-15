@@ -5,6 +5,7 @@ import { type ConnectionName, Connections, type Tester, realTester } from "../co
 import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { meetingsSince, saveMeetings } from "../memory/meetings.js";
+import { READY, boardLabel, boardOfCard, boards, findWatched, saveBoards } from "./boards.js";
 import { CardMoves } from "./card-moves.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
@@ -80,14 +81,15 @@ export const integrationsPart =
       {
         id: "intake-notion",
         name: "Notion board intake",
-        description: 'Cards you move to "Ready for agent" on your own Notion board go straight to the queue; one filtered query through your Notion connector, and one read per new card',
+        description: 'Cards you move to "Ready for agent" on your own Notion boards go straight to the queue; one filtered query per board through its Notion server, and one read per new card',
         everySeconds: 900,
         run: async () => {
           const r = await intake.poll("notion");
           if (r.skipped) return `skip: ${r.skipped}`;
-          const status = engine.settings().notion.intakeStatus || "Ready for agent";
-          if (!r.found) return `no cards in "${status}"`;
-          return r.added ? `${r.added} card${r.added === 1 ? "" : "s"} queued` : `${r.found} card${r.found === 1 ? "" : "s"} in "${status}", all already queued`;
+          const n = boards(engine).length;
+          const where = n === 1 ? `"${boards(engine)[0]!.status}"` : `the ready columns of ${n} boards`;
+          const base = !r.found ? `no cards in ${where}` : r.added ? `${r.added} card${r.added === 1 ? "" : "s"} queued` : `${r.found} card${r.found === 1 ? "" : "s"} in ${where}, all already queued`;
+          return r.failed?.length ? `${base}; couldn't read ${r.failed.join("; ")}` : base;
         },
       },
       {
@@ -134,7 +136,7 @@ export const integrationsPart =
           const s = engine.settings().notion;
           if (s.meetings === false) return "skip: turned off (factory notion meetings --on)";
           if (!connections.ok("notion")) return "skip: Notion isn't connected";
-          const server = s.meetingsServer ?? s.intakeServer;
+          const server = s.meetingsServer ?? boards(engine)[0]?.server;
           const notes = await notion.meetingNotes(store, meetingsSince(store), server);
           const added = await saveMeetings(store, notes, server);
           return `${added} new meeting${added === 1 ? "" : "s"} remembered (${notes.length} read)`;
@@ -178,7 +180,7 @@ export const integrationsPart =
       const ref = t.sourceRef?.split("@")[0];
       const item = ref ? intake.items({ limit: 500 }).find((i) => (i.sourceId === t.sourceRef || i.sourceId === ref) && i.source === t.source) : undefined;
       if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
-      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, ref!, text, engine.settings().notion.intakeServer);
+      if (t.source === "notion" && ref && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, ref, text, boardOfCard(store, engine, ref)?.server);
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
@@ -235,11 +237,21 @@ export const integrationsPart =
           if (!given) throw new Error("give the name of your Notion board (the one you move cards on)");
           const server = p.server?.trim() || undefined;
           const found = notion.looksLikeLink(given) ? { url: given, title: undefined } : await notion.findBoard(store, given, server);
-          const next = { ...engine.settings().notion, intakeBoard: found.url, intakeBoardName: found.title, intakeServer: server, intakeStatus: p.status?.trim() || "Ready for agent" };
-          engine.updateSettings({ notion: next });
+          const prev = boards(engine).find((b) => b.url === found.url);
+          const board = { ...prev, url: found.url, name: found.title ?? prev?.name, server, status: p.status?.trim() || prev?.status || READY };
+          saveBoards(engine, [...boards(engine).filter((b) => b.url !== found.url), board]);
           routines.update("intake-notion", { workingHours: false });
           const check = routines.run("intake-notion", { manual: true });
-          return { board: next.intakeBoardName ?? next.intakeBoard, status: next.intakeStatus, routine: p.wait ? await check : routines.get("intake-notion") };
+          return { board: boardLabel(board), status: board.status, boards: boards(engine), routine: p.wait ? await check : routines.get("intake-notion") };
+        },
+        "notion.unwatch": (p: { board: string }) => {
+          const b = findWatched(engine, p.board?.trim() ?? "");
+          if (!b) throw new Error(`you don't watch a board called ${p.board}: factory notion boards lists them`);
+          saveBoards(
+            engine,
+            boards(engine).filter((x) => x.url !== b.url),
+          );
+          return { removed: boardLabel(b), boards: boards(engine) };
         },
         "intake.poll": async (p: { source: "slack" | "jira" | "notion" }) => {
           const r = await intake.poll(p.source);
@@ -256,10 +268,7 @@ export const integrationsPart =
           ...sync.ids(),
           ready: sync.ready(),
           pending: sync.pendingCount(),
-          intakeBoard: engine.settings().notion.intakeBoard,
-          intakeBoardName: engine.settings().notion.intakeBoardName,
-          intakeServer: engine.settings().notion.intakeServer,
-          intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
+          boards: boards(engine),
         }),
         "notion.meetings": async (p: { server?: string; on?: boolean }) => {
           const cur = engine.settings().notion;

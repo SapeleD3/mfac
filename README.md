@@ -302,8 +302,11 @@ plan and build send-backs stop at three, and sending work back to research start
 Board changes queue up and go in one batched call every 10 minutes (none when nothing changed); review
 pages are published as soon as a gate opens, and tickets you add on the board are picked up every 2 hours.
 
-Your own Notion kanban board can be a source of work too: `factory notion intake "<board name>"` (or the
-Connections page); the name is looked up once through the Notion connector, and a link works too. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
+Your own Notion kanban boards can be sources of work too: `factory notion intake "<board name>"` (or the
+Connections page) adds one; the name is looked up once through the Notion connector, and a link works too.
+Run it once per board, each with `--server` for the Notion it lives in; `factory notion boards` lists them
+and `factory notion unwatch "<board name>"` removes one. Each board keeps its own ready column and its
+own column mapping, and a board that can't be read doesn't hold up the others. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
 `--status`) go straight to the queue without triage, once each, and the factory comments on the card when
 the task finishes. The card follows its task: it moves to your board's in-progress column when work starts, to review when
 a gate or Needs you is waiting on you, and to done or dropped at the end, one move per milestone. With no
@@ -316,8 +319,9 @@ another, add Notion's MCP server to Claude Code under its own name and sign it i
 1. `claude mcp add --transport http --scope user notion-work https://mcp.notion.com/mcp`
 2. In `claude`, run `/mcp`, pick `notion-work`, choose Authenticate, and pick the other workspace on
    Notion's consent page.
-3. `factory notion intake "<board name>" --server notion-work`, or pick it under "Read it through" on the
-   Connections page. The factory board keeps using the server on the Notion row.
+3. `factory notion intake "<board name>" --server notion-work`, or pick it under "It lives in" on the
+   Connections page. Boards in your other workspace keep their own server, and the factory board keeps
+   using the server on the Notion row.
 
 ## Routines
 

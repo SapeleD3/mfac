@@ -2,6 +2,15 @@ import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
 import { type Actor, type Recipe, type Row, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
 
+/** One of your own Notion boards the factory takes work from, read through its own server. */
+export interface IntakeBoard {
+  url: string;
+  name?: string;
+  server?: string;
+  status: string;
+  columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
+}
+
 export interface Settings {
   slots: number;
   models: Record<string, string>;
@@ -19,6 +28,7 @@ export interface Settings {
     intakeServer?: string;
     intakeStatus?: string;
     columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
+    boards?: IntakeBoard[];
     meetings?: boolean;
     meetingsServer?: string;
   };

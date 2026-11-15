@@ -1,6 +1,7 @@
 import type { Engine, TaskView } from "../workflow/engine.js";
 import type { Connections } from "../connectors/connections.js";
 import * as notion from "../connectors/notion.js";
+import { boardOfCard, rememberColumn } from "./boards.js";
 import type { State } from "../workflow/statechart.js";
 import type { Store } from "../workflow/store.js";
 
@@ -59,11 +60,11 @@ export class CardMoves {
 
   private async move(t: TaskView, m: Milestone) {
     if (!this.connections.ok("notion")) return;
-    const s = this.engine.settings().notion;
-    const known = s.columns?.[m];
-    const r = await notion.moveCard(this.store, t.sourceRef!.split("@")[0]!, known ? { exact: known } : { meaning: MEANING[m] }, s.intakeServer);
-    this.store.addEvent(t.id, "card_moved", "engine", { to: r.status || null, milestone: m });
-    const fresh = this.engine.settings().notion;
-    if (r.status && !known) this.engine.updateSettings({ notion: { ...fresh, columns: { ...fresh.columns, [m]: r.status } } });
+    const page = t.sourceRef!.split("@")[0]!;
+    const board = boardOfCard(this.store, this.engine, page);
+    const known = board?.columns?.[m];
+    const r = await notion.moveCard(this.store, page, known ? { exact: known } : { meaning: MEANING[m] }, board?.server);
+    this.store.addEvent(t.id, "card_moved", "engine", { to: r.status || null, milestone: m, board: board?.url });
+    if (r.status && !known && board) rememberColumn(this.engine, board.url, m, r.status);
   }
 }

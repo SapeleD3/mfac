@@ -207,8 +207,8 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | meetings [--server NAME] [--on|--off] | status',
-    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake watches your own board (through --server when its workspace differs) and queues cards moved to the ready column",
+    usage: 'notion setup PAGE_LINK | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | boards | unwatch "BOARD NAME" | meetings [--server NAME] [--on|--off] | status',
+    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake adds one of your own boards to watch (through --server when its workspace differs) and queues cards moved to its ready column; run it once per board",
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
       if (args[0] === "intake") {
@@ -220,6 +220,15 @@ export const connectCommands: Record<string, Command> = {
         });
         const { lastResult, lastDetail } = r.routine;
         return out(lastResult === "ok" ? `Watching ${r.board}. Cards moved to "${r.status}" go to the queue. Now: ${lastDetail}.` : `Saved, but the check ${lastResult}: ${lastDetail}`);
+      }
+      if (args[0] === "boards") {
+        const s = await call<{ boards: { url: string; name?: string; server?: string; status: string }[] }>("notion.status");
+        if (!s.boards.length) return out('No boards watched yet: factory notion intake "<board name>"');
+        return out(s.boards.map((b) => `- ${b.name ?? b.url} · "${b.status}" · ${b.server ?? "the Notion connection's server"}`).join("\n"));
+      }
+      if (args[0] === "unwatch") {
+        const r = await call<{ removed: string; boards: unknown[] }>("notion.unwatch", { board: args.slice(1).join(" ") });
+        return out(`Stopped watching ${r.removed}. ${r.boards.length} board${r.boards.length === 1 ? "" : "s"} left.`);
       }
       if (args[0] === "meetings") {
         const r = await call<{ lastResult?: string; lastDetail?: string }>("notion.meetings", {

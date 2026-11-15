@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { extractJson, runner as claudePrint } from "../claude/print.js";
 import type { Connections } from "../connectors/connections.js";
-import type { Engine, TaskView } from "../workflow/engine.js";
+import type { Engine, IntakeBoard, TaskView } from "../workflow/engine.js";
 import * as jira from "../connectors/jira.js";
 import * as notion from "../connectors/notion.js";
 import * as slack from "../connectors/slack.js";
 import { type Candidate, matchTask } from "../memory/recall.js";
 import { Repos } from "../repo/registry.js";
+import { boardLabel, boards } from "./boards.js";
 import { linksIn } from "../workflow/links.js";
 import { type Event, type State, initial, step } from "../workflow/statechart.js";
 import { RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, now, opt, parseJson } from "../workflow/store.js";
@@ -140,7 +141,7 @@ export class Intake {
     this.store.db.prepare("INSERT INTO cursors (source, cursor, at) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor, at = excluded.at").run(source, cursor, now());
   }
 
-  async poll(source: "slack" | "jira" | "notion"): Promise<{ added: number; found?: number; skipped?: string }> {
+  async poll(source: "slack" | "jira" | "notion"): Promise<{ added: number; found?: number; skipped?: string; failed?: string[] }> {
     if (source === "notion") return this.pollBoard();
     const c = await this.connections.test(source);
     if (c.status !== "connected") return { added: 0, skipped: `${source} is ${c.status}; intake waits and catches up from its cursor once it's fixed` };
@@ -166,24 +167,48 @@ export class Intake {
   }
 
   /** Cards you moved to the ready column are your decision already, so they skip triage and go straight to the queue. */
-  private async pollBoard(): Promise<{ added: number; found?: number; skipped?: string }> {
-    const { intakeBoard, intakeStatus, intakeServer } = this.engine.settings().notion;
-    if (!intakeBoard) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board name>)" };
+  private async pollBoard(): Promise<{ added: number; found?: number; skipped?: string; failed?: string[] }> {
+    const watched = boards(this.engine);
+    if (!watched.length) return { added: 0, skipped: "no Notion board to watch yet (Connections, or factory notion intake <board name>)" };
     const c = await this.connections.test("notion");
     if (c.status !== "connected") return { added: 0, skipped: `Notion is ${c.status}; cards wait on the board` };
-    const status = intakeStatus || "Ready for agent";
     let added = 0;
-    const cards = await notion.readyCards(this.store, intakeBoard, status, intakeServer);
+    let found = 0;
+    const failed: string[] = [];
+    // One board failing (a server signed out, a board renamed) mustn't stop the others.
+    for (const board of watched) {
+      try {
+        const r = await this.pollOne(board);
+        added += r.added;
+        found += r.found;
+      } catch (e) {
+        failed.push(`${boardLabel(board)}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (failed.length === watched.length) throw new Error(failed.join("; "));
+    return { added, found, ...(failed.length ? { failed } : {}) };
+  }
+
+  private async pollOne(board: IntakeBoard): Promise<{ added: number; found: number }> {
+    let added = 0;
+    const cards = await notion.readyCards(this.store, board.url, board.status, board.server);
     for (const card of cards) {
       if (this.seen("notion", card.pageId)) {
-        if (await this.reopened(card, intakeServer)) added++;
+        if (await this.reopened(card, board.server)) added++;
         continue;
       }
-      const text = await notion.cardText(this.store, card.pageId, intakeServer).catch(() => "");
-      const item = this.add({ source: "notion", sourceId: card.pageId, channel: "Notion board", text: `${card.title}\n\n${text}`.trim(), url: card.url, meta: { pageId: card.pageId } });
+      const text = await notion.cardText(this.store, card.pageId, board.server).catch(() => "");
+      const item = this.add({
+        source: "notion",
+        sourceId: card.pageId,
+        channel: boardLabel(board),
+        text: `${card.title}\n\n${text}`.trim(),
+        url: card.url,
+        meta: { pageId: card.pageId, board: board.url },
+      });
       if (!item) continue;
       this.moveItem(item.id, { type: "pick" });
-      await this.apply(item.id, { action: "task", why: `you moved it to ${status} on your Notion board`, title: card.title });
+      await this.apply(item.id, { action: "task", why: `you moved it to ${board.status} on ${boardLabel(board)}`, title: card.title });
       added++;
     }
     return { added, found: cards.length };
