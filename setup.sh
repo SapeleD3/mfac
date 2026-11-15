@@ -8,15 +8,20 @@
 #   ./setup.sh --headless   engine, CLI and login agent only (no Rust, no app)
 #   ./setup.sh --rebuild    rebuild the app even if this version is already installed
 #
+# After a git pull, rerunning it brings everything up to date: it rebuilds the engine, restarts it,
+# and rebuilds, reinstalls and reopens the app when the code changed. `factory update` does the same
+# and pulls first.
+#
 set -euo pipefail
 
 HEADLESS=0
 REBUILD=0
+REBUILT=0
 for arg in "$@"; do
   case "$arg" in
     --headless) HEADLESS=1 ;;
     --rebuild) REBUILD=1 ;;
-    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $arg (try --help)"; exit 2 ;;
   esac
 done
@@ -118,12 +123,14 @@ if [[ $HEADLESS -eq 0 ]]; then
     rm -rf "$APP_DEST"
     ditto app/src-tauri/target/release/bundle/macos/Factory.app "$APP_DEST"
     echo "$HEAD" > "$BUILT_FROM"
+    REBUILT=1
     ok "installed $APP_DEST"
   fi
 fi
 
 step "Start at login (launch agent, no admin)"
 if [[ $HEADLESS -eq 0 ]]; then factory engine install --app "$APP_DEST" | sed 's/^/  /'; else factory engine install | sed 's/^/  /'; fi
+factory engine restart | sed 's/^/  /'
 for _ in $(seq 1 50); do factory engine status >/dev/null 2>&1 && break; sleep 0.2; done
 factory engine status | sed 's/^/  /'
 if [[ $HEADLESS -eq 1 ]]; then factory settings ui.mode=headless >/dev/null; ok "headless: no UI at login"; fi
@@ -140,4 +147,10 @@ Next:
   factory repo add ~/code/some-repo
   factory add "Your first task" --repo some-repo
 DONE
-if [[ $HEADLESS -eq 0 ]]; then open -g "$APP_DEST" || true; fi
+if [[ $HEADLESS -eq 0 ]]; then
+  if [[ $REBUILT -eq 1 ]]; then
+    osascript -e 'tell application id "com.sapeled3.factory" to quit' >/dev/null 2>&1 || true
+    for _ in $(seq 1 50); do pgrep -f "$APP_DEST/Contents/MacOS/" >/dev/null || break; sleep 0.2; done
+  fi
+  open -g "$APP_DEST" || true
+fi
