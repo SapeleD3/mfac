@@ -250,9 +250,10 @@ function NewTask({ close }: { close: () => void }) {
   const [body, setBody] = useState("");
   const [repo, setRepo] = useState("");
   const [tags, setTags] = useState<Tag[]>([]);
+  const [research, setResearch] = useState(false);
   const submit = async () => {
     if (!title.trim()) return;
-    const t = await act<Task>("task.add", { title, body, repo: repo || undefined, tags }, ["tasks"]);
+    const t = await act<Task>("task.add", { title, body, repo: repo || undefined, tags, recipe: research ? "research" : undefined }, ["tasks"]);
     if (t) {
       toast(`${t.id} queued. It starts when a slot frees.`);
       refresh("status");
@@ -273,6 +274,11 @@ function NewTask({ close }: { close: () => void }) {
         />
         <textarea class="in" rows={5} placeholder="Context, links, how you'll know it's fixed (optional)" value={body} onInput={(e) => setBody(e.currentTarget.value)} />
         <FolderPicker value={repo} onChange={setRepo} />
+        <label class="row small" style={{ gap: 6, cursor: "pointer" }}>
+          <input type="checkbox" checked={research} onChange={(e) => setResearch(e.currentTarget.checked)} />
+          Research only
+          <span class="dim">research, its check and review, then your verdict; no plan or code</span>
+        </label>
         <div class="row wrap">
           <span class="small dim">Tags</span>
           {TAGS.map((t) => (

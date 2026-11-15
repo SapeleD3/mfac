@@ -1,0 +1,12 @@
+{
+  "name": "factory-local",
+  "owner": { "name": "factory" },
+  "description": "The factory's own Claude Code plugin, installed from this checkout by setup.sh and factory update.",
+  "plugins": [
+    {
+      "name": "mfactory",
+      "source": "./mfactory",
+      "description": "/mfactory hands the current Claude Code conversation and folder to the factory as a task, or as more context for the task this chat already started."
+    }
+  ]
+}

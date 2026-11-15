@@ -156,7 +156,7 @@ export class Intake {
       const since = this.cursor("jira") || new Date(Date.now() - 7 * 86_400_000).toISOString();
       for (const i of await jira.poll(this.store, since)) {
         const meta: Record<string, string> = { key: i.key, ...(i.priority ? { priority: i.priority } : {}), ...(i.due ? { due: i.due } : {}) };
-        if (this.add({ source: "jira", sourceId: i.key, author: i.reporter, channel: "Jira", text: `${i.key}: ${i.summary}\n\n${i.text}`.trim(), url: i.url, meta })) added++;
+        if (this.add({ source: "jira", sourceId: i.sourceId, author: i.reporter, channel: "Jira", text: `${i.key}: ${i.summary}\n\n${i.text}`.trim(), url: i.url, meta })) added++;
       }
     }
     this.setCursor(source, started);
@@ -188,26 +188,94 @@ export class Intake {
     return (this.store.db.prepare("SELECT * FROM triage_rules ORDER BY created_at").all() as Row[]).map(toRule).filter((r) => !status || r.status === status);
   }
 
-  async triage(): Promise<{ triaged: number; tokensUsed: boolean }> {
+  /** The task an earlier message in the same Slack thread or Jira issue already became. */
+  private threadTask(i: IntakeItem): TaskView | undefined {
+    const q =
+      i.source === "slack" && i.meta.channelId && i.meta.threadTs
+        ? this.store.db
+            .prepare(
+              "SELECT task_id FROM intake WHERE source = 'slack' AND id != ? AND task_id IS NOT NULL AND json_extract(meta, '$.channelId') = ? AND json_extract(meta, '$.threadTs') = ? ORDER BY received_at DESC LIMIT 1",
+            )
+            .get(i.id, i.meta.channelId, i.meta.threadTs)
+        : i.source === "jira" && i.meta.key
+          ? this.store.db
+              .prepare("SELECT task_id FROM intake WHERE source = 'jira' AND id != ? AND task_id IS NOT NULL AND json_extract(meta, '$.key') = ? ORDER BY received_at DESC LIMIT 1")
+              .get(i.id, i.meta.key)
+          : undefined;
+    const id = (q as Row | undefined)?.task_id;
+    return id ? this.engine.get(String(id)) : undefined;
+  }
+
+  private setMeta(id: string, patch: Record<string, string>) {
+    const item = this.item(id)!;
+    this.store.db.prepare("UPDATE intake SET meta = ? WHERE id = ?").run(JSON.stringify({ ...item.meta, ...patch }), id);
+  }
+
+  private label(i: IntakeItem): string {
+    return i.source === "slack" ? `Slack${i.channel ? ` ${i.channel}` : ""}${i.author ? `, ${i.author}` : ""}` : i.source === "jira" ? `Jira ${i.meta.key ?? ""}`.trim() : i.source;
+  }
+
+  /** Turns an item into more context for an existing task instead of a new task. */
+  attach(id: string, taskId: string, why: string): IntakeItem {
+    const item = this.item(id);
+    if (!item) throw new Error(`no intake item ${id}`);
+    const r = this.engine.addContext(taskId, { text: item.text, from: this.label(item), url: item.url, source: item.source, sourceRef: item.sourceId, actor: "triage" });
+    const target = r.followUp?.id ?? taskId;
+    const reason = r.followUp ? `${why}; ${taskId} had finished, so it became follow-up ${target}` : why;
+    if (item.status === "Triage") return this.moveItem(id, { type: "triage", as: "task" }, { triage: "task", why: reason, taskId: target });
+    this.store.db.prepare("UPDATE intake SET task_id = ?, reason = ? WHERE id = ?").run(target, reason, id);
+    const saved = this.item(id)!;
+    this.engine.emit("intake", { item: saved });
+    return saved;
+  }
+
+  /** You confirm a suggested follow-up: the task triage made from the item goes to the bin if it hasn't started. */
+  confirmAttach(id: string, taskId: string): IntakeItem {
+    const item = this.item(id);
+    if (!item) throw new Error(`no intake item ${id}`);
+    if (item.taskId && item.taskId !== taskId) {
+      const own = this.engine.get(item.taskId);
+      if (own && !["Queued", "Backlog"].includes(own.machine.state)) throw new Error(`${own.id} has already started; add the context from its page instead`);
+      if (own?.machine.state === "Queued") this.engine.move(own.id, { type: "park" }, "human", { note: `merged into ${taskId}` });
+      if (own) this.engine.move(own.id, { type: "drop" }, "human", { note: `merged into ${taskId}` });
+    }
+    return this.attach(id, taskId, "you marked it as more input for this task");
+  }
+
+  async triage(): Promise<{ triaged: number; tokensUsed: boolean; attached?: number }> {
     const inbox = this.items({ status: ["Inbox"] });
     if (!inbox.length) return { triaged: 0, tokensUsed: false };
     const active = this.rules("active");
     const forModel: IntakeItem[] = [];
+    let attached = 0;
     for (const i of inbox) {
       this.moveItem(i.id, { type: "pick" });
+      const same = this.threadTask(i);
+      if (same && !["Done", "Dropped"].includes(same.machine.state)) {
+        this.attach(i.id, same.id, `more in the ${i.source === "jira" ? "Jira issue" : "thread"} that started ${same.id}`);
+        attached++;
+        continue;
+      }
       const rule = active.find((r) => matches(r, i));
       if (rule) {
         this.store.db.prepare("UPDATE triage_rules SET hits = hits + 1 WHERE id = ?").run(rule.id);
         await this.apply(i.id, { action: rule.action, why: `rule: ${rule.description}` });
       } else forModel.push(i);
     }
-    if (!forModel.length) return { triaged: inbox.length, tokensUsed: false };
+    if (!forModel.length) return { triaged: inbox.length, tokensUsed: false, ...(attached ? { attached } : {}) };
     const decisions = await this.askModel(forModel);
     for (const i of forModel) {
       const d = decisions.find((x) => x.id === i.id) ?? { id: i.id, action: "task" as TriageAction, reason: "triage gave no answer, so it's queued for you to look at" };
+      const related = d.followUp ? this.engine.get(d.followUp) : undefined;
+      if (related && d.sure && d.action !== "ignore") {
+        this.attach(i.id, related.id, d.reason ?? `more input for ${related.id}`);
+        attached++;
+        continue;
+      }
+      if (related) this.setMeta(i.id, { relatedTask: related.id });
       await this.apply(i.id, { action: this.boost(i, d.action), why: d.reason, tags: d.tags, recipe: d.recipe, title: d.title, repo: d.repo });
     }
-    return { triaged: inbox.length, tokensUsed: true };
+    return { triaged: inbox.length, tokensUsed: true, ...(attached ? { attached } : {}) };
   }
 
   /** Engine-side urgency, so a missed word in the model's answer can't bury an outage. */
@@ -221,6 +289,13 @@ export class Intake {
 
   private async askModel(items: IntakeItem[]) {
     const repos = this.repos.forPrompt();
+    const month = Date.now() - 30 * 86_400_000;
+    const tasks = this.engine
+      .list({ all: true })
+      .filter((t) => !["Ignored", "Replied"].includes(t.machine.state) && (!["Done", "Dropped"].includes(t.machine.state) || Date.parse(t.updatedAt) > month))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 30)
+      .map((t) => `- ${t.id} [${t.machine.state}] ${t.title}${t.sourceUrl ? ` (${t.sourceUrl})` : ""}`);
     const examples = (this.store.db.prepare("SELECT source, channel, author, text, triage FROM intake WHERE overridden = 1 ORDER BY received_at DESC LIMIT 10").all() as Row[]).map(
       (r) => `- [${r.source} ${r.channel ?? ""} from ${r.author ?? "?"}] "${String(r.text).slice(0, 140)}" → ${r.triage}`,
     );
@@ -234,7 +309,11 @@ export class Intake {
       `For task, backlog and urgent also give: title (short, imperative), recipe (${RECIPES.join(", ")}), tags from [${TAGS.join(", ")}] (learn: they want to understand something; ui: touches screens; sensitive: billing, auth, migrations, access control), and repo (the name of the known repo this work most likely belongs to, judged by what each repo is for and any repo, service or product named in the item; null if you can't tell).`,
       repos.length ? `Known repos:\n${repos.join("\n")}` : "No repos are registered yet; use null.",
       examples.length ? `How they corrected triage before (follow these):\n${examples.join("\n")}` : "",
-      'Answer with only a JSON array: [{"id","action","reason","title","recipe","tags","repo"}].',
+      "recipe research means they want an answer, findings or a recommendation, not a code change: the task stops once the research is reviewed and approved.",
+      tasks.length
+        ? `Existing tasks (open, or finished in the last 30 days):\n${tasks.join("\n")}\nIf an item is more input for one of these (a reply about it, a correction, a new detail, the same problem again), set followUp to its id, and sure to true only when it's clearly the same work. Otherwise followUp is null.`
+        : "",
+      'Answer with only a JSON array: [{"id","action","reason","title","recipe","tags","repo","followUp","sure"}].',
       "",
       "Items:",
       ...items.map((i) => JSON.stringify({ id: i.id, source: i.source, channel: i.channel, from: i.author, text: i.text.slice(0, 2000), ...i.meta })),
@@ -244,7 +323,8 @@ export class Intake {
     const model = this.engine.settings().models.triage ?? "haiku";
     try {
       const reply = await claudePrint(prompt, { model, effort: this.engine.settings().efforts.triage, session: "factory-triage" });
-      const parsed = extractJson<{ id: string; action: TriageAction; reason?: string; title?: string; recipe?: Recipe; tags?: Tag[]; repo?: string | null }[]>(reply);
+      const parsed =
+        extractJson<{ id: string; action: TriageAction; reason?: string; title?: string; recipe?: Recipe; tags?: Tag[]; repo?: string | null; followUp?: string | null; sure?: boolean }[]>(reply);
       return parsed.filter((d) => ["ignore", "reply", "task", "urgent", "backlog"].includes(d.action));
     } catch (e) {
       this.engine.emit("alert", { level: "warn", message: `Triage couldn't run (${e instanceof Error ? e.message : e}); new items were queued as tasks for you to sort.` });

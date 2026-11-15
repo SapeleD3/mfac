@@ -58,6 +58,19 @@ export function checkCoverage(job: string): Validation {
   return result(problems);
 }
 
+export function checkResearchCoverage(job: string): Validation {
+  const review = read(job, "review-requirements.md");
+  if (review === undefined) return result(["review-requirements.md is missing."]);
+  const research = read(job, "research.md") ?? "";
+  const problems: string[] = [];
+  for (const id of requirementIds(job)) {
+    if (!mentions(research, id)) problems.push(`research.md never answers ${id}.`);
+    if (!mentions(review, id)) problems.push(`review-requirements.md doesn't trace ${id}.`);
+  }
+  if (verdict(review) !== "covered") problems.push('review-requirements.md must end with "VERDICT: covered" to pass.');
+  return result(problems);
+}
+
 export function checkConfirmed(job: string): Validation {
   const confirm = read(job, "confirm.md");
   if (confirm === undefined) return result(["confirm.md is missing."]);

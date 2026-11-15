@@ -4,11 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
 import { connectorReads } from "../connectors/mcp.js";
+import { transcriptPath } from "../claude/print.js";
 
 import type { Decision, Engine, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
-import { checkConfirmed, checkCoverage, checkPlanTraces } from "./outputs.js";
+import { checkConfirmed, checkCoverage, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
 import { isGitRepo } from "../repo/registry.js";
@@ -159,6 +160,11 @@ export class Runner {
       `# ${t.id}: ${t.title}`,
       "",
       `- Recipe: ${t.recipe}`,
+      t.machine.kind === "research" ? "- Kind: research only. The task ends when the person approves the research: no plan, no code, no branch. The researcher's research.md is the deliverable." : "",
+      t.parent ? `- Follow-up to ${t.parent}: its files are in ${this.jobDir(t.parent)}. Read its brief, research and outcome first; this task continues that work.` : "",
+      t.chat
+        ? `- Started from a Claude Code chat. Its full transcript is ${transcriptPath(t.chat) ?? `session ${t.chat} (transcript not found)`}; read it for the decisions and context behind the ask.`
+        : "",
       `- Tags: ${t.tags.join(", ") || "none"}`,
       `- Source: ${t.source}${t.sourceUrl ? ` (${t.sourceUrl})` : ""}`,
       `- Repo: ${t.repo ?? "none (research only)"}`,
@@ -305,9 +311,9 @@ export class Runner {
 
   startTask(taskId: string) {
     let t = this.engine.get(taskId)!;
-    if (t.repo && !t.worktree && !isGitRepo(t.repo)) {
+    if (t.repo && !t.worktree && (t.machine.kind === "research" || !isGitRepo(t.repo))) {
       t = this.engine.update(t.id, { worktree: t.repo });
-      this.store.addEvent(t.id, "plain_folder", "engine", { folder: t.repo });
+      this.store.addEvent(t.id, "plain_folder", "engine", { folder: t.repo, research: t.machine.kind === "research" });
     } else if (t.repo && !t.worktree) {
       try {
         const wt = ensureWorktree(t.repo, t.id, t.title);
@@ -369,6 +375,12 @@ export class Runner {
           this.gateOpened(r.task);
           return `${check.detail} The research gate is open; the person reviews it in Notion. Stop and wait.`;
         }
+        if (r.task.machine.state === "RequirementsReview") {
+          const s = this.launch(r.task, "requirements_review", {
+            prompt: `Start the review of ${t.id}'s research against the original ask. This is a research task: there is no plan, so trace every requirement into research.md.`,
+          });
+          return `${check.detail} This is a research task, so its research gets the independent review next: ${s.id}. Stop now; you'll get a message when it finishes.`;
+        }
         if (r.task.machine.state === "Researching") return `The research check failed (round ${r.task.machine.loops.check}/3):\n${check.detail}\nRun the researcher again with this as the note.`;
         this.gateOpened(r.task);
         return `The research check failed three times, so the task went to Needs you:\n${check.detail}`;
@@ -388,7 +400,7 @@ export class Runner {
         idle("requirements_review");
         const covered = !!args.covered && !args.gaps;
         if (covered) {
-          const c = checkCoverage(job);
+          const c = t.machine.kind === "research" ? checkResearchCoverage(job) : checkCoverage(job);
           if (!c.ok) throw new Error(`the plan can't pass the requirements review yet:\n- ${c.problems.join("\n- ")}`);
         } else if (!existsSync(join(job, "review-requirements.md"))) throw new Error("review-requirements.md isn't written yet");
         const r = this.engine.move(taskId, { type: "requirements_done", covered }, "coordinator", { note: String(args.note ?? "") });
@@ -398,6 +410,12 @@ export class Runner {
           this.gateOpened(r.task);
           return "Every requirement traces into the plan. The plan gate is open; stop and wait for the person's verdict.";
         }
+        if (r.task.machine.state === "ResearchGate") {
+          this.gateOpened(r.task);
+          return "Every requirement is answered in the research. The research gate is open; the person reviews it in Notion. Stop and wait.";
+        }
+        if (r.task.machine.state === "Researching")
+          return `Gaps found: back to the researcher (round ${r.task.machine.loops.requirements}/3). Run the researcher with a note pointing at review-requirements.md.`;
         if (r.task.machine.state === "Planning")
           return `Gaps found: back to the planner (round ${r.task.machine.loops.requirements}/3). Run the planner with a note pointing at review-requirements.md.`;
         this.gateOpened(r.task);
@@ -676,6 +694,13 @@ export class Runner {
     return t;
   }
 
+  onContext(c: { task: TaskView; text: string; from: string; url?: string }) {
+    const file = join(this.jobDir(c.task.id), "context.md");
+    const prior = existsSync(file) ? readFileSync(file, "utf8") : "# Context that arrived after the task started\n";
+    writeFileSync(file, `${prior}\n## From ${c.from}, ${now()}${c.url ? ` (${c.url})` : ""}\n\n${c.text}\n`);
+    this.wake(c.task.id, `New context arrived from ${c.from} and was saved in context.md:\n\n${c.text.slice(0, 1500)}${c.text.length > 1500 ? "…" : ""}`);
+  }
+
   async onDecision(d: Decision) {
     for (const hook of this.engine.beforeWake) {
       await Promise.race([hook(d).catch(() => {}), new Promise((r) => setTimeout(r, 60_000).unref?.())]);
@@ -718,6 +743,7 @@ export class Runner {
   start() {
     this.recover();
     this.engine.on("decision", (d: Decision) => void this.onDecision(d));
+    this.engine.on("context", (c: { task: TaskView; text: string; from: string; url?: string }) => this.onContext(c));
     this.engine.on("change", (c: { kind: string; task?: TaskView; action?: string }) => {
       if (c.task?.machine.state === "NeedsYou" && c.action === "Interrupt") {
         for (const s of this.running(c.task.id)) this.finishStage(s, "stopped");

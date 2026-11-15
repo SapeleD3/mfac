@@ -4,12 +4,20 @@ import type { Engine } from "../workflow/engine.js";
 import { paths } from "../shared/paths.js";
 import type { Handler } from "./server.js";
 import type { Event, State } from "../workflow/statechart.js";
-import type { Actor } from "../workflow/store.js";
+import type { Actor, Recipe } from "../workflow/store.js";
 
 export function coreApi(engine: Engine, startedAt: string): Record<string, Handler> {
   return {
     ping: () => ({ pong: true, pid: process.pid, startedAt, version: process.env.npm_package_version ?? "0.1.0" }),
     "task.add": (p) => engine.add(p),
+    "task.context": (p: { id: string; text: string; from?: string; url?: string }) => engine.addContext(p.id, { text: p.text, from: p.from ?? "you", url: p.url }),
+    "task.fromChat": (p: { chat: string; title: string; body: string; repo?: string; recipe?: Recipe; to?: string; fresh?: boolean }) => {
+      if (p.to && !engine.get(p.to)) throw new Error(`no task ${p.to}`);
+      const existing = p.fresh ? undefined : p.to ? engine.get(p.to) : engine.store.taskByChat(p.chat);
+      if (existing) return engine.addContext(existing.id, { text: `${p.title}\n\n${p.body}`.trim(), from: "your Claude Code chat", source: "chat", actor: "human" });
+      const task = engine.add({ title: p.title, body: p.body, repo: p.repo, recipe: p.recipe, source: "chat", chat: p.chat });
+      return { task, how: "new" };
+    },
     "task.list": (p: { all?: boolean }) => engine.list(p),
     "task.get": (p: { id: string }) => {
       const t = engine.get(p.id);

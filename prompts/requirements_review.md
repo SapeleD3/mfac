@@ -38,3 +38,7 @@ it didn't ask for. You didn't write the research or the plan; read them critical
 
 The engine checks that every R-id is traced in plan.md and in your matrix before it accepts
 "covered". Gaps go back to the planner, at most 3 times, then to the person.
+
+On a research task (brief.md says "Kind: research only") there is no plan or tickets: trace every
+R-id into research.md instead, judge whether each answer is supported by evidence, and send gaps back
+to the researcher. The engine checks that research.md and your matrix name every R-id.

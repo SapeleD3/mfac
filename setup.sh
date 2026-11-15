@@ -111,6 +111,9 @@ fi
 step "Skills: superpowers, pstack, ponytail, graphify, design-principles (linked from Claude Code if you already have them)"
 factory skills install | sed 's/^/  /'
 
+step "/mfactory in Claude Code (hands a chat to the factory)"
+factory plugin install | sed 's/^/  /' || note "Couldn't install /mfactory; run factory plugin install later."
+
 if [[ $HEADLESS -eq 0 ]]; then
   step "The app"
   BUILT_FROM="$FACTORY_HOME/app-built-from"
@@ -146,6 +149,7 @@ Next:
   factory connect jira        optional: the Atlassian connector
   factory repo add ~/code/some-repo
   factory add "Your first task" --repo some-repo
+  /mfactory Build this out    in any Claude Code chat: the factory takes it from there
 DONE
 if [[ $HEADLESS -eq 0 ]]; then
   if [[ $REBUILT -eq 1 ]]; then

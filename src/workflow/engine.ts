@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
-import { type Actor, type Recipe, type Source, type Store, TAGS, type Tag, type Task } from "./store.js";
+import { type Actor, type Recipe, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
 
 export interface Settings {
   slots: number;
@@ -42,6 +42,12 @@ export interface TaskView extends Task {
   column: string;
   rounds?: string;
   allowed: string[];
+}
+
+export interface ContextResult {
+  task: TaskView;
+  how: "brief" | "coordinator" | "followup";
+  followUp?: TaskView;
 }
 
 export type MoveResult = { ok: true; task: TaskView; action: string } | { ok: false; reason: string; task?: TaskView };
@@ -104,7 +110,20 @@ export class Engine extends EventEmitter {
     return { ...t, column: column(s), rounds, allowed: [...new Set(moves)] };
   }
 
-  add(input: { title: string; body?: string; repo?: string; recipe?: Recipe; tags?: Tag[]; priority?: number; source?: Source; sourceRef?: string; sourceUrl?: string; backlog?: boolean }): TaskView {
+  add(input: {
+    title: string;
+    body?: string;
+    repo?: string;
+    recipe?: Recipe;
+    tags?: Tag[];
+    priority?: number;
+    source?: Source;
+    sourceRef?: string;
+    sourceUrl?: string;
+    backlog?: boolean;
+    parent?: string;
+    chat?: string;
+  }): TaskView {
     if (!input.title?.trim()) throw new Error("a task needs a title");
     const tags = (input.tags ?? []).filter((t) => (TAGS as readonly string[]).includes(t));
     const { backlog, ...rest } = input;
@@ -162,6 +181,44 @@ export class Engine extends EventEmitter {
     const r = this.move(id, event, "human", { verdict, note: opts.note ?? "" });
     if (r.ok) this.emit("decision", { task: r.task, verdict, to: opts.to, note: opts.note ?? "" } satisfies Decision);
     return r;
+  }
+
+  /**
+   * More input for a task that already exists. Work that hasn't started takes it into its brief; running
+   * work gets it at its coordinator's next step (the runner listens for "context"); finished work gets a
+   * follow-up task that starts from the old one's files.
+   */
+  addContext(id: string, c: { text: string; from: string; url?: string; source?: Source; sourceRef?: string; actor?: Actor }): ContextResult {
+    const t = this.store.task(id);
+    if (!t) throw new Error(`no task ${id}`);
+    if (!c.text?.trim()) throw new Error("the new context is empty");
+    const text = c.text.trim();
+    const s = t.machine.state === "Parked" ? t.machine.parkedFrom : t.machine.state;
+    this.store.addEvent(id, "context_added", c.actor ?? "human", { from: c.from, url: c.url, text: text.slice(0, 2000) });
+    if (s === "Done" || s === "Dropped") {
+      const followUp = this.add({
+        title: t.title.startsWith("Follow-up: ") ? t.title : `Follow-up: ${t.title}`,
+        body: `${text}${c.url ? `\n\nSource: ${c.url}` : ""}\n\nThis continues ${t.id} (${t.machine.state === "Done" ? "finished" : "dropped"}), from ${c.from}.`,
+        repo: t.repo,
+        recipe: t.recipe,
+        tags: t.tags,
+        source: c.source ?? t.source,
+        sourceRef: c.sourceRef,
+        sourceUrl: c.url ?? t.sourceUrl,
+        parent: t.id,
+        chat: t.chat,
+      });
+      this.store.addEvent(id, "followed_up", c.actor ?? "human", { as: followUp.id });
+      return { task: this.view(t), how: "followup", followUp };
+    }
+    if (s === "Queued" || s === "Backlog") {
+      this.store.updateTask(id, { body: `${t.body}\n\n## More context, from ${c.from} (${now()})\n\n${text}${c.url ? `\n\nSource: ${c.url}` : ""}`.trim() });
+      const v = this.get(id)!;
+      this.emit("change", { kind: "task", task: v });
+      return { task: v, how: "brief" };
+    }
+    this.emit("context", { task: this.view(t), text, from: c.from, url: c.url });
+    return { task: this.view(t), how: "coordinator" };
   }
 
   restore(id: string): TaskView {

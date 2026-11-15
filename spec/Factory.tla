@@ -16,6 +16,8 @@ States == {"Inbox","Triage","Ignored","ReplyDrafted","Replied","Queued","Backlog
            "NeedsYou","Parked","Done","Dropped"}
 Terminal == {"Ignored","Replied","Done","Dropped"}
 Loops == {"check","requirements","review","confirm"}
+\* A research task stops after its research is reviewed and approved: no plan, no build
+Kinds == {"change","research"}
 
 VARIABLES st,         \* where the task is
           tries,      \* send-backs used, per gate (never reset)
@@ -26,13 +28,14 @@ VARIABLES st,         \* where the task is
           findings,   \* compiled code + security review found blocking issues
           confirmed,  \* the change was run and shown to solve the problem
           approved,   \* human approvals collected so far
-          parkedFrom  \* where a parked card returns to
-vars == <<st, tries, loops, chart, proved, covered, findings, confirmed, approved, parkedFrom>>
+          parkedFrom, \* where a parked card returns to
+          kind        \* change or research, fixed when the task is created
+vars == <<st, tries, loops, chart, proved, covered, findings, confirmed, approved, parkedFrom, kind>>
 work == <<tries, loops, chart, proved, covered, findings, confirmed, approved>>
 
 Init == /\ st = "Inbox" /\ tries = [g \in Gates |-> 0] /\ loops = [l \in Loops |-> 0]
         /\ chart = FALSE /\ proved = FALSE /\ covered = FALSE /\ findings = FALSE /\ confirmed = FALSE
-        /\ approved = {} /\ parkedFrom = "Queued"
+        /\ approved = {} /\ parkedFrom = "Queued" /\ kind \in Kinds
 
 Go(s) == st' = s
 Same == UNCHANGED <<work, parkedFrom>>
@@ -59,7 +62,9 @@ Start     == st = "Queued" /\ Go("Researching") /\ Same
 Research   == /\ st = "Researching" /\ Go("ResearchCheck") /\ chart' = TRUE
               /\ proved' \in BOOLEAN
               /\ UNCHANGED <<tries,loops,covered,findings,confirmed,approved,parkedFrom>>
-CheckPass  == st = "ResearchCheck" /\ chart /\ proved /\ Go("ResearchGate") /\ Same
+\* A research task's research gets the independent review before you see it
+CheckPass  == /\ st = "ResearchCheck" /\ chart /\ proved
+              /\ Go(IF kind = "research" THEN "RequirementsReview" ELSE "ResearchGate") /\ Same
 CheckRetry == /\ st = "ResearchCheck" /\ ~proved /\ loops["check"] < Cap
               /\ Go("Researching") /\ Bump("check")
               /\ UNCHANGED <<tries,chart,proved,covered,findings,confirmed,approved,parkedFrom>>
@@ -81,7 +86,7 @@ Drop(g) == st = g /\ Go("Dropped") /\ Same
 BDrop == Drop("Backlog")
 
 \* Research is reviewed in Notion (comments there); the app records one overall verdict
-RGate == \/ Approve("ResearchGate","Planning","research")
+RGate == \/ Approve("ResearchGate", IF kind = "research" THEN "Done" ELSE "Planning", "research")
          \/ SendBack("ResearchGate","Researching",{})
          \/ Drop("ResearchGate")
 \* Planning splits the work into small tickets on your Notion factory board
@@ -89,8 +94,9 @@ Plan  == st = "Planning" /\ Go("RequirementsReview") /\ Same
 \* A separate session rereads the original Slack message or Jira ticket and traces
 \* every requirement into the research and the plan before you see the plan
 ReqReview == /\ st = "RequirementsReview" /\ covered' \in BOOLEAN
-             /\ IF covered' THEN Go("PlanGate")
-                ELSE IF loops["requirements"] < Cap THEN Go("Planning") ELSE Go("NeedsYou")
+             /\ IF covered' THEN Go(IF kind = "research" THEN "ResearchGate" ELSE "PlanGate")
+                ELSE IF loops["requirements"] < Cap THEN Go(IF kind = "research" THEN "Researching" ELSE "Planning")
+                ELSE Go("NeedsYou")
              /\ IF ~covered' /\ loops["requirements"] < Cap THEN Bump("requirements") ELSE UNCHANGED loops
              /\ UNCHANGED <<tries,chart,proved,findings,confirmed,approved,parkedFrom>>
 PGate == \/ Approve("PlanGate","Building","plan")
@@ -136,40 +142,43 @@ PDrop  == Drop("Parked")
 
 Finished == st \in Terminal /\ UNCHANGED vars
 
-Next == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ Dismiss \/ Promote \/ TTask \/ Start
+Steps == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ Dismiss \/ Promote \/ TTask \/ Start
         \/ TBacklog \/ Demote \/ Prioritize \/ BDrop
         \/ Research \/ CheckPass \/ CheckRetry \/ CheckOut
         \/ RGate \/ Plan \/ ReqReview \/ PGate
         \/ Build \/ Rework \/ ReviewOut \/ Clean \/ Confirm \/ PRGateStep
         \/ NGate \/ Interrupt \/ Park \/ Unpark \/ PDrop \/ Finished
+Next == Steps /\ UNCHANGED kind
 
 \* Steps the factory or a person must eventually take. Parking, overriding triage
 \* and interrupting are your choice, so fairness never forces them. (Listed
 \* positively: "Next /\ ~Interrupt" would also rule out a ReviewOut step,
 \* because both move to NeedsYou with nothing else changed.)
-Progress == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ TTask \/ TBacklog \/ Start
+Moves == \/ Pick \/ TIgnore \/ TReply \/ SendReply \/ TTask \/ TBacklog \/ Start
             \/ Research \/ CheckPass \/ CheckRetry \/ CheckOut
             \/ RGate \/ Plan \/ ReqReview \/ PGate
             \/ Build \/ Rework \/ ReviewOut \/ Clean \/ Confirm \/ PRGateStep
             \/ NGate \/ PDrop
+Progress == Moves /\ UNCHANGED kind
 Spec == Init /\ [][Next]_vars /\ WF_vars(Progress)
 
 \* What must always hold
 TypeOK == /\ st \in States /\ parkedFrom \in Parkable
           /\ tries \in [Gates -> 0..Cap] /\ loops \in [Loops -> 0..Cap]
-          /\ approved \subseteq {"research","plan","pr"}
+          /\ approved \subseteq {"research","plan","pr"} /\ kind \in Kinds
 \* Nothing passes the research gate without a statechart and a passing check
 ResearchRule == st \in {"ResearchGate","Planning","RequirementsReview","PlanGate","Building",
                         "Reviewing","Confirming","PRGate","Done"} => chart /\ proved
 \* You only see a plan that traces back to every requirement in the original source
-CoverageRule == st \in {"PlanGate","Building","Reviewing","Confirming","PRGate","Done"} => covered
+CoverageRule == (st \in {"PlanGate","Building","Reviewing","Confirming","PRGate","Done"}
+                 \/ (kind = "research" /\ st = "ResearchGate")) => covered
 \* Building only starts on approved research and an approved plan
 BuildRule == st \in {"Building","Reviewing","Confirming","PRGate"}
              => {"research","plan"} \subseteq approved
 \* A human sees the code only once review is clean and the fix is confirmed
 PRRule == st = "PRGate" => ~findings /\ confirmed
-\* Done only after research, plan and PR are all approved
-GatesRule == st = "Done" => approved = {"research","plan","pr"}
+\* Done only after research, plan and PR are all approved; a research task needs only its research approved
+GatesRule == st = "Done" => approved = IF kind = "research" THEN {"research"} ELSE {"research","plan","pr"}
 \* Every task ends, or waits in Parked or the Backlog until you pick it up
 EndsOrParked == <>(st \in Terminal \cup {"Parked","Backlog"})
 =============================================================================

@@ -220,6 +220,7 @@ export const integrationsPart =
           return { ...r, ...(r.added ? await intake.triage() : {}) };
         },
         "intake.triage": () => intake.triage(),
+        "intake.attach": (p: { id: string; task: string }) => intake.confirmAttach(p.id, p.task),
         "intake.override": (p: { id: string; action: TriageAction; tags?: Tag[]; title?: string }) => intake.override(p.id, p.action, p),
         "intake.send": (p: { id: string; text?: string }) => intake.send(p.id, p.text),
         "rules.list": () => intake.rules(),

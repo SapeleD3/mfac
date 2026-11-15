@@ -183,6 +183,12 @@ calls. Those run in `~/.factory/sessions`, so they list under one Claude project
 each one is replaced by a fresh session (old transcript deleted) after 30 calls or a week, to keep its context
 and cost small. A week after a task finishes, the cleanup routine deletes its sessions' transcripts.
 
+A **research task** (recipe `research`: triage picks it when the ask wants an answer, findings or a
+recommendation rather than a change; or `factory add --recipe research`, or "Research only" in the New task
+window) runs only the research part: research with its statechart and TLC check, the requirements review
+of the research, then the research gate in Notion. Approving it ends the task; there is no plan, branch or
+PR, and the repo is read in place.
+
 ## Where work comes from
 
 Every 30 minutes in working hours (Settings: 15, 30 or 60), a small Haiku call reads Slack (DMs, group DMs
@@ -192,6 +198,24 @@ Approved rules sort what they can, and the rest goes to one batched Haiku call: 
 **reply** (a Sonnet draft you send with `factory send`; nothing is ever posted as you without that),
 **task**, or **urgent** (outage words, a VIP, Jira Highest or due within a day; the engine checks these
 itself too).
+
+New input for work that already exists doesn't make a second task. A reply in the Slack thread a task came
+from, or a new update on its Jira issue, is added to that task without a model call. Triage also sees the
+open and recent tasks and marks an item that is clearly more of the same; when it's only likely, the inbox
+shows "Looks like more for F-012" with a button to add it. Work that hasn't started takes the context into
+its brief, running work gets it at its coordinator's next step (saved in `context.md`), and finished work
+gets a follow-up task that starts from the old one's files. Add context yourself from a task's page or
+with `factory context F-012 "what changed"`.
+
+### From a Claude Code chat: /mfactory
+
+`/mfactory Build this out` in any Claude Code chat hands the conversation to the factory. Claude writes a
+handoff brief from the chat (goal, decisions, constraints, files, open questions) and runs
+`factory chat`, which makes a task in that folder with the chat's transcript attached for its stages to
+read. Running it again from the same chat adds context to that task (or a follow-up once it's done);
+`--new` starts a separate one. Ask for research ("/mfactory research which queue we should use") and it
+becomes a research task. setup.sh and `factory update` install it through Claude Code's own plugin
+commands (`factory plugin install` does it by hand).
 
 Overrule triage with `factory triage ID task` (or `ignore`, `reply`, `urgent`). After three of the same
 override, a rule is proposed (`factory rules`), and approved rules sort items before Haiku sees them.

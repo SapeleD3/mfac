@@ -39,10 +39,10 @@ const key = (m: Machine) => JSON.stringify({ ...m, approved: [...m.approved].sor
 const WALK_CAP = 1;
 
 function explore() {
-  const start = initial();
-  const seen = new Map<string, Machine>([[key(start), start]]);
+  const starts = [initial(), initial("Inbox", "research")];
+  const seen = new Map<string, Machine>(starts.map((m) => [key(m), m]));
   const edges = new Map<string, { to: string; action: string }[]>();
-  const queue = [start];
+  const queue = [...starts];
   while (queue.length) {
     const m = queue.shift()!;
     const out: { to: string; action: string }[] = [];
@@ -85,6 +85,30 @@ test("every task ends or waits in Parked: without parking moves the graph has no
     color.set(k, 2);
   };
   visit(key(initial()));
+  visit(key(initial("Inbox", "research")));
+});
+
+test("a research task is reviewed after its check, ends at the research gate, and never plans or builds", () => {
+  const go = (m: Machine, e: Event) => {
+    const r = step(m, e);
+    assert.ok(r.ok, r.ok ? "" : r.reason);
+    return r.machine;
+  };
+  let m = initial("Queued", "research");
+  m = go(m, { type: "start" });
+  m = go(m, { type: "research_done", chart: true, proved: true });
+  m = go(m, { type: "check" });
+  assert.equal(m.state, "RequirementsReview");
+  m = go(m, { type: "requirements_done", covered: false });
+  assert.equal(m.state, "Researching", "gaps go back to the researcher, not a planner");
+  m = go(go(go(m, { type: "research_done", chart: true, proved: true }), { type: "check" }), { type: "requirements_done", covered: true });
+  assert.equal(m.state, "ResearchGate");
+  const back = step(m, { type: "send_back", to: "Planning" });
+  assert.equal(back.ok, false);
+  m = go(m, { type: "approve" });
+  assert.equal(m.state, "Done");
+  assert.deepEqual(m.approved, ["research"]);
+  for (const s of seen.values()) if (s.kind === "research") assert.ok(!["Planning", "PlanGate", "Building", "Reviewing", "Confirming", "PRGate"].includes(s.state), `research reached ${s.state}`);
 });
 
 test("gates refuse a fourth send-back and keep approve and drop", () => {
