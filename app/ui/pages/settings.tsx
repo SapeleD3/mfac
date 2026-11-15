@@ -43,7 +43,7 @@ export function SettingsPage() {
           <div class="card"><div class="card-h">Running</div><div class="card-b"><table class="tbl">
             <tr><td>Tasks at once</td><td style={{ textAlign: "right" }}><div class="seg">{[1, 2, 3, 4, 5].map((n) => <button key={n} class={s.slots === n ? "on" : ""} onClick={() => save({ slots: n })}>{n}</button>)}</div></td></tr>
             <tr><td>Pause the queue at usage</td><td style={{ textAlign: "right" }}><div class="seg">{[0.7, 0.85, 0.95].map((n) => <button key={n} class={Math.abs(s.usageCeiling - n) < 0.001 ? "on" : ""} onClick={() => save({ usageCeiling: n })}>{Math.round(n * 100)}%</button>)}</div> <span class="xs faint">of the 5h window</span></td></tr>
-            <tr><td>Intake every</td><td style={{ textAlign: "right" }}><div class="seg">{[5, 10, 15, 30].map((n) => <button key={n} class={s.pollMinutes === n ? "on" : ""} onClick={() => save({ pollMinutes: n })}>{n} min</button>)}</div></td></tr>
+            <tr><td>Intake every</td><td style={{ textAlign: "right" }}><div class="seg">{[15, 30, 60].map((n) => <button key={n} class={s.pollMinutes === n ? "on" : ""} onClick={() => save({ pollMinutes: n })}>{n === 60 ? "1 hour" : `${n} min`}</button>)}</div></td></tr>
             <tr><td>Working hours</td><td style={{ textAlign: "right" }}>
               <input class="in xs" type="number" min={0} max={23} style={{ width: 52 }} value={s.workingHours.start} onChange={(e) => save({ workingHours: { ...s.workingHours, start: Number(e.currentTarget.value) } })} />–
               <input class="in xs" type="number" min={1} max={24} style={{ width: 52 }} value={s.workingHours.end} onChange={(e) => save({ workingHours: { ...s.workingHours, end: Number(e.currentTarget.value) } })} />

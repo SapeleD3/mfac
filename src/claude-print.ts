@@ -1,15 +1,17 @@
 import { spawn } from "node:child_process";
 
 /*
- * One-shot Claude calls for small jobs (triage, reply drafts, retros): `claude -p` on the person's
- * subscription, with no tools, returning text. Tests swap `runner` for a fake.
+ * One-shot Claude calls for small jobs (triage, reply drafts, retros, connector reads): `claude -p` on
+ * the person's subscription, returning text. Built-in tools are always off; `allowedTools` lets a call
+ * use named MCP tools, such as the Slack or Notion connector the person has in Claude. Tests swap
+ * `runner` for a fake.
  */
 
-export type PrintRunner = (prompt: string, opts: { model: string; system?: string }) => Promise<string>;
+export type PrintRunner = (prompt: string, opts: { model: string; system?: string; allowedTools?: string[] }) => Promise<string>;
 
 export let runner: PrintRunner = (prompt, opts) =>
   new Promise((resolve, reject) => {
-    const args = ["-p", "--model", opts.model, "--output-format", "text", "--tools", "", ...(opts.system ? ["--append-system-prompt", opts.system] : [])];
+    const args = ["-p", "--model", opts.model, "--output-format", "text", "--tools", "", ...(opts.system ? ["--append-system-prompt", opts.system] : []), ...(opts.allowedTools?.length ? ["--allowedTools", ...opts.allowedTools] : [])];
     const child = spawn(process.env.FACTORY_CLAUDE ?? "claude", args, { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";

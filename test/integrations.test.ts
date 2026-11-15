@@ -3,15 +3,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { permissionsFor } from "../src/agent.js";
 import { extractJson, setPrintRunner } from "../src/claude-print.js";
 import { call } from "../src/client.js";
 import type { Connection } from "../src/connections.js";
+import { connectorReads, isWriteTool, parseMcpList, setMcpLister, toolPrefix } from "../src/connectors.js";
 import type { TaskView } from "../src/engine.js";
 import { startEngine } from "../src/factoryd.js";
-import { setFetch } from "../src/http.js";
 import type { IntakeItem, TriageRule } from "../src/intake.js";
 import { integrationsPart } from "../src/integrations.js";
-import { blocks, rich } from "../src/notion.js";
 import { pageIdFrom } from "../src/notion-sync.js";
 import { inWorkingHours, parseEvery, type Routine } from "../src/routines.js";
 import { ticketsPart } from "../src/tickets.js";
@@ -20,36 +20,33 @@ const dir = mkdtempSync(join(tmpdir(), "factory-int-"));
 process.env.FACTORY_HOME = dir;
 const socket = join(dir, "run", "factoryd.sock");
 process.env.FACTORY_SOCKET = socket;
-process.env.FACTORY_SLACK = "xoxp-test";
-process.env.FACTORY_JIRA = "jira-test";
 
-/** Fake Slack and Jira over a fake fetch: the real clients run against canned replies. */
-const slackMessages = [
-  { ts: "1800000001.000100", user: "U2", username: "dana", text: "<@U1> checkout is down for EU users!", channel: { id: "C1", name: "incidents" }, permalink: "https://s/1" },
-  { ts: "1800000002.000100", user: "U3", username: "lee", text: "<@U1> can you add a CSV export to reports?", channel: { id: "C2", name: "product" }, permalink: "https://s/2" },
-  { ts: "1800000003.000100", user: "U1", username: "me", text: "<@U1> note to self", channel: { id: "C2", name: "product" } },
-  { ts: "1800000004.000100", bot_id: "B1", text: "<@U1> deploy finished", channel: { id: "C3", name: "deploys" } },
+/*
+ * A fake Claude Code: `claude mcp list` shows a Slack and a Notion connector, and connector calls
+ * (a `claude -p` with allowedTools) answer from canned Slack data. No tokens anywhere.
+ */
+let mcpList = "Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nclaude.ai Notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n";
+setMcpLister(async () => mcpList);
+const SLACK = toolPrefix("claude.ai Slack");
+const slackItems = [
+  { channelId: "C1", ts: "1800000001.000100", channel: "#incidents", author: "dana", text: "checkout is down for EU users!", url: "https://s/1" },
+  { channelId: "C2", ts: "1800000002.000100", channel: "#product", author: "lee", text: "can you add a CSV export to reports?", url: "https://s/2" },
+  { channelId: "D1", ts: "1800000005.000100", channel: "DM", author: "sam", text: "quick q: is the release tomorrow?" },
 ];
-const posted: unknown[] = [];
-setFetch((async (input: string | URL, init?: RequestInit) => {
-  const url = new URL(String(input));
-  const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-  if (url.host === "slack.com") {
-    const method = url.pathname.split("/").pop();
-    if (method === "auth.test") return reply({ ok: true, user_id: "U1", team: "Acme", url: "https://acme.slack.com" });
-    if (method === "search.messages") return reply({ ok: true, messages: { matches: slackMessages } });
-    if (method === "users.conversations") return reply({ ok: true, channels: [{ id: "D1", user: "U4" }] });
-    if (method === "conversations.history") return reply({ ok: true, messages: [{ ts: "1800000005.000100", user: "U4", text: "quick q: is the release tomorrow?" }] });
-    if (method === "chat.postMessage") {
-      posted.push(JSON.parse(String(init?.body)));
-      return reply({ ok: true });
-    }
-  }
-  return reply({ message: "not faked" }, 404);
-}) as typeof fetch);
-
+const connectorCalls: { prompt: string; allowed: string[] }[] = [];
+const posted: string[] = [];
 const triageCalls: string[] = [];
 setPrintRunner(async (prompt, opts) => {
+  if (opts.allowedTools) {
+    connectorCalls.push({ prompt, allowed: opts.allowedTools });
+    if (prompt.includes("list the exact names")) return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
+    if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
+    if (prompt.includes("Post this exact text")) {
+      posted.push(prompt);
+      return '{"ok": true}';
+    }
+    return '{"error": "not faked"}';
+  }
   triageCalls.push(opts.model);
   if (prompt.startsWith("Draft a short reply")) return "Yes, it ships tomorrow at 10.";
   const ids = [...prompt.matchAll(/"id":"(\w+)"/g)].map((m) => m[1]);
@@ -66,23 +63,34 @@ setPrintRunner(async (prompt, opts) => {
 
 let running: Awaited<ReturnType<typeof startEngine>>;
 const c = <T = unknown>(method: string, params: unknown = {}) => call<T>(method, params, socket);
-const tester = async (name: string) => {
-  if (name === "notion") throw Object.assign(new (await import("../src/http.js")).HttpError(401, "token revoked"));
-  return `${name} ok`;
-};
 
 before(async () => {
-  running = await startEngine({ plugins: [ticketsPart, integrationsPart({ tester: tester as never })] });
+  running = await startEngine({ plugins: [ticketsPart, integrationsPart()] });
 });
 after(async () => {
   await running.stop();
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("Slack intake keeps what's aimed at you, triage sorts it in one call, and outages become urgent", async () => {
+test("connect finds Claude's Slack connector, checks it with one call, and remembers its tools; no token anywhere", async () => {
+  const conn = await c<Connection>("connections.connect", { name: "slack" });
+  assert.equal(conn.status, "connected");
+  assert.match(conn.detail!, /me at Acme, via claude\.ai Slack/);
+  assert.equal(connectorCalls.length, 1);
+  assert.deepEqual(connectorCalls[0]!.allowed, [SLACK], "before the tools are known, only the Slack server's tools");
+  // Stage sessions may read Slack without asking, but never send.
+  const reads = connectorReads(running.store);
+  assert.deepEqual(reads, [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`]);
+  assert.deepEqual(permissionsFor("researcher", "/tmp/job", reads).allow.filter((a) => a.startsWith("mcp__")), reads);
+});
+
+test("Slack intake reads through the connector with read-only tools, and triage sorts it in one call", async () => {
   const r = await c<{ added: number; triaged: number }>("intake.poll", { source: "slack" });
-  assert.equal(r.added, 3, "own message and bot message dropped by rules, no tokens");
-  assert.equal(triageCalls.filter((m) => m === "haiku").length, 1, "one batched Haiku call");
+  assert.equal(r.added, 3);
+  const read = connectorCalls.at(-1)!;
+  assert.deepEqual(read.allowed, [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`], "intake can't post");
+  assert.match(read.prompt, /Only read/);
+  assert.equal(triageCalls.filter((m) => m === "haiku").length, 1, "one batched Haiku triage call");
   const items = await c<IntakeItem[]>("intake.list", {});
   const outage = items.find((i) => i.text.includes("checkout"))!;
   assert.equal(outage.status, "Queued");
@@ -96,18 +104,21 @@ test("Slack intake keeps what's aimed at you, triage sorts it in one call, and o
   assert.equal(reply.status, "ReplyDrafted");
   assert.equal(reply.draft, "Yes, it ships tomorrow at 10.");
 
-  // Polling again finds nothing new and spends nothing.
+  // The same messages again are duplicates: nothing new, no triage call.
   const again = await c<{ added: number }>("intake.poll", { source: "slack" });
   assert.equal(again.added, 0);
   assert.equal(triageCalls.filter((m) => m === "haiku").length, 1);
 });
 
-test("a drafted reply is only posted when you press Send", async () => {
+test("a drafted reply is only posted when you press Send, and only that call may use Slack's write tools", async () => {
   const draft = (await c<IntakeItem[]>("intake.list", {})).find((i) => i.status === "ReplyDrafted")!;
   assert.equal(posted.length, 0);
   const sent = await c<IntakeItem>("intake.send", { id: draft.id, text: "Yes, 10am tomorrow." });
   assert.equal(sent.status, "Replied");
-  assert.deepEqual(posted[0], { channel: "D1", thread_ts: "1800000005.000100", text: "Yes, 10am tomorrow." });
+  assert.equal(posted.length, 1);
+  assert.match(posted[0]!, /thread 1800000005\.000100 of channel D1/);
+  assert.match(posted[0]!, /Yes, 10am tomorrow\./);
+  assert.deepEqual(connectorCalls.at(-1)!.allowed, [SLACK]);
   await assert.rejects(c("intake.send", { id: draft.id }), /only a drafted reply/);
 });
 
@@ -137,21 +148,38 @@ test("an ignored item can be promoted to a task, and the statechart refuses the 
   assert.ok(promoted.taskId);
 });
 
-test("health checks mark a revoked token expired and raise a sticky alert", async () => {
+test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {
   const alerts: { message: string; sticky?: boolean }[] = [];
   running.engine.on("alert", (a) => alerts.push(a));
-  process.env.FACTORY_NOTION = "secret";
+  const before = connectorCalls.length + triageCalls.length;
+  mcpList = "claude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nclaude.ai Notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication\n";
+  const { servers } = await import("../src/connectors.js");
+  await servers(true);
   const [n] = await c<Connection[]>("connections.test", { name: "notion" });
   assert.equal(n!.status, "expired");
   assert.ok(alerts.some((a) => a.sticky && /Notion is expired/.test(a.message)));
-  assert.equal((await c<Connection[]>("connections.alerts")).map((x) => x.name).join(), "notion");
+  assert.ok((await c<Connection[]>("connections.alerts")).some((x) => x.name === "notion"));
   await c("connections.snooze", { name: "notion", hours: 2 });
-  assert.equal((await c<Connection[]>("connections.alerts")).length, 0);
+  assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "notion"));
+  const [j] = await c<Connection[]>("connections.test", { name: "jira" });
+  assert.equal(j!.status, "missing", "no Atlassian connector: optional, so no alert");
+  assert.ok(!(await c<Connection[]>("connections.alerts")).some((x) => x.name === "jira"));
+  assert.equal(connectorCalls.length + triageCalls.length, before, "no model calls");
+});
+
+test("disconnect stops the factory using a connector until you connect again; Claude Code and GitHub refuse", async () => {
+  const d = await c<Connection>("connections.disconnect", { name: "slack" });
+  assert.equal(d.status, "missing");
+  assert.match(d.detail!, /turned off by you/);
+  const r = await c<{ added: number; skipped?: string }>("intake.poll", { source: "slack" });
+  assert.match(r.skipped!, /slack is missing/);
+  assert.equal((await c<Connection>("connections.connect", { name: "slack" })).status, "connected");
+  await assert.rejects(c("connections.disconnect", { name: "claude" }), /uses its own sign-in/);
 });
 
 test("routines show schedule, last result and next run, and your own run as shell commands", async () => {
   const list = await c<Routine[]>("routines.list");
-  for (const id of ["health-check", "intake-slack", "intake-jira", "triage", "notion-sync", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);
+  for (const id of ["health-check", "intake-slack", "intake-jira", "triage", "notion-sync", "notion-pull", "cleanup", "post-merge-watch"]) assert.ok(list.some((r) => r.id === id), id);
   const ran = await c<Routine>("routines.run", { id: "notion-sync" });
   assert.equal(ran.lastResult, "skipped");
   const mine = await c<Routine>("routines.add", { name: "Nightly deps check", every: "1d", command: "echo all good" });
@@ -163,7 +191,7 @@ test("routines show schedule, last result and next run, and your own run as shel
   await assert.rejects(c("routines.remove", { id: "triage" }), /paused, not removed/);
 });
 
-test("small pieces: schedules, working hours, Notion blocks and links, JSON in replies", () => {
+test("small pieces: schedules, working hours, mcp list parsing, write tools, page links, JSON in replies", () => {
   assert.equal(parseEvery("10m"), 600);
   assert.equal(parseEvery("1d"), 86400);
   assert.throws(() => parseEvery("weekly"));
@@ -171,10 +199,17 @@ test("small pieces: schedules, working hours, Notion blocks and links, JSON in r
   assert.equal(inWorkingHours(new Date(2026, 10, 16, 9, 30), hours), true);
   assert.equal(inWorkingHours(new Date(2026, 10, 15, 9, 30), hours), false, "Sunday");
   assert.equal(inWorkingHours(new Date(2026, 10, 16, 20), hours), false);
-  const b = blocks("# Title\n\nSome **bold** text\nwrapped.\n\n- one\n1. first\n```mermaid\nstateDiagram-v2\n  A --> B\n```\n| a | b |\n|---|---|");
-  assert.deepEqual(b.map((x) => x.type), ["heading_1", "paragraph", "bulleted_list_item", "numbered_list_item", "code", "code"]);
-  assert.equal(b[4].code.language, "mermaid");
-  assert.equal(rich("see [doc](https://x.y) and `code`")[1]!.text.link?.url, "https://x.y");
+  assert.deepEqual(
+    parseMcpList("Checking MCP server health...\n\nclaude.ai Slack: https://mcp.slack.com/mcp (HTTP) - ✓ Connected\nnotion: npx -y @notionhq/notion-mcp-server - ✗ Failed to connect\nclaude.ai Atlassian: https://mcp.atlassian.com/v1/sse (SSE) - ! Needs authentication"),
+    [
+      { name: "claude.ai Slack", status: "connected", detail: "Connected" },
+      { name: "notion", status: "failed", detail: "Failed to connect" },
+      { name: "claude.ai Atlassian", status: "needs-auth", detail: "Needs authentication" },
+    ],
+  );
+  assert.equal(toolPrefix("claude.ai Slack"), "mcp__claude_ai_Slack");
+  for (const t of ["slack_send_message", "notion-create-pages", "notion-update-page", "addCommentToJiraIssue", "editJiraIssue"]) assert.equal(isWriteTool(t), true, t);
+  for (const t of ["slack_search_messages", "notion-fetch", "notion-get-comments", "notion-search", "getJiraIssue", "searchJiraIssuesUsingJql"]) assert.equal(isWriteTool(t), false, t);
   assert.equal(pageIdFrom("https://www.notion.so/acme/Factory-0123456789abcdef0123456789abcdef?pvs=4"), "01234567-89ab-cdef-0123-456789abcdef");
   assert.deepEqual(extractJson('sure: [{"a": "]"}] done'), [{ a: "]" }]);
 });

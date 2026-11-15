@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
+import { connectorReads } from "./connectors.js";
 import type { Decision, Engine, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
 import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree } from "./git.js";
@@ -226,6 +227,7 @@ export class Runner {
       jobDir: this.jobDir(t.id),
       systemPromptFile: this.systemPrompt(t, role, round),
       prompt: opts.prompt,
+      connectorReads: connectorReads(this.store),
     });
     if (!opts.resume) {
       this.store.db

@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   slots: 3,
   models: { coordinator: "opus", researcher: "sonnet", planner: "opus", builder: "sonnet", code_review: "sonnet", security_review: "sonnet", confirm: "sonnet", triage: "haiku", reply: "sonnet" },
   workingHours: { start: 8, end: 19, weekends: false },
-  pollMinutes: 10,
+  pollMinutes: 30,
   usageCeiling: 0.85,
   notion: {},
   ui: { mode: "widget", sound: true },

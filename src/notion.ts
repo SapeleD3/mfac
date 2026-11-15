@@ -1,202 +1,112 @@
-import { HttpError, json } from "./http.js";
-import { getSecret } from "./secrets.js";
+import { ask } from "./connectors.js";
+import type { Store } from "./store.js";
 
 /*
- * Notion through its public API with an internal integration token: the engine publishes review docs,
- * mirrors the Jobs and Tickets boards, and reads your comments back. Plain API calls, no Claude.
+ * Notion through the Notion connector you have in Claude (see connectors.ts). The engine never holds a
+ * Notion token: each operation is one small Claude call that may use only Notion's tools and answers
+ * in JSON. Board updates are batched into one call per sync, so a quiet factory makes no calls.
  */
 
-const VERSION = "2022-06-28";
-const BASE = "https://api.notion.com/v1";
+export const pageUrl = (id: string) => (id.startsWith("http") ? id : `https://www.notion.so/${id.replace(/-/g, "")}`);
 
-async function api<T = any>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const token = getSecret("notion");
-  if (!token) throw new HttpError(401, "no Notion token (run factory connect notion)");
-  return json<T>(`${BASE}${path}`, {
-    method: init.method ?? (init.body ? "POST" : "GET"),
-    headers: { authorization: `Bearer ${token}`, "notion-version": VERSION, "content-type": "application/json" },
-    body: init.body ? JSON.stringify(init.body) : undefined,
-  });
+export interface BoardIds {
+  jobsDb: string;
+  ticketsDb: string;
+  reviewsDb: string;
 }
 
-export const pageUrl = (id: string) => `https://www.notion.so/${id.replace(/-/g, "")}`;
+export type Value = string | number | string[] | null | undefined;
 
-// ---------- markdown to blocks ----------
-
-type RichText = { type: "text"; text: { content: string; link?: { url: string } | null }; annotations?: Record<string, boolean> };
-
-/** Inline **bold**, `code` and [links](url); everything else plain. Notion caps a text run at 2000 chars. */
-export function rich(text: string): RichText[] {
-  const out: RichText[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
-  let last = 0;
-  const push = (content: string, extra: Partial<RichText> = {}) => {
-    for (let i = 0; i < content.length; i += 2000) out.push({ type: "text", text: { content: content.slice(i, i + 2000), ...(extra.text ?? {}) }, ...(extra.annotations ? { annotations: extra.annotations } : {}) });
-  };
-  for (const m of text.matchAll(re)) {
-    if (m.index! > last) push(text.slice(last, m.index));
-    const t = m[0];
-    if (t.startsWith("**")) push(t.slice(2, -2), { annotations: { bold: true } });
-    else if (t.startsWith("`")) push(t.slice(1, -1), { annotations: { code: true } });
-    else {
-      const [, label, url] = t.match(/\[([^\]]+)\]\(([^)]+)\)/)!;
-      out.push({ type: "text", text: { content: label!, link: /^https?:/.test(url!) ? { url: url! } : null } });
-    }
-    last = m.index! + t.length;
-  }
-  if (last < text.length) push(text.slice(last));
-  return out.length ? out : [{ type: "text", text: { content: "" } }];
-}
-
-const LANGS = new Set(["mermaid", "typescript", "javascript", "json", "bash", "shell", "python", "rust", "go", "sql", "yaml", "markdown", "plain text"]);
-
-/** Enough markdown for research and plan docs: headings, lists, quotes, code (mermaid renders as a diagram), tables as code. */
-export function blocks(md: string): any[] {
-  const out: any[] = [];
-  const lines = md.replace(/\r/g, "").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const fence = line.match(/^```\s*([\w+-]*)/);
-    if (fence) {
-      const body: string[] = [];
-      for (i++; i < lines.length && !lines[i]!.startsWith("```"); i++) body.push(lines[i]!);
-      const lang = fence[1]?.toLowerCase() || "plain text";
-      out.push({ type: "code", code: { language: LANGS.has(lang) ? lang : lang === "tla" ? "plain text" : "plain text", rich_text: rich(body.join("\n")).map((r) => ({ ...r, annotations: undefined })) } });
-      continue;
-    }
-    if (!line.trim()) continue;
-    const h = line.match(/^(#{1,3})\s+(.*)/);
-    if (h) {
-      const type = `heading_${h[1]!.length}`;
-      out.push({ type, [type]: { rich_text: rich(h[2]!) } });
-      continue;
-    }
-    if (/^\s*[-*]\s+/.test(line)) {
-      out.push({ type: "bulleted_list_item", bulleted_list_item: { rich_text: rich(line.replace(/^\s*[-*]\s+/, "")) } });
-      continue;
-    }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      out.push({ type: "numbered_list_item", numbered_list_item: { rich_text: rich(line.replace(/^\s*\d+[.)]\s+/, "")) } });
-      continue;
-    }
-    if (line.startsWith(">")) {
-      out.push({ type: "quote", quote: { rich_text: rich(line.replace(/^>\s?/, "")) } });
-      continue;
-    }
-    if (line.startsWith("|")) {
-      const table: string[] = [];
-      for (; i < lines.length && lines[i]!.startsWith("|"); i++) table.push(lines[i]!);
-      i--;
-      out.push({ type: "code", code: { language: "plain text", rich_text: rich(table.join("\n")).map((r) => ({ ...r, annotations: undefined })) } });
-      continue;
-    }
-    // Join a paragraph's wrapped lines.
-    const para = [line];
-    while (i + 1 < lines.length && lines[i + 1]!.trim() && !/^(#|```|\s*[-*]\s|\s*\d+[.)]\s|>|\|)/.test(lines[i + 1]!)) para.push(lines[++i]!);
-    out.push({ type: "paragraph", paragraph: { rich_text: rich(para.join(" ")) } });
-  }
-  return out;
-}
-
-// ---------- pages, databases, comments ----------
-
-export async function createDatabase(parentPageId: string, title: string, properties: Record<string, unknown>) {
-  return api<{ id: string; url: string }>("/databases", { body: { parent: { type: "page_id", page_id: parentPageId }, title: [{ type: "text", text: { content: title } }], is_inline: false, properties } });
-}
-
-export async function createPage(parent: { database_id: string } | { page_id: string }, properties: Record<string, unknown>, children: any[] = []) {
-  const page = await api<{ id: string; url: string }>("/pages", { body: { parent, properties, children: children.slice(0, 100) } });
-  await appendBlocks(page.id, children.slice(100));
-  return page;
-}
-
-export async function appendBlocks(blockId: string, children: any[]) {
-  for (let i = 0; i < children.length; i += 100) await api(`/blocks/${blockId}/children`, { method: "PATCH", body: { children: children.slice(i, i + 100) } });
-}
-
-export async function updatePage(pageId: string, properties: Record<string, unknown>) {
-  return api(`/pages/${pageId}`, { method: "PATCH", body: { properties } });
-}
-
-export async function children(blockId: string): Promise<any[]> {
-  const all: any[] = [];
-  let cursor: string | undefined;
-  do {
-    const r = await api<{ results: any[]; has_more: boolean; next_cursor?: string }>(`/blocks/${blockId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ""}`);
-    all.push(...r.results);
-    cursor = r.has_more ? r.next_cursor : undefined;
-  } while (cursor);
-  return all;
-}
-
-export async function queryDatabase(databaseId: string, filter?: unknown): Promise<any[]> {
-  const all: any[] = [];
-  let cursor: string | undefined;
-  do {
-    const r = await api<{ results: any[]; has_more: boolean; next_cursor?: string }>(`/databases/${databaseId}/query`, { body: { page_size: 100, ...(filter ? { filter } : {}), ...(cursor ? { start_cursor: cursor } : {}) } });
-    all.push(...r.results);
-    cursor = r.has_more ? r.next_cursor : undefined;
-  } while (cursor);
-  return all;
+export interface RowUpdate {
+  /** Which database, and the factory's own id for the row (task or ticket id). */
+  db: keyof BoardIds;
+  key: string;
+  /** The row's Notion page, once it has one. */
+  pageId?: string;
+  properties: Record<string, Value>;
 }
 
 export interface NotionComment {
-  id: string;
   discussionId: string;
   text: string;
   author: string;
   createdAt: string;
-  /** The block the comment is anchored to (inline comments); the page itself for page comments. */
-  blockId: string;
-  /** That block's text: the words the comment is about. */
+  /** The words the comment is anchored to; empty for a comment on the whole page. */
   anchor?: string;
 }
 
-const plain = (rt: any[] = []) => rt.map((r) => r.plain_text ?? r.text?.content ?? "").join("");
+const SCHEMA = `Jobs: Name (title), Task (text), State (select), Column (select), Rounds (text), Tags (multi-select: learn, urgent, ui, sensitive, harden), Source (url), PR (url).
+Tickets: Name (title), Ticket (text), Job (relation to Jobs), Created by (select), Picked up by (select), Status (select: Backlog, In progress, In review, Blocked, Done), Tags (multi-select, as in Jobs), Check (text), Links (text).
+Reviews: Name (title), Job (relation to Jobs), Gate (select: Research, Plan), Round (number), Verdict (select: Waiting, Approved, Sent back, Dropped).`;
 
-/** Every comment on a page, page-level and inline, with the text of the block each is anchored to. */
-export async function comments(pageId: string): Promise<NotionComment[]> {
-  const blocksOnPage = await children(pageId);
-  const out: NotionComment[] = [];
-  for (const id of [pageId, ...blocksOnPage.map((b) => b.id)]) {
-    const r = await api<{ results: any[] }>(`/comments?block_id=${id}&page_size=100`);
-    const block = blocksOnPage.find((b) => b.id === id);
-    for (const c of r.results)
-      out.push({
-        id: c.id,
-        discussionId: c.discussion_id,
-        text: plain(c.rich_text),
-        author: c.created_by?.name ?? c.created_by?.id ?? "",
-        createdAt: c.created_time,
-        blockId: id,
-        anchor: block ? plain(block[block.type]?.rich_text) : undefined,
-      });
-  }
-  return out;
+/** First run: the three databases of the factory board, on a page you can edit. */
+export async function setupBoard(store: Store, parentPage: string): Promise<BoardIds> {
+  const r = await ask<Partial<BoardIds>>(
+    store,
+    "notion",
+    `On the Notion page ${parentPage}, create three databases with exactly these names and properties:\n${SCHEMA}\nAnswer {"jobsDb": "<id>", "ticketsDb": "<id>", "reviewsDb": "<id>"} with the id (or data source id) you'd use to add rows to each.`,
+    { write: true, model: "sonnet" },
+  );
+  if (!r.jobsDb || !r.ticketsDb || !r.reviewsDb) throw new Error("Notion didn't return the three database ids");
+  return r as BoardIds;
 }
 
-export async function replyToDiscussion(discussionId: string, text: string) {
-  await api("/comments", { body: { discussion_id: discussionId, rich_text: rich(text) } });
+/** Creates or updates board rows, all in one call. Returns each row's page id. */
+export async function upsertRows(store: Store, ids: BoardIds, rows: RowUpdate[]): Promise<{ key: string; pageId: string }[]> {
+  if (!rows.length) return [];
+  const r = await ask<{ rows?: { key: string; pageId: string }[] }>(
+    store,
+    "notion",
+    [
+      `Update the factory board in Notion. Databases: Jobs ${ids.jobsDb}, Tickets ${ids.ticketsDb}, Reviews ${ids.reviewsDb}.`,
+      `Their properties:\n${SCHEMA}`,
+      "For each row below: if it has a pageId, update that page's properties; otherwise create a page in its database. Set only the properties given; null clears one. A Job value is the page id of the job to relate to.",
+      JSON.stringify(rows),
+      'Answer {"rows": [{"key", "pageId"}]} for every row.',
+    ].join("\n\n"),
+    { write: true },
+  );
+  return (r.rows ?? []).filter((x) => x.key && x.pageId);
 }
 
-export async function test(): Promise<string> {
-  const me = await api<{ name?: string; bot?: { workspace_name?: string } }>("/users/me");
-  return `connected to ${me.bot?.workspace_name ?? me.name ?? "Notion"}`;
+/** A review gate opened: a page in Reviews with the doc as its content. */
+export async function createReview(store: Store, ids: BoardIds, properties: Record<string, Value>, markdown: string): Promise<string> {
+  const r = await ask<{ pageId?: string }>(
+    store,
+    "notion",
+    `Create a page in the Reviews database ${ids.reviewsDb} with these properties:\n${JSON.stringify(properties)}\n\nIts content is this markdown, exactly as written (keep mermaid code blocks as code blocks with language mermaid):\n\n${markdown}\n\nAnswer {"pageId": "<id>"}.`,
+    { write: true },
+  );
+  if (!r.pageId) throw new Error("Notion didn't return the review page");
+  return r.pageId;
 }
 
-// ---------- property helpers ----------
+/** A sent-back stage reran: the new round goes at the end of the same page, and every open comment gets a reply. */
+export async function addRound(store: Store, pageId: string, properties: Record<string, Value>, markdown: string, reply: string) {
+  await ask(
+    store,
+    "notion",
+    `On the Notion page ${pageId}: set these properties ${JSON.stringify(properties)}; add a divider and then this markdown at the end of the page, exactly as written:\n\n${markdown}\n\nThen reply to every open comment discussion on the page with: "${reply}". Answer {"ok": true}.`,
+    { write: true },
+  );
+}
 
-export const prop = {
-  title: (s: string) => ({ title: [{ type: "text", text: { content: s.slice(0, 2000) } }] }),
-  text: (s: string) => ({ rich_text: s ? [{ type: "text", text: { content: s.slice(0, 2000) } }] : [] }),
-  select: (s?: string) => ({ select: s ? { name: s } : null }),
-  multi: (xs: string[]) => ({ multi_select: xs.map((name) => ({ name })) }),
-  url: (u?: string) => ({ url: u ?? null }),
-  number: (n: number) => ({ number: n }),
-  relation: (ids: string[]) => ({ relation: ids.map((id) => ({ id })) }),
-};
-export const read = {
-  title: (p: any) => plain(p?.title),
-  text: (p: any) => plain(p?.rich_text),
-  select: (p: any) => p?.select?.name as string | undefined,
-};
+/** Every comment on a review page, with the words each one is anchored to. */
+export async function comments(store: Store, pageId: string): Promise<NotionComment[]> {
+  const r = await ask<{ comments?: NotionComment[] }>(
+    store,
+    "notion",
+    `List every comment on the Notion page ${pageId}, page-level and inline. Answer {"comments": [{"discussionId", "author", "createdAt" (ISO), "anchor" (the exact text the comment is attached to, or "" for the whole page), "text"}]}.`,
+  );
+  return (r.comments ?? []).filter((c) => typeof c.text === "string");
+}
+
+/** The rows of the Tickets database, so tickets you add or edit in Notion come back. */
+export async function ticketRows(store: Store, ids: BoardIds): Promise<{ pageId: string; ticket?: string; title: string; check?: string; jobPageId?: string }[]> {
+  const r = await ask<{ rows?: { pageId: string; ticket?: string; title: string; check?: string; jobPageId?: string }[] }>(
+    store,
+    "notion",
+    `List every row of the Tickets database ${ids.ticketsDb}. Answer {"rows": [{"pageId", "ticket" (its Ticket property, or ""), "title" (its Name), "check" (its Check property), "jobPageId" (the page id its Job relation points to, or "")}]}.`,
+  );
+  return (r.rows ?? []).filter((x) => x.pageId);
+}
