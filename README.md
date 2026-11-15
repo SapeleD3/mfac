@@ -134,6 +134,11 @@ step with `factory coord` commands. The engine checks every one of those against
   `factory take-over F-001` (the coordinator waits until `--off`).
 - **Repo rules always apply:** sessions start inside the worktree, so CLAUDE.md, `.claude/settings.json`,
   skills and hooks load exactly as if you opened the repo yourself.
+- **Design principles:** every station consults the bundled `design-principles` skill
+  ([plugin/skills/design-principles](plugin/skills/design-principles/SKILL.md)): 41 sourced principles, a
+  decision guide and a data-structure guide, complementing pstack's `principle-*` skills. Outputs end with
+  "Design principles applied". `npm run principles:fetch` downloads the free source PDFs into
+  `~/.factory/cache/design-principles/` (never into git).
 
 Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `factory pause` stops new starts.
 
