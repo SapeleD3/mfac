@@ -44,7 +44,20 @@ export interface TaskView extends Task {
 
 export type MoveResult = { ok: true; task: TaskView; action: string } | { ok: false; reason: string; task?: TaskView };
 
+export interface Decision {
+  task: TaskView;
+  verdict: "approve" | "send_back" | "drop";
+  to?: State;
+  note: string;
+}
+
 export class Engine extends EventEmitter {
+  /**
+   * Run after a person's verdict and before the coordinator hears about it (for example, pulling the
+   * Notion comments into review-comments.md). Each gets 60 seconds; a failure doesn't block the task.
+   */
+  readonly beforeWake: ((d: Decision) => Promise<void>)[] = [];
+
   constructor(readonly store: Store) {
     super();
     this.setMaxListeners(100);
@@ -131,7 +144,7 @@ export class Engine extends EventEmitter {
       event = { type: "send_back", to };
     }
     const r = this.move(id, event, "human", { verdict, note: opts.note ?? "" });
-    if (r.ok) this.emit("decision", { task: r.task, verdict, to: opts.to, note: opts.note ?? "" });
+    if (r.ok) this.emit("decision", { task: r.task, verdict, to: opts.to, note: opts.note ?? "" } satisfies Decision);
     return r;
   }
 

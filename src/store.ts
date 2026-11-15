@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS intake (
   status TEXT NOT NULL DEFAULT 'new',
   task_id TEXT,
   overridden INTEGER NOT NULL DEFAULT 0,
+  meta TEXT NOT NULL DEFAULT '{}',
   UNIQUE(source, source_id)
 );
 CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, cursor TEXT NOT NULL, at TEXT NOT NULL);

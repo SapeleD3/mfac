@@ -104,6 +104,7 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   // The coordinator can't approve; a person can, and the coordinator resumes with the verdict.
   await assert.rejects(c("task.move", { id: t.id, event: { type: "approve" }, actor: "coordinator" }), /person's decision/);
   await c("task.decide", { id: t.id, verdict: "approve", note: "Good, keep the CSV path" });
+  await new Promise((r) => setTimeout(r, 30));
   const resumed = started.filter((s) => s.id === `${t.id}-coordinator-1`).pop()!;
   assert.ok(resumed.command.includes("--resume"));
   assert.ok(resumed.command.some((a) => a.includes("Keep the CSV path") || a.includes("keep the CSV path")));

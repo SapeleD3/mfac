@@ -37,7 +37,7 @@ Built in milestones, each its own PR:
 
 1. **Engine core**: the statechart in code, SQLite store, Unix socket API, `factory` CLI, CI with TLC.
 2. **Claude Code runner**: tmux sessions, git worktrees, the Opus coordinator, stages and hooks.
-3. Intake and Notion: Slack and Jira polling, Haiku triage, the Notion factory board and review sync, routines.
+3. **Intake and Notion**: Slack and Jira polling, Haiku triage, the Notion factory board and review sync, routines.
 4. The Tauri app: widget pill, kanban queue, gates, live session, connections, routines.
 5. `setup.sh`, the launch agent, `factory doctor`, and the self-improving loop.
 
@@ -91,6 +91,36 @@ step with `factory coord` commands. The engine checks every one of those against
   skills and hooks load exactly as if you opened the repo yourself.
 
 Slots: at most 3 tasks run sessions at once (`factory settings slots=2`); `factory pause` stops new starts.
+
+## Where work comes from
+
+Routines poll Slack (DMs and @-mentions of you) and Jira (tickets assigned to you) every 10 minutes in
+working hours, newer than a saved cursor. Bots, your own messages and muted channels are dropped by plain
+rules, and the rest goes to one batched Haiku call: **ignore** (logged), **reply** (a Sonnet draft you send
+with `factory send`; nothing is ever posted as you without that), **task**, or **urgent** (outage words, a
+VIP, Jira Highest or due within a day; the engine checks these itself too). An empty poll spends no tokens.
+
+Overrule triage with `factory triage ID task` (or `ignore`, `reply`, `urgent`). After three of the same
+override, a rule is proposed (`factory rules`), and approved rules sort items before Haiku sees them.
+
+## Connections and Notion
+
+`factory connections` shows Slack, Notion, Jira, Claude Code and GitHub as connected, expired or missing.
+`factory connect slack` (or `notion`, `jira`) opens the right page, prints the steps and stores the token
+in your Keychain. Each intake run tests its connection first; a failure raises a sticky alert, and the
+work that needs it waits and catches up from its cursor.
+
+`factory connect notion` also builds your factory board on a page you share: **Jobs**, **Tickets**
+(each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.
+At the research and plan gates the review doc is published there. Comment in Notion on every issue,
+then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every
+comment and the words it's anchored to go to the stage, and the next round lands on the same page.
+
+## Routines
+
+`factory routines` lists everything the factory does on a schedule, with the last run, its result and the
+next run: health check, Slack and Jira intake, triage, Notion sync, cleanup, and the post-merge watch
+(phase 2, off). Add your own: `factory routines add "Weekly deps" --every 7d --command "factory add 'Update dependencies' --repo ~/code/app"`.
 
 ## Develop
 
