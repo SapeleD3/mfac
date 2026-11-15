@@ -11,3 +11,6 @@ spec/*.out
 spec/Factory_TTrace_*
 *.log
 .DS_Store
+
+# Source PDFs for the design-principles skill are cached in ~/.factory, never committed (public repo).
+*.pdf

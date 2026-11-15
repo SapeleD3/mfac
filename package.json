@@ -16,7 +16,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --no-warnings=ExperimentalWarning --test dist/test/*.test.js",
-    "tlc": "node scripts/tlc.mjs"
+    "tlc": "node scripts/tlc.mjs",
+    "principles:fetch": "npm run build && node dist/src/design-principles.js fetch"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

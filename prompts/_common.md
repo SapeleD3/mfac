@@ -17,4 +17,5 @@ Rules that always apply:
 - If you are blocked, still write {{output}}: start it with "BLOCKED:" and say exactly what you need.
 - Never push, merge, open pull requests or change git history; the factory does that after its checks.
 - No workaround comments and no timer-style patches over an architecture problem. Fix the cause or say you can't.
-- End {{output}} with a "Design principles applied" section naming each principle and where it shows.
+- For each design decision you make, consult the design-principles skill (its decision-guide.md maps decisions to principles; data-structures.md covers data-structure choices). Where principles pull against each other, say which you chose and why.
+- End {{output}} with a "Design principles applied" section: one line per principle you actually used, as `<id>: where it shows`, using the ids from the design-principles skill.
