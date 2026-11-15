@@ -38,7 +38,7 @@ Built in milestones, each its own PR:
 1. **Engine core**: the statechart in code, SQLite store, Unix socket API, `factory` CLI, CI with TLC.
 2. **Claude Code runner**: tmux sessions, git worktrees, the Opus coordinator, stages and hooks.
 3. **Intake and Notion**: Slack and Jira polling, Haiku triage, the Notion factory board and review sync, routines.
-4. The Tauri app: widget pill, kanban queue, gates, live session, connections, routines.
+4. **The Mac app**: widget pill, kanban queue, task rail, review gates routed to Notion, PR ready, live session with take-over, inbox, connections, routines, rules, settings.
 5. `setup.sh`, the launch agent, `factory doctor`, and the self-improving loop.
 
 ## Try the engine
@@ -121,6 +121,29 @@ comment and the words it's anchored to go to the stage, and the next round lands
 `factory routines` lists everything the factory does on a schedule, with the last run, its result and the
 next run: health check, Slack and Jira intake, triage, Notion sync, cleanup, and the post-merge watch
 (phase 2, off). Add your own: `factory routines add "Weekly deps" --every 7d --command "factory add 'Update dependencies' --repo ~/code/app"`.
+
+## The app
+
+A Tauri app in `app/`: a Rust shell (`app/src-tauri`) and a Preact UI (`app/ui`) ported from the approved
+mockups. The UI never touches the database; every button is an engine call over the Unix socket, relayed
+by Rust, and engine events stream back to both windows.
+
+- **Widget (default)**: a pill at the top right that opens into Needs you, Running and Up next. Gates
+  can be approved or dropped right there; questions and permission prompts are answered there too.
+- **Full app**: the board (drag a card to Parked and back; the engine refuses anything else, with the
+  reason), each task's rail with its caps, the research and plan gates (read the summary, review in
+  Notion, then one overall verdict), PR ready, Needs you, the live session (watch, take over, or open
+  it in Terminal), inbox and triage, connections, routines, rules and learning, settings.
+- **Headless**: Settings → How it runs → Headless. The app quits at launch; the engine keeps running.
+- The menu bar icon opens the app or Needs you and shows or hides the widget. macOS notifications fire
+  when a gate opens, a session asks, or a connection breaks. Closing a window never stops the factory.
+
+```sh
+cd app && npm install
+npm run app          # builds Factory.app into app/src-tauri/target/release/bundle/macos (needs Rust)
+npm run dev          # the app with the UI rebuilt on save
+npm run preview      # dev only: the UI in a browser against your running engine, on 127.0.0.1:5174
+```
 
 ## Develop
 

@@ -56,7 +56,7 @@ test("a task walks the whole line through the socket, with the engine refusing s
   await move({ type: "reviews_done", findings: false });
   const pr = await move({ type: "confirm_done", confirmed: true });
   assert.equal(pr.task!.machine.state, "PRGate");
-  assert.equal(pr.task!.column, "PR review");
+  assert.equal(pr.task!.column, "PR ready");
   const done = await call<{ ok: boolean; task: TaskView }>("task.decide", { id: t.id, verdict: "approve" }, socket);
   assert.equal(done.task.machine.state, "Done");
 

@@ -728,6 +728,12 @@ export const runnerPart =
           return { paused: !!p.paused };
         },
         "factory.tick": () => runner.tick(),
+        /** What the pill and the sidebar show: slots in use, and why nothing new is starting, if so. */
+        "factory.status": () => {
+          const guard = store.setting<{ blocked?: boolean; reason?: string; share?: number; weekly?: number }>("usage_guard", {});
+          const busy = engine.list().filter((t) => t.column === "Running").length;
+          return { paused: store.setting("paused", false), guard, slots: engine.settings().slots, busy };
+        },
       },
     };
   };

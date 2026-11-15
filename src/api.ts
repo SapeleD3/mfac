@@ -1,4 +1,7 @@
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, normalize } from "node:path";
 import type { Engine } from "./engine.js";
+import { paths } from "./paths.js";
 import type { Handler } from "./server.js";
 import type { Event, State } from "./statechart.js";
 import type { Actor } from "./store.js";
@@ -33,6 +36,26 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
       return engine.update(p.id, patch);
     },
     "task.rules": (p: { id: string }) => engine.rules(p.id),
+    /** The files a task's stages wrote (research.md, plan.md, reviews...), for the task view. */
+    "job.files": (p: { id: string }) => {
+      const dir = paths.job(p.id);
+      if (!existsSync(dir)) return [];
+      return readdirSync(dir)
+        .filter((f) => !f.startsWith("."))
+        .map((name) => {
+          const st = statSync(join(dir, name));
+          return { name, bytes: st.size, dir: st.isDirectory(), modifiedAt: st.mtime.toISOString() };
+        })
+        .sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
+    },
+    /** Read one file from a task's job folder (at most 256 KB; nothing outside the folder). */
+    "job.read": (p: { id: string; name: string }) => {
+      const dir = paths.job(p.id);
+      const file = normalize(join(dir, p.name));
+      if (!file.startsWith(dir + "/") || !existsSync(file) || statSync(file).isDirectory()) throw new Error(`no file ${p.name} in ${p.id}`);
+      const text = readFileSync(file, "utf8");
+      return { name: p.name, path: file, text: text.slice(0, 256 * 1024), truncated: text.length > 256 * 1024 };
+    },
     "settings.get": () => engine.settings(),
     "settings.set": (p) => engine.updateSettings(p),
   };
