@@ -71,7 +71,7 @@ export function permissionsFor(role: Role, jobDir: string, reads: string[] = [],
 function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny: string[] } {
   const job = [`Write(/${jobDir}/**)`, `Edit(/${jobDir}/**)`];
   const coord = ["Bash(factory coord:*)", "Bash(factory ticket:*)"];
-  const memory = ["Bash(factory memory show:*)", "Bash(factory memory search:*)", "Bash(factory memory file:*)"];
+  const memory = ["Bash(factory memory show:*)", "Bash(factory memory search:*)", "Bash(factory memory file:*)", "Bash(factory memory meeting:*)"];
   const base = { deny: ALWAYS_DENY };
   switch (role) {
     case "coordinator":

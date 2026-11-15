@@ -19,6 +19,8 @@ export interface Settings {
     intakeServer?: string;
     intakeStatus?: string;
     columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
+    meetings?: boolean;
+    meetingsServer?: string;
   };
   ui: { mode: "widget" | "app" | "headless"; sound: boolean };
   defaultRepo?: string;
@@ -59,7 +61,7 @@ export interface TaskView extends Task {
 
 export interface ContextResult {
   task: TaskView;
-  how: "brief" | "coordinator" | "followup";
+  how: "brief" | "coordinator" | "followup" | "noted";
   followUp?: TaskView;
 }
 
@@ -71,6 +73,12 @@ export interface Decision {
   to?: State;
   note: string;
 }
+
+const CHATTER = new Set(
+  "the and for with that this you your can please look into assigned assignee ticket issue task mentioned mention hey thanks just check could would should will has have was are from about been now".split(
+    " ",
+  ),
+);
 
 export class Engine extends EventEmitter {
   readonly beforeWake: ((d: Decision) => Promise<void>)[] = [];
@@ -215,7 +223,10 @@ export class Engine extends EventEmitter {
     if (!c.text?.trim()) throw new Error("the new context is empty");
     const text = c.text.trim();
     const s = t.machine.state === "Parked" ? t.machine.parkedFrom : t.machine.state;
-    this.store.addEvent(id, "context_added", c.actor ?? "human", { from: c.from, url: c.url, text: text.slice(0, 2000) });
+    const repeat = c.actor === "triage" && s !== "Done" && s !== "Dropped" && !this.saysMore(t, text);
+    this.store.addEvent(id, "context_added", c.actor ?? "human", { from: c.from, url: c.url, text: text.slice(0, 2000), ...(repeat ? { repeat: true } : {}) });
+    // A re-assignment or a mention that only points at the task again would otherwise wake the coordinator for nothing.
+    if (repeat) return { task: this.view(t), how: "noted" };
     if (s === "Done" || s === "Dropped") {
       const followUp = this.add({
         title: t.title.startsWith("Follow-up: ") ? t.title : `Follow-up: ${t.title}`,
@@ -240,6 +251,15 @@ export class Engine extends EventEmitter {
     }
     this.emit("context", { task: this.view(t), text, from: c.from, url: c.url });
     return { task: this.view(t), how: "coordinator" };
+  }
+
+  /** Whether a message adds at least a few words the task's ask and earlier context don't already have. */
+  private saysMore(t: Task, text: string): boolean {
+    const toks = (x: string) => x.toLowerCase().match(/[a-z][a-z0-9]{2,}/g) ?? [];
+    const prior = (this.store.db.prepare("SELECT data FROM events WHERE task_id = ? AND kind = 'context_added'").all(t.id) as Row[]).map((r) => String(r.data)).join(" ");
+    const known = new Set(toks(`${t.title} ${t.body} ${prior}`));
+    const fresh = new Set(toks(text).filter((w) => !known.has(w) && !CHATTER.has(w)));
+    return fresh.size >= 4;
   }
 
   restore(id: string): TaskView {

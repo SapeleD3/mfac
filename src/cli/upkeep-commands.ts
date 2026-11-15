@@ -26,7 +26,7 @@ async function viaEngine<T>(method: string, params: Record<string, unknown>, loc
 
 export const upkeepCommands: Record<string, Command> = {
   memory: {
-    usage: 'memory show ID | search "words" [--repo NAME] | file PATH | status | install',
+    usage: 'memory show ID | search "words" [--repo NAME] | file PATH | meetings | meeting ID ["what to look for"] | status | install',
     help: "What the factory remembers from finished tasks: one task's summary, a search, the tasks that changed a file; install sets up on-device embeddings",
     async run(args, f) {
       const [sub, ...rest] = args;
@@ -39,6 +39,11 @@ export const upkeepCommands: Record<string, Command> = {
         const lines = await call<string[]>("memory.file", { path: rest[0] ?? "" });
         return out(lines.length ? lines.join("\n") : "No finished task changed that file.");
       }
+      if (sub === "meetings") {
+        const lines = await call<string[]>("memory.meetings", {});
+        return out(lines.length ? lines.join("\n") : "No meetings remembered yet: factory notion meetings reads them.");
+      }
+      if (sub === "meeting") return out(await call<string>("memory.meeting", { id: rest[0] ?? "", about: rest.slice(1).join(" ") || undefined }));
       if (sub === "install") {
         out("Installing the on-device embedding runtime into ~/.factory/embed (a few hundred MB, once)…");
         const r = installEmbedder();
@@ -46,9 +51,9 @@ export const upkeepCommands: Record<string, Command> = {
         return r.ok ? 0 : 1;
       }
       if (sub === "status" || !sub) {
-        const s = await call<{ embedder?: string; problem?: string; digests: number; summarized: number; vectors: number; edges: number; budgetTokens: number }>("memory.status", {});
+        const s = await call<{ embedder?: string; problem?: string; digests: number; summarized: number; vectors: number; edges: number; meetings: number; budgetTokens: number }>("memory.status", {});
         out(`Embeddings: ${s.embedder ? `${s.embedder}, on this Mac` : `off (${s.problem || "not loaded"}); search uses the graph and keywords`}`);
-        out(`Remembered tasks: ${s.digests} (${s.summarized} summarised) · vectors ${s.vectors} · graph edges ${s.edges}`);
+        out(`Remembered tasks: ${s.digests} (${s.summarized} summarised) · meetings ${s.meetings} · vectors ${s.vectors} · graph edges ${s.edges}`);
         out(`Each starting task gets at most ${s.budgetTokens} tokens of earlier work.`);
         return 0;
       }

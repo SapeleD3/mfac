@@ -168,6 +168,50 @@ export async function moveCard(store: Store, pageId: string, to: { exact?: strin
   return { status: typeof r.status === "string" && r.status.trim() ? r.status.trim() : undefined };
 }
 
+export interface MeetingNote {
+  id: string;
+  title: string;
+  date?: string;
+  attendees: string[];
+  url?: string;
+  summary: string;
+}
+
+/** Summaries only: transcripts stay in Notion until a stage asks for an excerpt. */
+export async function meetingNotes(store: Store, since: string, server?: string): Promise<MeetingNote[]> {
+  const r = await ask<{ meetings?: Partial<MeetingNote>[] }>(
+    store,
+    "notion",
+    [
+      `List the Notion meeting notes from ${since.slice(0, 10)} onwards, newest first, at most 15 (use the meeting notes query tool if there is one).`,
+      "For each, read only its AI summary, never the transcript.",
+      'Answer {"meetings": [{"id", "title", "date" (ISO), "attendees": ["<name>"], "url", "summary" (the summary in at most 600 characters, keeping decisions, owners, ticket keys and names of systems)}]}. If there are none, {"meetings": []}.',
+    ].join("\n"),
+    { session: "factory-mcp-notion-meetings", timeoutMs: 180_000, server },
+  );
+  return (r.meetings ?? [])
+    .filter((m) => m.id && m.title)
+    .map((m) => ({
+      id: m.id!,
+      title: m.title!.slice(0, 200),
+      date: typeof m.date === "string" ? m.date : undefined,
+      attendees: Array.isArray(m.attendees) ? m.attendees.filter((a) => typeof a === "string").slice(0, 20) : [],
+      url: typeof m.url === "string" ? m.url : undefined,
+      summary: typeof m.summary === "string" ? m.summary.slice(0, 800) : "",
+    }));
+}
+
+/** The connector reads the transcript in its own session and returns only the lines about one thing. */
+export async function meetingExcerpt(store: Store, id: string, about: string, server?: string): Promise<string> {
+  const r = await ask<{ excerpt?: string }>(
+    store,
+    "notion",
+    `Fetch the Notion meeting note ${pageUrl(id)} with its transcript. Quote only the parts of the transcript about: "${about}". Keep speaker names, quote verbatim, at most 1500 characters in all. Answer {"excerpt": "<the quotes>"}, or {"excerpt": ""} if nothing in it is about that.`,
+    { session: "factory-mcp-notion-meetings", timeoutMs: 180_000, server },
+  );
+  return typeof r.excerpt === "string" ? r.excerpt.slice(0, 2000) : "";
+}
+
 export async function commentOn(store: Store, pageId: string, text: string, server?: string) {
   await ask(store, "notion", `Add this exact page-level comment to the Notion page ${pageUrl(pageId)}, and nothing else:\n\n---\n${text}\n---\n\nAnswer {"ok": true} once it's added.`, {
     write: true,

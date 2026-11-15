@@ -5,7 +5,9 @@ import type { TaskView } from "../workflow/engine.js";
 import type { Row } from "../workflow/store.js";
 import { buildDigest, digest, digestMarkdown, digestText, saveDigest } from "./digest.js";
 import { MODEL, embedder, embedderInstalled, embedderProblem } from "./embed.js";
+import * as notion from "../connectors/notion.js";
 import { linkDigest, tasksAt } from "./graph.js";
+import { meeting, meetings } from "./meetings.js";
 import { project, projectList } from "./projects.js";
 import { recall, search } from "./recall.js";
 import { summarize } from "./summarize.js";
@@ -90,6 +92,19 @@ export const memoryPart: PluginFactory = ({ engine, store }) => {
           return d ? `- ${d.taskId} ${d.title} (${d.outcome === "Done" ? "done" : "dropped"} ${d.finishedAt.slice(0, 10)}${d.prUrl ? `, ${d.prUrl}` : ""})` : `- ${id}`;
         });
       },
+      "memory.meetings": () =>
+        meetings(store)
+          .slice(0, 30)
+          .map((m) => `- ${m.id} ${m.date?.slice(0, 10) ?? ""} "${m.title}"${m.attendees.length ? ` with ${m.attendees.slice(0, 4).join(", ")}` : ""}`),
+      "memory.meeting": async (p: { id: string; about?: string }) => {
+        const m = meeting(store, p.id);
+        if (!m) throw new Error(`no meeting ${p.id} in memory: factory memory meetings lists them`);
+        const head = `${m.title}${m.date ? ` (${m.date.slice(0, 10)})` : ""}${m.url ? ` ${m.url}` : ""}\nSummary: ${m.summary}`;
+        if (!p.about?.trim()) return head;
+        const s = engine.settings().notion;
+        const excerpt = await notion.meetingExcerpt(store, m.id, p.about.trim().slice(0, 200), m.server ?? s.meetingsServer ?? s.intakeServer);
+        return `${head}\n\nFrom the transcript, about "${p.about.trim()}":\n${excerpt || "Nothing in the transcript is about that."}`;
+      },
       "memory.status": async () => {
         const e = await embedder();
         const count = (sql: string) => Number((store.db.prepare(sql).get() as Row).n);
@@ -102,6 +117,7 @@ export const memoryPart: PluginFactory = ({ engine, store }) => {
           summarized: count("SELECT COUNT(*) AS n FROM digests WHERE json_extract(data, '$.summary') IS NOT NULL"),
           vectors: count("SELECT COUNT(*) AS n FROM vectors"),
           edges: count("SELECT COUNT(*) AS n FROM edges"),
+          meetings: count("SELECT COUNT(*) AS n FROM meetings"),
           budgetTokens: store.setting("memory_budget_tokens", 600),
         };
       },

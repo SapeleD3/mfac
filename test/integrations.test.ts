@@ -58,6 +58,11 @@ setPrintRunner(async (prompt, opts) => {
       return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
     }
     if (prompt.startsWith("Use the") && prompt.includes("Read the Notion page")) return JSON.stringify({ text: "It takes 8s to load." });
+    if (prompt.includes("List the Notion meeting notes from")) {
+      assert.match(prompt, /never the transcript/);
+      return JSON.stringify({ meetings: [{ id: "meet-1", title: "Reports perf sync", date: "2026-11-14T09:00:00Z", attendees: ["Mo"], summary: "Reports page is slow; REP-9 tracks it." }] });
+    }
+    if (prompt.includes("with its transcript")) return JSON.stringify({ excerpt: "Mo: the reports query scans the whole table." });
     if (prompt.includes("set its status property")) {
       const exact = prompt.match(/property[^)]*\) to "([^"]+)"/)?.[1];
       return JSON.stringify({ status: exact ?? (prompt.includes("dropped, cancelled") ? "Won't do" : "In progress") });
@@ -336,6 +341,44 @@ test("a Notion card follows its task one milestone at a time; a team Jira ticket
   assert.ok(alerts.some((m) => /Move ABC-7 to Won't Do/.test(m)));
   assert.ok(!alerts.some((m) => /ABC-7 to In Review/.test(m)), "the research gate isn't worth a Jira nudge");
   running.engine.off("alert", onAlert);
+});
+
+test("Notion meetings are read through the server you pick, summaries only, and kept for matching", async () => {
+  const saved = mcpList;
+  const { servers } = await import("../src/connectors/mcp.js");
+  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  await servers(true);
+  const calls = connectorCalls.length;
+  const r = await c<Routine>("notion.meetings", { server: "notion-propstrata" });
+  assert.equal(r.lastResult, "ok");
+  assert.equal(r.lastDetail, "1 new meeting remembered (1 read)");
+  const read = connectorCalls.slice(calls);
+  assert.equal(read.length, 1);
+  assert.ok(read[0]!.prompt.startsWith("Use the Notion tools from notion-propstrata"));
+  const row = running.store.db.prepare("SELECT title, server FROM meetings WHERE id = 'meet-1'").get() as { title: string; server: string };
+  assert.deepEqual({ ...row }, { title: "Reports perf sync", server: "notion-propstrata" });
+  assert.equal(running.store.db.prepare("SELECT COUNT(*) AS n FROM edges WHERE src = 'meeting:meet-1' AND dst = 'ticket:REP-9'").get()!.n, 1);
+  const { meetingExcerpt } = await import("../src/connectors/notion.js");
+  assert.match(await meetingExcerpt(running.store, "meet-1", "why the reports page is slow", "notion-propstrata"), /scans the whole table/);
+  const off = await c<Routine>("notion.meetings", { on: false });
+  assert.equal(off.lastResult, "skipped");
+  await c("notion.meetings", { on: true, server: "" });
+  mcpList = saved;
+  await servers(true);
+});
+
+test("a Notion card you put back in the ready column after its task finished becomes a follow-up, once; one never moved is left alone", async () => {
+  const first = (await c<TaskView[]>("task.list", { all: true })).find((t) => t.sourceRef === "card-1" && !t.parent)!;
+  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  running.store.saveMachine(first.id, { ...running.store.task(first.id)!.machine, state: "Dropped" });
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "dropped, but the factory never moved the card, so it hasn't been put back");
+  running.store.setSetting("card_moves", { ...running.store.setting<Record<string, string>>("card_moves", {}), [first.id]: "dropped" });
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 1);
+  const follow = (await c<TaskView[]>("task.list", {})).find((t) => t.parent === first.id)!;
+  assert.equal(follow.source, "notion");
+  assert.equal(follow.sourceRef?.split("@")[0], "card-1");
+  assert.match(follow.body, /moved this card back/);
+  assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the follow-up is in flight, so the card isn't queued again");
 });
 
 test("health checks read claude mcp list with no model call: signed out is expired, gone is missing", async () => {

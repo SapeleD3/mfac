@@ -147,6 +147,11 @@ test("a chat hands its work to one task: new context goes to that task, and once
   step({ type: "start" }, "engine");
   await call("task.context", { id, text: "Latency matters more than cost." }, socket);
   assert.equal(heard.length, 1, "a running task's coordinator hears it at its next step");
+  const again = running.engine.addContext(id, { text: "Hey, this was assigned to you, please look into it: Compare SQS and Kafka for the events.", from: "Slack", actor: "triage" });
+  assert.equal(again.how, "noted", "a mention that only points at the task again doesn't wake the coordinator");
+  assert.equal(heard.length, 1);
+  running.engine.addContext(id, { text: "Ops says partition rebalancing during deploys broke ordering twice last quarter.", from: "Slack", actor: "triage" });
+  assert.equal(heard.length, 2, "a message with something new does");
 
   step({ type: "research_done", chart: true, proved: true }, "engine");
   step({ type: "check" }, "engine");

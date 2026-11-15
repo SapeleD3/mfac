@@ -4,6 +4,7 @@ import { deleteTranscript } from "../claude/print.js";
 import { type ConnectionName, Connections, type Tester, realTester } from "../connectors/connections.js";
 import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
+import { meetingsSince, saveMeetings } from "../memory/meetings.js";
 import { CardMoves } from "./card-moves.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
@@ -124,6 +125,22 @@ export const integrationsPart =
         },
       },
       {
+        id: "meetings",
+        name: "Notion meetings",
+        description: "Keeps the summaries of new Notion meeting notes on this Mac, so tasks can be matched to the meetings that discussed them; transcripts stay in Notion",
+        everySeconds: 4 * 3600,
+        workingHours: true,
+        run: async () => {
+          const s = engine.settings().notion;
+          if (s.meetings === false) return "skip: turned off (factory notion meetings --on)";
+          if (!connections.ok("notion")) return "skip: Notion isn't connected";
+          const server = s.meetingsServer ?? s.intakeServer;
+          const notes = await notion.meetingNotes(store, meetingsSince(store), server);
+          const added = await saveMeetings(store, notes, server);
+          return `${added} new meeting${added === 1 ? "" : "s"} remembered (${notes.length} read)`;
+        },
+      },
+      {
         id: "cleanup",
         name: "Cleanup",
         description: "A week after a task finishes: removes its saved screens and its sessions' Claude transcripts, so no orphaned sessions pile up",
@@ -158,9 +175,10 @@ export const integrationsPart =
 
     const writeBack = async (t: TaskView, text: string) => {
       const cfg = store.setting<{ slack?: boolean; jira?: boolean; notion?: boolean }>("write_back", { slack: true, jira: true, notion: true });
-      const item = t.sourceRef ? intake.items({ limit: 500 }).find((i) => i.sourceId === t.sourceRef && i.source === t.source) : undefined;
+      const ref = t.sourceRef?.split("@")[0];
+      const item = ref ? intake.items({ limit: 500 }).find((i) => (i.sourceId === t.sourceRef || i.sourceId === ref) && i.source === t.source) : undefined;
       if (t.source === "jira" && cfg.jira !== false && connections.ok("jira")) await jira.comment(store, item?.meta.key ?? t.sourceRef!.split("@")[0]!, text);
-      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, t.sourceRef, text, engine.settings().notion.intakeServer);
+      if (t.source === "notion" && t.sourceRef && cfg.notion !== false && connections.ok("notion")) await notion.commentOn(store, ref!, text, engine.settings().notion.intakeServer);
       if (t.source === "slack" && cfg.slack !== false && connections.ok("slack") && item?.meta.channelId) await slack.reply(store, item.meta.channelId, item.meta.threadTs!, text);
     };
 
@@ -243,6 +261,11 @@ export const integrationsPart =
           intakeServer: engine.settings().notion.intakeServer,
           intakeStatus: engine.settings().notion.intakeStatus || "Ready for agent",
         }),
+        "notion.meetings": async (p: { server?: string; on?: boolean }) => {
+          const cur = engine.settings().notion;
+          engine.updateSettings({ notion: { ...cur, ...(p.server !== undefined ? { meetingsServer: p.server || undefined } : {}), ...(p.on !== undefined ? { meetings: p.on } : {}) } });
+          return routines.run("meetings", { manual: true });
+        },
         "notion.publish": async (p: { id: string }) => sync.publishReview(engine.get(p.id)!),
         "review.summary": (p: { id: string }) => sync.summary(p.id),
         "routines.list": () => routines.list(),
