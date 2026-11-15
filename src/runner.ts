@@ -7,7 +7,8 @@ import { connectorReads } from "./connectors.js";
 
 import type { Decision, Engine, TaskView } from "./engine.js";
 import type { PluginFactory } from "./factoryd.js";
-import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, stripBranchCredits } from "./git.js";
+import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "./conventions.js";
+import { baseBranch, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "./git.js";
 import { stripCredits } from "./rules.js";
 import { paths } from "./paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
@@ -165,6 +166,10 @@ export class Runner {
       "",
     ];
     writeFileSync(join(this.jobDir(t.id), "brief.md"), lines.filter((l) => l !== undefined).join("\n"));
+    if (t.worktree && existsSync(t.worktree)) {
+      const base = t.repo ? baseBranch(t.repo) : "main";
+      writeFileSync(join(this.jobDir(t.id), "conventions.md"), conventionsMarkdown(gather(t.worktree), recentBranches(t.worktree, base)));
+    }
   }
 
   private render(template: string, t: TaskView, role: Role, round: number): string {
@@ -294,7 +299,11 @@ export class Runner {
       try {
         const wt = ensureWorktree(t.repo, t.id, t.title);
         t = this.engine.update(t.id, { worktree: wt.path, branch: wt.branch });
-        if (wt.created) this.repoSetup(t);
+        if (wt.created) {
+          const copied = copyLocalAgentFiles(t.repo!, wt.path);
+          if (copied.length) this.store.addEvent(t.id, "local_agent_files", "engine", { copied });
+          this.repoSetup(t);
+        }
       } catch (e) {
         this.store.addEvent(t.id, "worktree_failed", "engine", { error: String(e) });
         this.engine.emit("alert", { taskId: t.id, level: "error", message: `Couldn't create a worktree for ${t.id}: ${e instanceof Error ? e.message : e}` });
@@ -434,24 +443,36 @@ export class Runner {
 
   private preparePullRequest(t: TaskView): { prUrl?: string; prError?: string } {
     if (!t.repo || !t.worktree || !t.branch) return { prError: "no repo" };
+    const worktree = t.worktree;
     const base = baseBranch(t.repo);
-    const rebased = rebaseOnBase(t.worktree, base);
-    stripBranchCredits(t.worktree, base);
+    const rebased = rebaseOnBase(worktree, base);
+    stripBranchCredits(worktree, base);
     const job = this.jobDir(t.id);
+    const draft = existsSync(join(job, "pr.md")) ? parsePrDraft(readFileSync(join(job, "pr.md"), "utf8")) : undefined;
+    let branch = t.branch;
+    if (draft?.branch && draft.branch !== branch && validBranch(draft.branch)) {
+      const r = renameBranch(worktree, branch, draft.branch);
+      if (r.ok) {
+        branch = draft.branch;
+        this.engine.update(t.id, { branch });
+      } else this.store.addEvent(t.id, "branch_rename_failed", "engine", { to: draft.branch, error: r.out });
+    }
     const section = (title: string, file: string, max = 4000) => (existsSync(join(job, file)) ? `## ${title}\n\n${readFileSync(join(job, file), "utf8").slice(0, max)}\n` : "");
-    const body = [
-      `Factory task ${t.id}${t.sourceUrl ? ` from ${t.sourceUrl}` : ""}.`,
-      "",
+    const evidence = [
       section("Confirmed", "confirm.md"),
       section("Statechart", "statechart.md"),
       section("Formal check", "tlc-result.md", 1500),
       section("Review", "review-compiled.md", 3000),
-      `## Diff\n\n\`\`\`\n${diffStat(t.worktree, base)}\n\`\`\`\n`,
-      rebased.ok ? "" : `> The branch couldn't be rebased onto ${base} cleanly; it's based on an older ${base}.\n`,
+      `## Diff\n\n\`\`\`\n${diffStat(worktree, base)}\n\`\`\`\n`,
     ].join("\n");
+    const warning = rebased.ok ? "" : `> The branch couldn't be rebased onto ${base} cleanly; it's based on an older ${base}.\n`;
+    const body = draft?.body
+      ? [draft.body, "", warning, "<details><summary>Factory evidence</summary>", "", evidence, "</details>"].join("\n")
+      : [`Factory task ${t.id}${t.sourceUrl ? ` from ${t.sourceUrl}` : ""}.`, "", evidence, warning].join("\n");
     const bodyFile = join(job, "pr-body.md");
     writeFileSync(bodyFile, stripCredits(body));
-    const pr = openPullRequest(t.worktree, { branch: t.branch, base, title: stripCredits(t.title).trim() || t.id, bodyFile });
+    const title = stripCredits(draft?.title ?? t.title).trim() || t.id;
+    const pr = openPullRequest(worktree, { branch, base, title, bodyFile });
     if (pr.url) this.engine.update(t.id, { prUrl: pr.url });
     return { prUrl: pr.url, prError: pr.error };
   }

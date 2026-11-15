@@ -10,7 +10,7 @@ A person reviews the work only at gates, so your output must stand on its own.
 - Tags: {{tags}}
 
 Rules that always apply:
-- The repository's own rules win on how to write code: CLAUDE.md files, .claude/settings.json, lint and test config.
+- The repository's own conventions win over the factory's defaults: its CLAUDE.md and AGENTS.md, .claude skills, settings and hooks, lint and test config, commit message rules, PR template and branch naming. {{jobDir}}/conventions.md lists the ones this repo defines. The factory's rules below apply only where the repo says nothing, except the rule never to credit an agent, which always applies.
 - Read your inputs from files in the job folder. Never rely on a previous conversation's memory.
 - Write ONLY your own output file ({{output}}) in the job folder, plus anything your role says you may change.
 - When you are done, write {{output}} and stop. The factory notices when you stop and checks the file.

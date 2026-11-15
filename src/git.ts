@@ -70,6 +70,11 @@ export function stripBranchCredits(worktree: string, base: string): { ok: boolea
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
 }
 
+export function renameBranch(worktree: string, from: string, to: string): { ok: boolean; out: string } {
+  if (tryGit(worktree, ["rev-parse", "--verify", `refs/heads/${to}`]).ok) return { ok: false, out: `a branch named ${to} already exists` };
+  return tryGit(worktree, ["branch", "-m", from, to]);
+}
+
 export function openPullRequest(worktree: string, opts: { branch: string; base: string; title: string; bodyFile: string }): { url?: string; error?: string } {
   const push = tryGit(worktree, ["push", "-u", "origin", opts.branch]);
   if (!push.ok) return { error: `git push failed: ${push.out}` };

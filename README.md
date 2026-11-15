@@ -229,6 +229,8 @@ npm run tlc       # model-checks spec/Factory.tla with TLC (needs Java 11+)
 npm run check:rules
 ```
 
-The rules in [CLAUDE.md](CLAUDE.md) apply here and to everything the factory writes in other repos: no agent credit in commits or PRs, and no comments unless they give the next developer context the code can't. Stage sessions run with attribution turned off, and the factory strips any credit lines from a task branch's commits and PR body before it pushes.
+In a target repo, that repo's conventions win. Stage sessions run inside its worktree, so its CLAUDE.md, `.claude` skills, settings and hooks load as usual, and its git hooks run on every commit and push. Its gitignored `.claude/settings.local.json` and `CLAUDE.local.md` are copied into the worktree. At start the factory writes `conventions.md` to the job folder: PR templates, CONTRIBUTING, commitlint and commitizen config, commit-msg hooks, branch-name rules and recent branch names. The builder writes `pr.md` from it, with the branch, title and body in the repo's style. The factory renames the branch to match before pushing, and opens the PR with that title and body. The factory's defaults apply only where the repo defines nothing.
+
+The rules in [CLAUDE.md](CLAUDE.md) apply here, and the no-credit rule applies to everything the factory writes in other repos: no agent credit in commits or PRs, and no comments unless they give the next developer context the code can't. Stage sessions run with attribution turned off, and the factory strips any credit lines from a task branch's commits and PR body before it pushes.
 
 Factory files live in `~/.factory` (or `$FACTORY_HOME`), never inside a repo.
