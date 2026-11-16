@@ -12,6 +12,20 @@ const loadMermaid = () =>
 
 let seq = 0;
 
+const LABELLED = /^(\s*(?:note\s+(?:left|right)\s+of\s+\S+|\S+\s*-->\s*\S+))\s*:\s*(.*)$/;
+
+/** Agents write labels and notes in prose; mermaid ends a state label at a second colon or a semicolon. */
+export function mendStatechart(src: string): string {
+  if (!/^\s*stateDiagram/m.test(src)) return src;
+  return src
+    .split("\n")
+    .map((line) => {
+      const m = line.match(LABELLED);
+      return m ? `${m[1]} : ${m[2]!.replace(/\s*:\s*/g, " - ").replace(/;/g, ",")}` : line;
+    })
+    .join("\n");
+}
+
 /** Agent-written markdown, sanitised; mermaid blocks are drawn, and links open in the browser instead of replacing the app. */
 export function Markdown({ text, class: cls = "" }: { text: string; class?: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -27,7 +41,8 @@ export function Markdown({ text, class: cls = "" }: { text: string; class?: stri
         if (gone) return;
         const pre = code.parentElement!;
         try {
-          const { svg } = await m.render(`mmd-${++seq}`, code.textContent ?? "");
+          const src = code.textContent ?? "";
+          const { svg } = await m.render(`mmd-${++seq}`, src).catch(() => m.render(`mmd-${++seq}`, mendStatechart(src)));
           const fig = document.createElement("div");
           fig.className = "mermaid-fig";
           fig.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ["foreignObject"] });
