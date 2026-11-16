@@ -102,12 +102,13 @@ export function extend(commands: Record<string, Command>) {
       },
     },
     hook: {
-      usage: "hook stop|permission|question",
+      usage: "hook stop|permission|question|statusline",
       help: "Claude Code hooks call these; they read the hook's JSON on stdin",
       async run(args: string[]) {
         const input = JSON.parse((await readStdin()) || "{}") as Record<string, unknown>;
         try {
           if (args[0] === "stop") await call("hook.stop", input);
+          else if (args[0] === "statusline") out(`factory · ${await call<string>("hook.statusline", input)}`);
           else if (args[0] === "question") {
             const d = await call<{ deny?: string }>("hook.question", input);
             if (d.deny) out(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: d.deny } }));

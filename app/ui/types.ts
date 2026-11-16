@@ -208,7 +208,7 @@ export interface Settings {
 
 export interface Status {
   paused: boolean;
-  guard: { blocked?: boolean; reason?: string; share?: number; weekly?: number };
+  guard: { blocked?: boolean; reason?: string; share?: number; weekly?: number; basis?: "claude" | "unknown"; asOf?: string; windowEndsAt?: string };
   slots: number;
   busy: number;
 }

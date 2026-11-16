@@ -8,7 +8,7 @@ import { shared } from "../integrations/integrations.js";
 import { paths } from "../shared/paths.js";
 import { install as installSkills, status as skillStatus } from "../skills/skills.js";
 import { type Row, now, parseJson } from "../workflow/store.js";
-import { guard } from "../claude/usage.js";
+import { guard, recordLimits } from "../claude/usage.js";
 
 export interface Retro {
   taskId: string;
@@ -148,10 +148,7 @@ ${retros.map(retroMarkdown).join("\n---\n\n")}`;
       },
       "skills.install": (p: { update?: boolean }) => installSkills(savedSkills(), { update: !!p.update }),
       "usage.get": () => store.setting("usage_guard", {}),
-      "usage.limits": (p: { window5h?: number; weekly?: number }) => {
-        store.setSetting("usage_limits", { window5h: p.window5h || undefined, weekly: p.weekly || undefined });
-        return guard(engine, store);
-      },
+      "hook.statusline": (p: Parameters<typeof recordLimits>[2]) => recordLimits(engine, store, p ?? {}),
       "retro.list": (p: { limit?: number }) => (store.db.prepare("SELECT data FROM retros ORDER BY at DESC LIMIT ?").all(p.limit ?? 50) as Row[]).map((r) => parseJson<Retro>(r.data, {} as Retro)),
       "improve.run": () => improve(),
     },

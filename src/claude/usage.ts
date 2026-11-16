@@ -11,7 +11,6 @@ interface Entry {
 }
 
 const HOUR = 3_600_000;
-const WINDOW = 5 * HOUR;
 const cache = new Map<string, { size: number; mtime: number; entries: Entry[] }>();
 
 export const claudeDir = () => process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
@@ -61,53 +60,70 @@ export function readUsage(days = 14, dir = claudeDir()): Entry[] {
   return out.sort((a, b) => a.at - b.at);
 }
 
-export function blocks(entries: Entry[]): { start: number; tokens: number }[] {
-  const out: { start: number; tokens: number }[] = [];
-  for (const e of entries) {
-    const last = out[out.length - 1];
-    if (last && e.at < last.start + WINDOW) last.tokens += e.tokens;
-    else out.push({ start: Math.floor(e.at / HOUR) * HOUR, tokens: e.tokens });
-  }
-  return out;
+interface Window {
+  pct: number;
+  resetsAt: number;
+}
+
+export interface PlanLimits {
+  fiveHour?: Window;
+  sevenDay?: Window;
+  at: number;
 }
 
 export interface UsageReading {
-  share: number;
+  share?: number;
   weekly?: number;
-  used: number;
-  limit: number;
-  basis: "set" | "estimated";
+  basis: "claude" | "unknown";
+  asOf?: string;
   windowEndsAt?: string;
+  weekEndsAt?: string;
   blocked: boolean;
   reason?: string;
 }
 
-export function reading(entries: Entry[], opts: { ceiling: number; limit5h?: number; limitWeek?: number; now?: number }): UsageReading {
+const limitWindow = (w: unknown): Window | undefined => {
+  const x = w as { used_percentage?: unknown; resets_at?: unknown } | undefined;
+  return typeof x?.used_percentage === "number" && typeof x.resets_at === "number" ? { pct: x.used_percentage, resetsAt: x.resets_at * 1000 } : undefined;
+};
+
+/** Claude Code's status line input carries the plan's real limits for Pro and Max; the factory's own sessions pass them on. */
+export function parseLimits(input: { rate_limits?: { five_hour?: unknown; seven_day?: unknown } }, now = Date.now()): PlanLimits | undefined {
+  const fiveHour = limitWindow(input.rate_limits?.five_hour);
+  const sevenDay = limitWindow(input.rate_limits?.seven_day);
+  return fiveHour || sevenDay ? { fiveHour, sevenDay, at: now } : undefined;
+}
+
+const clock = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+
+export function reading(limits: PlanLimits | undefined, opts: { ceiling: number; now?: number }): UsageReading {
   const now = opts.now ?? Date.now();
-  const bs = blocks(entries);
-  const current = bs.length && now < bs[bs.length - 1]!.start + WINDOW ? bs[bs.length - 1]! : undefined;
-  const used = current?.tokens ?? 0;
-  const busiest = Math.max(0, ...bs.map((b) => b.tokens));
-  const limit = opts.limit5h ?? Math.max(busiest, 1);
-  const share = opts.limit5h || busiest > 0 ? Math.min(used / limit, 1.5) : 0;
-  const week = entries.filter((e) => e.at > now - 7 * 24 * HOUR).reduce((a, e) => a + e.tokens, 0);
-  const blocked = !!current && share >= opts.ceiling;
+  const live = (w?: Window) => (w && w.resetsAt > now ? w : undefined);
+  const five = live(limits?.fiveHour);
+  const week = live(limits?.sevenDay);
+  const share = five ? five.pct / 100 : undefined;
+  const weekly = week ? week.pct / 100 : undefined;
+  const fiveBlocked = share !== undefined && share >= opts.ceiling;
+  const weekBlocked = weekly !== undefined && weekly >= opts.ceiling;
+  const blocked = fiveBlocked || weekBlocked;
   return {
     share,
-    weekly: opts.limitWeek ? week / opts.limitWeek : undefined,
-    used,
-    limit,
-    basis: opts.limit5h ? "set" : "estimated",
-    windowEndsAt: current ? new Date(current.start + WINDOW).toISOString() : undefined,
+    weekly,
+    basis: five || week ? "claude" : "unknown",
+    asOf: five || week ? new Date(limits!.at).toISOString() : undefined,
+    windowEndsAt: five ? new Date(five.resetsAt).toISOString() : undefined,
+    weekEndsAt: week ? new Date(week.resetsAt).toISOString() : undefined,
     blocked,
-    reason: blocked ? `plan usage at ${Math.round(share * 100)}% of the 5h window; resumes ${new Date(current!.start + WINDOW).toTimeString().slice(0, 5)}` : undefined,
+    reason: fiveBlocked
+      ? `plan usage at ${Math.round(share! * 100)}% of the 5-hour limit; resumes ${clock(five!.resetsAt)}`
+      : weekBlocked
+        ? `plan usage at ${Math.round(weekly! * 100)}% of the weekly limit; resumes ${new Date(week!.resetsAt).toDateString().slice(0, 10)} ${clock(week!.resetsAt)}`
+        : undefined,
   };
 }
 
-export function guard(engine: Engine, store: Store): string {
-  const entries = readUsage();
-  const limits = store.setting<{ window5h?: number; weekly?: number }>("usage_limits", {});
-  const r = reading(entries, { ceiling: engine.settings().usageCeiling, limit5h: limits.window5h, limitWeek: limits.weekly });
+export function assess(engine: Engine, store: Store): UsageReading {
+  const r = reading(store.setting<PlanLimits | undefined>("plan_limits", undefined), { ceiling: engine.settings().usageCeiling });
   const before = store.setting<{ blocked?: boolean }>("usage_guard", {});
   store.setSetting("usage_guard", r);
   if (r.blocked !== !!before.blocked) {
@@ -116,7 +132,25 @@ export function guard(engine: Engine, store: Store): string {
       message: r.blocked ? `Queue paused: ${r.reason}. Running stages finish.` : "Plan usage is back under the ceiling; the queue is running again.",
     });
   }
+  return r;
+}
 
+export function recordLimits(engine: Engine, store: Store, input: Parameters<typeof parseLimits>[0]): string {
+  const limits = parseLimits(input);
+  if (limits) store.setSetting("plan_limits", limits);
+  const r = assess(engine, store);
+  return describe(r);
+}
+
+export function describe(r: UsageReading): string {
+  if (r.basis === "unknown") return "plan usage unknown";
+  const parts = [r.share !== undefined ? `5h ${Math.round(r.share * 100)}%` : "", r.weekly !== undefined ? `week ${Math.round(r.weekly * 100)}%` : ""].filter(Boolean);
+  return `${parts.join(" · ")}${r.blocked ? " · queue paused" : ""}`;
+}
+
+export function guard(engine: Engine, store: Store): string {
+  const r = assess(engine, store);
+  const entries = readUsage();
   const stages = store.db.prepare("SELECT id, task_id, session_id, tokens FROM stages").all() as { id: string; task_id: string; session_id: string; tokens: number }[];
   const bySession = new Map<string, number>();
   for (const e of entries) bySession.set(e.session, (bySession.get(e.session) ?? 0) + e.tokens);
@@ -126,5 +160,5 @@ export function guard(engine: Engine, store: Store): string {
     store.db.prepare("UPDATE stages SET tokens = ? WHERE id = ?").run(t, s.id);
     store.addTokens(s.task_id, t - s.tokens);
   }
-  return `${Math.round(r.share * 100)}% of the 5h window (${r.basis})${r.blocked ? " · queue paused" : ""}`;
+  return describe(r);
 }
