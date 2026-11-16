@@ -78,6 +78,23 @@ export const matches = (rule: TriageRule, i: Pick<IntakeItem, "source" | "channe
   (!rule.match.author || rule.match.author === i.author) &&
   (!rule.match.textIncludes || i.text.toLowerCase().includes(rule.match.textIncludes.toLowerCase()));
 
+const RECIPE_WORDS: [RegExp, Recipe][] = [
+  [/^(research|spike|investigation|investigate|discovery|question|analysis|explore)$/, "research"],
+  [/^(bug|bugfix|fix|defect|incident)$/, "bugfix"],
+  [/^(feature|story|enhancement|improvement|task|change)$/, "feature"],
+  [/^(review|code review)$/, "review"],
+];
+const RESEARCH_TITLE = /^(research|investigate|spike|explore|evaluate|compare|assess|find out|look into)\b/i;
+
+export function recipeFrom(title: string, text: string): Recipe | undefined {
+  const prop = text
+    .match(/^\s*(?:type|kind|recipe|category|issue type|work type)\s*:\s*(.+)$/im)?.[1]
+    ?.trim()
+    .toLowerCase();
+  if (prop) for (const [re, r] of RECIPE_WORDS) if (re.test(prop)) return r;
+  return RESEARCH_TITLE.test(title.trim()) ? "research" : undefined;
+}
+
 const URGENT_WORDS = /\b(outage|down|sev ?[01]|incident|p0|urgent|asap|prod(uction)? (is )?broken|data loss)\b/i;
 
 export class Intake {
@@ -208,7 +225,7 @@ export class Intake {
       });
       if (!item) continue;
       this.moveItem(item.id, { type: "pick" });
-      await this.apply(item.id, { action: "task", why: `you moved it to ${board.status} on ${boardLabel(board)}`, title: card.title });
+      await this.apply(item.id, { action: "task", why: `you moved it to ${board.status} on ${boardLabel(board)}`, title: card.title, recipe: recipeFrom(card.title, text) });
       added++;
     }
     return { added, found: cards.length };

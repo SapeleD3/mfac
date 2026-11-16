@@ -185,6 +185,14 @@ export const commands: Record<string, Command> = {
     help: "Stop a running stage; the task goes to Needs you",
     run: async (a, f) => moveResult(await call("task.interrupt", { id: need(a[0]), note: str(f.note) })),
   },
+  recipe: {
+    usage: "recipe ID feature|bugfix|research|review|harden",
+    help: "Change what a task is for. research ends it at the research gate, with no plan, build or PR",
+    async run(args) {
+      const t = await call<TaskView>("task.recipe", { id: need(args[0]), recipe: need(args[1]) });
+      out(`${t.id} is now ${t.recipe}${t.machine.state === "NeedsYou" ? `. Send it back to research with: factory send-back ${t.id} --note "..."` : ""}`);
+    },
+  },
   tag: {
     usage: "tag ID +learn -urgent ...",
     help: "Add (+) or remove (-) tags: learn, urgent, ui, sensitive, harden",

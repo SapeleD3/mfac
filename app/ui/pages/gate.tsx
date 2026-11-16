@@ -48,7 +48,7 @@ export function Gate({ id }: { id: string }) {
   return <DocGate t={t} />;
 }
 
-function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.ComponentChildren }) {
+function Decide({ t, note, extra, empty, mixed }: { t: Task; note: string; extra?: preact.ComponentChildren; empty?: boolean; mixed?: boolean }) {
   const s = t.machine.state as "ResearchGate" | "PlanGate" | "PRGate";
   const capped = s !== "ResearchGate";
   const used = t.machine.tries[s];
@@ -57,6 +57,8 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
   const [choice, setChoice] = useState<"approve" | "back" | "drop">(targets.length ? "back" : "approve");
   const [to, setTo] = useState(targets[0]);
   const next = s === "ResearchGate" ? "Plan" : s === "PlanGate" ? "Build" : "Done";
+  const ends = s === "ResearchGate" && t.machine.kind === "research";
+  const blocked = choice === "back" && empty;
   const decide = async () => {
     const verdict = choice === "back" ? "send_back" : choice;
     const r = await act<{ ok: boolean }>("task.decide", { id: t.id, verdict, to: choice === "back" ? to : undefined, note }, ["tasks"]);
@@ -87,7 +89,11 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
       {c(
         "approve",
         s === "PRGate" ? "Approve" : "Approve",
-        s === "PRGate" ? "Done. The PR stays open for your usual merge; the source gets the link." : `Moves to ${next}. Open Notion comments are kept as notes for later stages.`,
+        s === "PRGate"
+          ? "Done. The PR stays open for your usual merge; the source gets the link."
+          : ends
+            ? "Ends the task. It's research only: no plan, build or PR."
+            : `Moves to ${next}. Open Notion comments are kept as notes for later stages.`,
       )}
       {c(
         "back",
@@ -110,8 +116,10 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
       )}
       {c("drop", "Drop", `Ends the task${t.source === "slack" || t.source === "jira" ? ` and leaves a note on ${t.source}` : ""}.`)}
       {extra}
+      {blocked && <div class="small warn-text">There are no comments on the Notion page yet. Comment there or say above what needs work, so the next round has something to act on.</div>}
+      {choice === "approve" && mixed && <div class="small warn-text">You marked it as not solid. Approving moves it on anyway.</div>}
       <div class="row" style={{ marginTop: 8 }}>
-        <Btn kind="btn-primary" onClick={decide}>
+        <Btn kind="btn-primary" disabled={blocked} onClick={decide}>
           {choice === "approve" ? "Approve" : choice === "drop" ? "Drop task" : !capped || to === "Researching" ? "Send back" : `Send back · ${left - 1} left after this`}
         </Btn>
         <span class="grow" />
@@ -130,12 +138,12 @@ function DocGate({ t }: { t: Task }) {
     setPublishing(false);
     sum.reload();
   };
-  const [verdict, setVerdict] = useState<"solid" | "work" | "off">("work");
+  const [verdict, setVerdict] = useState<"solid" | "work" | "off" | undefined>(undefined);
   const [text, setText] = useState("");
   const isPlan = t.machine.state === "PlanGate";
   const s = sum.data;
   const round = t.machine.tries[t.machine.state as "ResearchGate"] + 1;
-  const note = [`Overall: ${verdict === "solid" ? "solid" : verdict === "work" ? "needs work" : "off track"}.`, text.trim()].filter(Boolean).join(" ");
+  const note = [verdict ? `Overall: ${verdict === "solid" ? "solid" : verdict === "work" ? "needs work" : "off track"}.` : "", text.trim()].filter(Boolean).join(" ");
   return (
     <div class="pane-body gate-body">
       <div class="notion-route">
@@ -246,7 +254,7 @@ function DocGate({ t }: { t: Task }) {
             </div>
             <textarea class="in" rows={3} placeholder="How does the document hold up as a whole?" value={text} onInput={(e) => setText(e.currentTarget.value)} />
           </div>
-          <Decide t={t} note={note} />
+          <Decide t={t} note={note} empty={!!s && s.comments === 0 && !text.trim()} mixed={verdict === "work" || verdict === "off"} />
           <div class="decide-sec">
             <div class="harden-note">
               <b>Corrections become checks.</b> After a send-back the coordinator asks whether a lint rule, type or test could have caught it, and queues a <span class="tag harden">harden</span> task

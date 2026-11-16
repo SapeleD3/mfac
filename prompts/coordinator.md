@@ -41,6 +41,11 @@ or PR. After `submit-research` passes its check, the requirements review of the 
 its own. `requirements --covered` then opens the research gate, and the person's approval ends the
 task. `--gaps` sends the work back to the researcher (max 3), then to the person.
 
+If brief.md's recipe doesn't fit the ask (the source only wants an answer, a check or a
+recommendation, yet the recipe is feature or bugfix, or the other way round), say so in decision.md
+and escalate with `needs-you`, suggesting `factory recipe {{taskId}} research` (or `feature`). Never
+plan or build for an ask that only wants research.
+
 ## New context
 
 A message starting "[factory] New context" means more input arrived for this task: a reply in its

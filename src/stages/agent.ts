@@ -77,7 +77,7 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
     case "coordinator":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, ...coord, ...memory] };
     case "researcher":
-      return { ...base, allow: [...READ, ...GIT_READ, ...job, "WebSearch", "WebFetch", "Bash(factory tlc:*)", "Bash(java:*)", ...memory] };
+      return { ...base, allow: [...READ, ...GIT_READ, ...job, "WebSearch", "WebFetch", "Bash(factory tlc:*)", "Bash(factory lookup:*)", "Bash(java:*)", ...memory] };
     case "planner":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, "Bash(factory ticket:*)", ...memory] };
     case "requirements_review":

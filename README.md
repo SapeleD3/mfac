@@ -201,7 +201,14 @@ A **research task** (recipe `research`: triage picks it when the ask wants an an
 recommendation rather than a change; or `factory add --recipe research`, or "Research only" in the New task
 window) runs only the research part: research with its statechart and TLC check, the requirements review
 of the research, then the research gate in Notion. Approving it ends the task; there is no plan, branch or
-PR, and the repo is read in place.
+PR, and the repo is read in place. A Notion card's Type property (Research, Spike, Bug, Feature and the
+like) sets the recipe with no model call, and so does a title that starts with "Research", "Investigate"
+and similar. To change it later, use `factory recipe ID research` or "Research only?" on the task page;
+it works until planning starts, or while the task waits in Needs you.
+
+Research can run `factory lookup apps NAME` (App Store and Google Play listings with that name) and
+`factory lookup domains NAME` (which domains are registered, from RDAP). Each answers in a few lines
+instead of whole pages.
 
 ## Where work comes from
 

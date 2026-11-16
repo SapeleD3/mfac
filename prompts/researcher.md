@@ -47,10 +47,12 @@ Typical checks by kind of ask, when they apply:
 - A name: is it taken on the app stores the product ships to (Apple App Store, Google Play, and any
   extension or package registry it lives in); which domains are free (.com and the likely ones such
   as .app, .dev, .io); are there products that do the same core job under that or a similar name;
-  any live trademark in the same class of goods. Cheap lookups: Apple's
-  `https://itunes.apple.com/search?entity=software&term=<name>` (add `&country=gb` and so on for
-  other stores), Google Play's `https://play.google.com/store/search?c=apps&q=<name>`, and RDAP
-  for domains, `https://rdap.org/domain/<name>.<tld>` (not found means unregistered).
+  any live trademark in the same class of goods. Use `factory lookup apps <name>` (add
+  `--country us,gb` for other stores) and `factory lookup domains <name>` (add `--tld com,app,...`):
+  each answers in a few lines, far cheaper than fetching pages. Use WebSearch for products doing the
+  same job. Trademark registers (USPTO, EUIPO, UK IPO, WIPO) are web apps you can't query from
+  here: don't fight them. Give the person the exact search to run, with its link, under Still
+  unknown.
 - A tool or library choice: does it run on our stack, what it costs, is it maintained, what the repo
   already uses.
 - A bug: reproduce it, then find the line.
