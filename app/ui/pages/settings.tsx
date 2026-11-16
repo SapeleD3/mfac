@@ -111,7 +111,7 @@ export function SettingsPage() {
                         </button>
                       ))}
                     </div>{" "}
-                    <span class="xs faint">of the 5h window</span>
+                    <span class="xs faint">of the 5-hour or weekly limit</span>
                   </td>
                 </tr>
                 <tr>

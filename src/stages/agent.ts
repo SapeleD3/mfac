@@ -118,6 +118,7 @@ export function stageSettings(role: Role, jobDir: string, reads: string[] = [], 
     permissions: permissionsFor(role, jobDir, reads, checks),
     includeCoAuthoredBy: false,
     attribution: { commit: "", pr: "" },
+    statusLine: { type: "command", command: `${f} hook statusline` },
     hooks: {
       Stop: [{ hooks: [{ type: "command", command: `${f} hook stop` }] }],
       PermissionRequest: [{ matcher: "*", hooks: [{ type: "command", command: `${f} hook permission`, timeout: 900 }] }],

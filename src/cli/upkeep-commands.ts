@@ -121,18 +121,15 @@ export const upkeepCommands: Record<string, Command> = {
     },
   },
   usage: {
-    usage: "usage [--limit-5h TOKENS] [--limit-week TOKENS]",
-    help: "Plan usage the guard sees, from Claude Code's own logs; set your plan's limits if you know them",
-    async run(_args, flags) {
-      const l5 = str(flags["limit-5h"]);
-      const lw = str(flags["limit-week"]);
-      if (l5 || lw) out(await call<string>("usage.limits", { window5h: l5 ? Number(l5) : undefined, weekly: lw ? Number(lw) : undefined }));
-      const u = await call<{ share?: number; used?: number; limit?: number; basis?: string; blocked?: boolean; reason?: string; windowEndsAt?: string }>("usage.get");
-      if (u.share === undefined) return out("No reading yet; the usage guard runs every 2 minutes.");
-      out(
-        `5h window: ${Math.round(u.share * 100)}% (${(u.used ?? 0).toLocaleString()} of ${(u.limit ?? 0).toLocaleString()} tokens, limit ${u.basis})${u.windowEndsAt ? ` · window ends ${u.windowEndsAt.slice(11, 16)}` : ""}`,
-      );
-      out(u.blocked ? `Queue paused: ${u.reason}` : "Queue running.");
+    usage: "usage",
+    help: "Plan usage the guard sees: Claude's own 5-hour and weekly limits, as the factory's sessions last reported them",
+    async run() {
+      const u = await call<{ share?: number; weekly?: number; basis?: string; asOf?: string; windowEndsAt?: string; weekEndsAt?: string; blocked?: boolean; reason?: string }>("usage.get");
+      if (u.basis !== "claude") return out("Plan usage unknown: no factory session has reported Claude's limits since they last reset. The queue isn't held for usage while it's unknown.");
+      const at = (iso?: string) => (iso ? new Date(iso).toTimeString().slice(0, 5) : "");
+      if (u.share !== undefined) out(`5-hour limit: ${Math.round(u.share * 100)}%, resets ${at(u.windowEndsAt)}`);
+      if (u.weekly !== undefined) out(`Weekly limit: ${Math.round(u.weekly * 100)}%, resets ${u.weekEndsAt ? new Date(u.weekEndsAt).toDateString().slice(0, 10) : ""}`);
+      out(`As of ${at(u.asOf)}. ${u.blocked ? `Queue paused: ${u.reason}` : "Queue running."}`);
     },
   },
   retro: {

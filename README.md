@@ -89,9 +89,11 @@ install replaces the factory's old copy. `factory skills` lists them,
 
 - `factory doctor` checks tools, Claude Code (and warns if `ANTHROPIC_API_KEY` would bill the API), the
   engine, the login agent, tmux, TLC, connections, skills and the app. It also runs daily.
-- **Usage guard**: reads Claude Code's own usage logs every two minutes and holds new stages when the
-  factory's share of the current 5-hour window passes the ceiling in Settings. Set limits with
-  `factory usage --limit-5h N --limit-week N`, or let it estimate from your busiest window in 14 days.
+- **Usage guard**: holds new stages when Claude's own 5-hour or weekly plan limit passes the ceiling in
+  Settings. The numbers are the ones Claude shows you: every factory session hands Claude Code's status-line
+  `rate_limits` to the engine. Until a session has reported them since the last reset, usage shows as
+  unknown and the queue isn't held for it. `factory usage` prints the reading. Token counts per task still
+  come from Claude Code's local logs.
 - **Retros**: every task that ends writes `retro.md` (send-backs at each gate, review loops, tokens, minutes, times it needed you).
   `factory retro` lists them. Weekly, once there are at least 3 new retros, the improve-factory routine
   opens a task against this repo proposing changes to prompts, rules and skills, gated like any other.

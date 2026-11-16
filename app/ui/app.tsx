@@ -145,9 +145,16 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
       {link("routines", "calendar-clock", "Routines", failing || undefined, "red")}
       {link("improve", "sparkles", "Rules and learning", app.rules.filter((r) => r.status === "proposed").length || undefined, "amber")}
       {link("settings", "settings", "Settings")}
-      <div class="usage" title={share !== undefined ? `Plan usage: ${share}% of the 5h window. Queue pauses at ${ceiling}%.` : "Plan usage isn't measured yet"}>
+      <div
+        class="usage"
+        title={
+          g?.basis === "claude"
+            ? `Claude's own plan limits, as of ${g.asOf ? new Date(g.asOf).toTimeString().slice(0, 5) : "?"}${g.windowEndsAt ? `; the 5-hour limit resets ${new Date(g.windowEndsAt).toTimeString().slice(0, 5)}` : ""}. Queue pauses at ${ceiling}%.`
+            : "Unknown until one of the factory's sessions reports Claude's limits. The queue isn't held for usage meanwhile."
+        }
+      >
         <div class="row lbl">
-          <span>Plan usage, 5h window</span>
+          <span>Plan usage, 5-hour limit</span>
           <span class="grow" />
           <b>{share !== undefined ? `${share}%` : "–"}</b>
         </div>
@@ -157,7 +164,7 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
         {weekly !== undefined && (
           <>
             <div class="row lbl">
-              <span>Weekly</span>
+              <span>Weekly limit</span>
               <span class="grow" />
               <b>{weekly}%</b>
             </div>
