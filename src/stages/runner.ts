@@ -111,6 +111,8 @@ export class Runner {
   private timer?: NodeJS.Timeout;
   private waiters = new Map<string, (p: Prompt) => void>();
   private held = new Map<string, string[]>();
+  /** A Claude session keeps the folder it started in, so a moved task gets a fresh coordinator rather than a resumed one. */
+  private moved = new Set<string>();
   private ticking = false;
 
   constructor(
@@ -278,7 +280,12 @@ export class Runner {
     }
     const c = this.coordinator(taskId);
     const text = `[factory] ${message}`;
-    if (c && this.tmux.isAlive(c.id)) {
+    if (this.moved.delete(taskId)) {
+      if (c && this.tmux.isAlive(c.id)) this.finishStage(c, "stopped");
+      this.launch(t, "coordinator", {
+        prompt: `[factory] ${t.id} moved to ${t.worktree}, so you're a fresh coordinator there. Read ${this.jobDir(t.id)}/brief.md and decision.md first. ${message}`,
+      });
+    } else if (c && this.tmux.isAlive(c.id)) {
       this.tmux.paste(c.id, text);
       if (c.status !== "running") this.setStage(c.id, { status: "running" });
     } else if (c) this.launch(t, "coordinator", { prompt: text, resume: c });
@@ -360,7 +367,7 @@ export class Runner {
     if (!t) throw new Error(`no task ${taskId}`);
     const folder = path.trim().replace(/\/+$/, "");
     if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) throw new Error(`${path} isn't a folder on this Mac`);
-    const same = t.repo === folder && t.worktree === folder;
+    const same = t.repo === folder;
     if (same && !AT_GATE.includes(t.machine.state)) return `${t.id} already works in ${folder}.`;
     if (BUILT.includes(t.machine.state)) throw new Error(`${t.id} is already ${t.machine.state} in ${t.repo}; drop it and add a new task for ${folder}`);
     const started = !!t.worktree;
@@ -379,6 +386,9 @@ export class Runner {
     if (!homed) throw new Error(`moved ${t.id} to ${folder}, but couldn't make its worktree; see the alert`);
     v = homed;
     await this.writeBrief(v);
+    this.moved.add(t.id);
+    const c = this.coordinator(t.id);
+    if (by === "human" && c?.status === "running") this.finishStage(c, "stopped");
     const state = v.machine.state;
     const backToResearch = AT_GATE.includes(state);
     const aside = backToResearch || state === "Researching" ? this.setAside(t.id) : undefined;
@@ -396,7 +406,7 @@ export class Runner {
       this.wake(t.id, `The person moved this task to ${folder}${why ? ` (${why})` : ""}. ${fresh} Anything found in ${t.repo} may be about the wrong code: rerun the current stage from the start.`);
       return fresh;
     }
-    return `${fresh} Rerun the current stage from the start; anything found in ${t.repo} may be about the wrong code.`;
+    return `${fresh} Your own session still runs in the old folder, so stop now: the factory starts a fresh coordinator there to rerun the current stage.`;
   }
 
   /** Research written about the wrong code would be read as evidence by the next round, so it's kept aside rather than deleted. */
@@ -651,6 +661,10 @@ export class Runner {
     const t = this.engine.get(s.taskId);
     if (!t) return { ok: true };
     if (s.role === "coordinator") {
+      if (this.moved.has(t.id)) {
+        this.wake(t.id, "Rerun the current stage from the start; anything found in the old folder may be about the wrong code.");
+        return { ok: true };
+      }
       if (!RUNNING.includes(t.machine.state) || this.running(t.id).length || t.takenOver) return { ok: true };
       if (s.nudges >= 2) {
         this.engine.move(t.id, { type: "interrupt" }, "engine", { note: "The coordinator stopped twice with nothing running." });

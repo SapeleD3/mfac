@@ -33,7 +33,7 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
     let stop = false;
     const poll = async () => {
       try {
-        const r = await call<{ live: boolean; screen: string }>("session.capture", { stage: pick, lines: 400, escapes: true });
+        const r = await call<{ live: boolean; screen: string }>("session.capture", { stage: pick, lines: 2000, escapes: true });
         if (stop) return;
         const atBottom = !pre.current || pre.current.scrollHeight - pre.current.scrollTop - pre.current.clientHeight < 40;
         setScreen(r.screen);
@@ -55,7 +55,7 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
   };
 
   return (
-    <div class="pane-body" style={{ display: "flex" }}>
+    <div class="pane-body session-body" style={{ display: "flex" }}>
       <div class="live" style={{ flex: 1, minHeight: 0 }}>
         <aside class="live-side">
           <a class="ls back" href={`#task/${id}`} title="Esc">

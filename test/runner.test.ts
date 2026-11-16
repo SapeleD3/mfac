@@ -250,12 +250,16 @@ test("a task in the wrong folder moves before anything is built, and its stages 
   assert.ok(alive.has(`${t.id}-researcher-1`));
   await assert.rejects(coord(t.id, "move-repo", { to: join(other, "missing") }), /isn't a folder/);
   const said = await coord(t.id, "move-repo", { to: other, why: "the card names sapele-app" });
-  assert.match(said, /now works in .*Rerun the current stage/s);
+  assert.match(said, /now works in .*stop now.*fresh coordinator/s);
   assert.ok(!alive.has(`${t.id}-researcher-1`), "the stage reading the wrong folder is stopped");
   const moved = (await c<{ task: TaskView; events: { kind: string }[] }>("task.get", { id: t.id })).task;
   assert.equal(moved.repo, other);
   assert.equal(moved.worktree, other);
   assert.equal(moved.machine.state, "Researching", "the task keeps its place in the loop");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-coordinator-1`) });
+  assert.ok(!alive.has(`${t.id}-coordinator-1`), "the old coordinator, still in the old folder, is ended");
+  const fresh = started.find((x) => x.id === `${t.id}-coordinator-2`)!;
+  assert.equal(fresh.cwd, other, "a fresh coordinator starts in the new folder");
   await coord(t.id, "run", { role: "researcher" });
   assert.equal(started.at(-1)!.cwd, other, "the next stage runs in the new folder");
   const queued = await c<TaskView>("task.add", { title: "Not started yet", repo, backlog: true });
@@ -293,6 +297,9 @@ test("moving a task that's waiting at the research gate sets the old research as
   assert.ok(existsSync(join(job(t.id), ".factory", aside, "research.md")), "kept, not deleted");
   assert.ok(got.events.some((e) => e.kind === "restarted_research"));
   assert.match(await c<string>("task.rehome", { id: t.id, path: other }), /already works/, "once research is running again, the same folder is a no-op");
-  assert.ok(pasted.length > pastes || started.some((s) => s.id.startsWith(`${t.id}-coordinator`) && s.cwd === other), "the coordinator is told to research again");
+  const fresh = started.filter((s) => s.id.startsWith(`${t.id}-coordinator`)).at(-1)!;
+  assert.equal(fresh.cwd, other, "a fresh coordinator researches again from the new folder");
+  assert.ok(!alive.has(`${t.id}-coordinator-1`));
+  assert.equal(pasted.length, pastes, "nothing is pasted into the old session");
   rmSync(other, { recursive: true, force: true });
 });
