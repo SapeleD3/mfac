@@ -123,6 +123,9 @@ the registered repo it names, else to a folder it names inside the board's folde
 else to the board's folder itself, and only then to the default. If a task turns out to be in the wrong
 place, `factory set-repo F-001 PATH` (or "Wrong folder?" on the task) moves it before anything is built,
 and its coordinator does the same with `factory coord move-repo` when a stage spots the mismatch.
+Claude Code asks whether to trust each folder it hasn't seen, and every new worktree is one; the factory
+answers yes for the task's own folder or worktree only. A session left waiting on any other prompt for 90
+seconds is raised as an alert, so it doesn't hang quietly.
 
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),

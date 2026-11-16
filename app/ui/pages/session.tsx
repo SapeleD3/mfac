@@ -48,6 +48,7 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
     return () => void (stop = true);
   }, [pick, taken]);
 
+  const press = (key: string) => pick && act("session.keys", { stage: pick, keys: [key] });
   const send = async () => {
     if (!text.trim() || !pick) return;
     const r = await act("session.send", { stage: pick, text });
@@ -111,7 +112,17 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
               </span>
             )}
           </div>
-          <pre class="tui" ref={pre} dangerouslySetInnerHTML={{ __html: ansiToHtml(screen) || '<span class="d">Nothing on screen yet.</span>' }} />
+          <pre
+            class="tui"
+            ref={pre}
+            dangerouslySetInnerHTML={{
+              __html:
+                ansiToHtml(screen) ||
+                (live
+                  ? '<span class="d">Nothing on screen yet.</span>'
+                  : '<span class="d">This session has ended and left no screen. The newest session for this task is in the list on the left.</span>'),
+            }}
+          />
           {taken && live && (
             <div class="tui-input">
               <span class="faint" style={{ fontFamily: "var(--font-mono)" }}>
@@ -119,12 +130,32 @@ export function Session({ id, stage }: { id: string; stage?: string }) {
               </span>
               <input
                 class="in"
-                placeholder="Type into the session, Enter to send"
+                placeholder="Type into the session, Enter to send. Empty: ↑ ↓ Enter Esc go to the session's menu"
                 value={text}
                 onInput={(e) => setText(e.currentTarget.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") return text.trim() ? send() : press("Enter");
+                  if (!text && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Escape")) {
+                    e.preventDefault();
+                    press(e.key === "ArrowUp" ? "Up" : e.key === "ArrowDown" ? "Down" : "Escape");
+                  }
+                }}
                 autoFocus
               />
+              <span class="tui-keys" title="For menus in the session: move, pick, or cancel">
+                {(
+                  [
+                    ["Up", "↑"],
+                    ["Down", "↓"],
+                    ["Enter", "⏎"],
+                    ["Escape", "Esc"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button key={k} class="key-btn" onClick={() => press(k)}>
+                    {label}
+                  </button>
+                ))}
+              </span>
             </div>
           )}
           <div class="live-acts">

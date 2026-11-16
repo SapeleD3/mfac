@@ -18,6 +18,10 @@ process.env.FACTORY_SOCKET = socket;
 const alive = new Set<string>();
 const started: { id: string; cwd: string; command: string[]; env: Record<string, string> }[] = [];
 const pasted: { id: string; text: string }[] = [];
+const keyed: { id: string; names: string[] }[] = [];
+const screens = new Map<string, string>();
+const idle = new Map<string, number>();
+const unresumable = new Set<string>();
 const fakeTmux = {
   start: (id: string, cwd: string, command: string[], env: Record<string, string> = {}) => {
     alive.add(id);
@@ -25,11 +29,11 @@ const fakeTmux = {
   },
   isAlive: (id: string) => alive.has(id),
   paste: (id: string, text: string) => void pasted.push({ id, text }),
-  keys: () => {},
+  keys: (id: string, ...names: string[]) => void keyed.push({ id, names }),
   stop: (id: string) => void alive.delete(id),
-  capture: () => "screen",
+  capture: (id: string) => screens.get(id) ?? "screen",
   live: () => new Set(alive),
-  idleSeconds: () => 0,
+  idleSeconds: (id: string) => idle.get(id) ?? 0,
 };
 let tlcPasses = true;
 const fakeTlc = async () => ({ ok: tlcPasses, states: 42, output: tlcPasses ? "No error has been found." : "Error: Invariant Safe is violated." });
@@ -48,7 +52,7 @@ before(async () => {
   const g = (...a: string[]) => execFileSync("git", a, { cwd: repo, stdio: "ignore" });
   g("init", "-q", "-b", "main");
   g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
-  running = await startEngine({ plugins: [ticketsPart, runnerPart({ tmux: fakeTmux, tlc: fakeTlc, tickSeconds: 3600, permissionTimeoutMs: 2000 })] });
+  running = await startEngine({ plugins: [ticketsPart, runnerPart({ tmux: fakeTmux, tlc: fakeTlc, tickSeconds: 3600, permissionTimeoutMs: 2000, resumable: (id) => !unresumable.has(id) })] });
 });
 after(async () => {
   await running.stop();
@@ -302,4 +306,52 @@ test("moving a task that's waiting at the research gate sets the old research as
   assert.ok(!alive.has(`${t.id}-coordinator-1`));
   assert.equal(pasted.length, pastes, "nothing is pasted into the old session");
   rmSync(other, { recursive: true, force: true });
+});
+
+test("a new worktree's trust prompt is answered for the folder you chose, and any other prompt a session sits on is raised", async () => {
+  await c("settings.set", { slots: 8 });
+  const t = await c<TaskView>("task.add", { title: "Check the logo files", repo, recipe: "research" });
+  await c("factory.tick");
+  const coordId = `${t.id}-coordinator-1`;
+  screens.set(coordId, `Accessing workspace:\n${repo}\nQuick safety check: Is this a project you created or one you trust?\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel`);
+  await c("factory.tick");
+  assert.deepEqual(keyed.filter((k) => k.id === coordId).at(-1)?.names, ["Down", "Enter"], "it picks Yes, I trust this folder");
+  await c("factory.tick");
+  assert.equal(keyed.filter((k) => k.id === coordId).length, 1, "answered once");
+
+  await coord(t.id, "run", { role: "researcher" });
+  const rid = `${t.id}-researcher-1`;
+  screens.set(rid, "Do you want to make this edit to research.md?\n❯ 1. Yes\n  2. No\nEsc to cancel");
+  idle.set(rid, 300);
+  await c("factory.tick");
+  const events = (await c<{ events: { kind: string }[] }>("task.get", { id: t.id })).events;
+  assert.ok(events.some((e) => e.kind === "trusted_folder"));
+  assert.ok(
+    events.some((e) => e.kind === "session_waiting"),
+    "a session stuck on a question is raised",
+  );
+  assert.ok(!keyed.some((k) => k.id === rid), "other prompts are left for you to answer");
+});
+
+test("a session that quits on its own keeps its last screen, and its coordinator starts fresh when there's nothing to resume", async () => {
+  await c("settings.set", { slots: 8 });
+  const t = await c<TaskView>("task.add", { title: "Answer No by mistake", repo, recipe: "research" });
+  await c("factory.tick");
+  const first = `${t.id}-coordinator-1`;
+  screens.set(first, "\x1b[1mQuick safety check\x1b[0m: Is this a project you trust?\n❯ No, exit");
+  await c<{ task: TaskView }>("session.takeover", { task: t.id, on: true });
+  await c("factory.tick");
+  assert.ok(!keyed.some((k) => k.id === first), "taken over: the factory leaves the prompt to you");
+  await c("session.keys", { stage: first, keys: ["Enter", "rm -rf"] });
+  assert.deepEqual(keyed.at(-1), { id: first, names: ["Enter"] }, "only menu keys are passed through");
+  await c<{ task: TaskView }>("session.takeover", { task: t.id, on: false });
+  alive.delete(first);
+  unresumable.add((await c<Stage[]>("stage.list", { task: t.id })).find((s) => s.id === first)!.sessionId);
+  await c("factory.tick");
+  const shot = await c<{ live: boolean; screen: string }>("session.capture", { stage: first });
+  assert.equal(shot.live, false);
+  assert.match(shot.screen, /Quick safety check/, "the last screen is kept");
+  const stages = await c<Stage[]>("stage.list", { task: t.id });
+  assert.equal(stages.find((s) => s.id === first)!.status, "stopped");
+  assert.ok(alive.has(`${t.id}-coordinator-2`), "a fresh coordinator, since the quit one had no conversation to resume");
 });

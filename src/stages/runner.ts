@@ -19,6 +19,10 @@ import { paths } from "../shared/paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
 import { RUNNING, type State } from "../workflow/statechart.js";
 
+const plain = (screen: string) => screen.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+const KEYS = new Set(["Up", "Down", "Enter", "Escape", "Tab", "1", "2", "3", "4", "y", "n"]);
+const TRUST_PROMPT = /Yes, I trust this folder|Do you trust the files in this folder/;
+const WAITING_PROMPT = /Enter to confirm|Esc to cancel|\(y\/n\)|Press Enter to continue/i;
 const AT_GATE: readonly State[] = ["ResearchGate", "PlanGate", "NeedsYou"];
 const RESEARCH_OUTPUTS = ["requirements.md", "research.md", "statechart.md", "tlc-result.md", "review-requirements.md", "review-comments.md", "plan.md", "explainer.md", "lessons.md"];
 const BUILT: readonly State[] = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
@@ -60,6 +64,7 @@ export interface RunnerOptions {
   tlc?: Tlc;
   tickSeconds?: number;
   permissionTimeoutMs?: number;
+  resumable?: (sessionId: string) => boolean;
 }
 
 const promptsDir = () => join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "prompts");
@@ -113,6 +118,9 @@ export class Runner {
   private held = new Map<string, string[]>();
   /** A Claude session keeps the folder it started in, so a moved task gets a fresh coordinator rather than a resumed one. */
   private moved = new Set<string>();
+  private trusted = new Set<string>();
+  private flagged = new Set<string>();
+  private lastScreen = new Map<string, string>();
   private ticking = false;
 
   constructor(
@@ -224,7 +232,9 @@ export class Runner {
     return file;
   }
 
-  private launch(t: TaskView, role: Role, opts: { prompt: string; resume?: Stage }): Stage {
+  private launch(t: TaskView, role: Role, given: { prompt: string; resume?: Stage }): Stage {
+    // A session that quit before saying anything has no conversation to resume, and resuming it would just exit again.
+    const opts = given.resume && !this.resumable(given.resume) ? { prompt: given.prompt } : given;
     const round = opts.resume ? opts.resume.round : this.stages(t.id).filter((s) => s.role === role).length + 1;
     const id = opts.resume?.id ?? `${t.id}-${role}-${round}`;
     const sessionId = opts.resume?.sessionId ?? randomUUID();
@@ -263,6 +273,10 @@ export class Runner {
     const s = this.stage(id)!;
     this.engine.emit("session", { stage: s });
     return s;
+  }
+
+  private resumable(s: Stage): boolean {
+    return this.opts.resumable ? this.opts.resumable(s.sessionId) : !!transcriptPath(s.sessionId);
   }
 
   coordinator(taskId: string): Stage | undefined {
@@ -312,6 +326,7 @@ export class Runner {
     if (this.ticking) return;
     this.ticking = true;
     try {
+      this.unblock();
       const settings = this.engine.settings();
       if (this.store.setting("paused", false)) return;
       const active = this.engine.list().filter((t) => RUNNING.includes(t.machine.state) || t.machine.state === "ResearchCheck");
@@ -327,6 +342,61 @@ export class Runner {
     } finally {
       this.ticking = false;
     }
+  }
+
+  /**
+   * Claude Code asks before it works in a folder it hasn't seen, and every new worktree is one. The folder is
+   * one the person pointed the task at (or the factory's own worktree of it), so the factory says yes; any other
+   * prompt a session sits on is raised to the person instead of hanging quietly.
+   */
+  unblock() {
+    for (const s of this.stages().filter((x) => x.status === "running")) {
+      const t = this.engine.get(s.taskId);
+      if (!t) continue;
+      if (!this.tmux.isAlive(s.id)) {
+        this.exited(s, t);
+        continue;
+      }
+      let screen = "";
+      try {
+        const raw = this.tmux.capture(s.id, 300, true);
+        this.lastScreen.set(s.id, raw);
+        screen = plain(raw).split("\n").slice(-40).join("\n");
+      } catch {
+        continue;
+      }
+      if (t.takenOver) continue;
+      if (TRUST_PROMPT.test(screen)) {
+        const folder = t.worktree ?? this.jobDir(t.id);
+        const ours = folder === t.repo || folder.startsWith(`${paths.worktrees()}/`) || folder === this.jobDir(t.id);
+        if (ours && !this.trusted.has(s.id)) {
+          this.trusted.add(s.id);
+          this.tmux.keys(s.id, "Down", "Enter");
+          this.store.addEvent(t.id, "trusted_folder", "engine", { stage: s.id, folder });
+          continue;
+        }
+      }
+      if (!WAITING_PROMPT.test(screen) || this.tmux.idleSeconds(s.id) < 90 || this.flagged.has(s.id)) continue;
+      this.flagged.add(s.id);
+      this.store.addEvent(t.id, "session_waiting", "engine", { stage: s.id });
+      this.engine.emit("alert", { taskId: t.id, level: "warn", message: `${s.id} is waiting on a question in its terminal. Open its live session and answer it (Take over), then hand back.` });
+    }
+  }
+
+  /** A session whose program quit on its own (an exit picked in a prompt, a crash) leaves no tmux session behind, so its last screen is kept and the work is picked up again. */
+  private exited(s: Stage, t: TaskView) {
+    const shot = this.lastScreen.get(s.id);
+    if (shot) {
+      const file = join(this.jobDir(t.id), ".factory", "screens", `${s.id}.ans`);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, `${shot}\n`);
+    }
+    this.lastScreen.delete(s.id);
+    this.setStage(s.id, { status: "stopped" });
+    this.store.addEvent(t.id, "session_exited", "engine", { stage: s.id });
+    if (!RUNNING.includes(t.machine.state) || t.takenOver) return;
+    if (s.role === "coordinator") this.wake(t.id, `Your previous session (${s.id}) quit before finishing. ${this.statusText(t)}\nDecide the next step.`);
+    else this.wake(t.id, `${s.id} quit before it finished. Check its output file and rerun it if needed.`);
   }
 
   async startTask(taskId: string) {
@@ -893,6 +963,15 @@ export const runnerPart =
           if (!t?.takenOver) throw new Error("take the session over first; the coordinator owns it until you do");
           runner.tmux.paste(s.id, p.text);
           return { sent: true };
+        },
+        "session.keys": (p: { stage: string; keys: string[] }) => {
+          const s = runner.stage(p.stage);
+          if (!s || !runner.tmux.isAlive(s.id)) throw new Error("that session isn't running");
+          if (!engine.get(s.taskId)?.takenOver) throw new Error("take the session over first; the coordinator owns it until you do");
+          const keys = (p.keys ?? []).filter((k) => KEYS.has(k));
+          if (!keys.length) throw new Error(`send one of ${[...KEYS].join(", ")}`);
+          runner.tmux.keys(s.id, ...keys);
+          return { sent: keys };
         },
         "session.takeover": (p: { task: string; on: boolean }) => runner.takeOver(p.task, p.on),
         "hook.stop": (p: { session_id: string }) => runner.onStop(p.session_id),
