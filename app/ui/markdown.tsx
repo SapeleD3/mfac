@@ -27,9 +27,9 @@ export function mendStatechart(src: string): string {
 }
 
 /** Agent-written markdown, sanitised; mermaid blocks are drawn, and links open in the browser instead of replacing the app. */
-export function Markdown({ text, class: cls = "" }: { text: string; class?: string }) {
+export function Markdown({ text, class: cls = "", breaks = false }: { text: string; class?: string; breaks?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true }) as string), [text]);
+  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks }) as string), [text, breaks]);
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
