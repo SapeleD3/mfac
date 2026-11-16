@@ -1,4 +1,5 @@
 import { ask } from "./mcp.js";
+import { COLUMNS, STATES } from "../workflow/statechart.js";
 import type { Store } from "../workflow/store.js";
 
 export const pageUrl = (id: string) => (id.startsWith("http") ? id : `https://www.notion.so/${id.replace(/-/g, "")}`);
@@ -26,7 +27,7 @@ export interface NotionComment {
   anchor?: string;
 }
 
-const SCHEMA = `Jobs: Name (title), Task (text), State (select), Column (select), Rounds (text), Tags (multi-select: learn, urgent, ui, sensitive, harden), Source (url), PR (url).
+const SCHEMA = `Jobs: Name (title), Task (text), State (select: ${STATES.join(", ")}), Column (select: ${[...COLUMNS, "Inbox"].join(", ")}), Rounds (text), Tags (multi-select: learn, urgent, ui, sensitive, harden), Source (url), PR (url).
 Tickets: Name (title), Ticket (text), Job (relation to Jobs), Created by (select), Picked up by (select), Status (select: Backlog, In progress, In review, Blocked, Done), Tags (multi-select, as in Jobs), Check (text), Links (text).
 Reviews: Name (title), Job (relation to Jobs), Gate (select: Research, Plan), Round (number), Verdict (select: Waiting, Approved, Sent back, Dropped).`;
 
@@ -50,6 +51,7 @@ export async function upsertRows(store: Store, ids: BoardIds, rows: RowUpdate[])
       `Update the factory board in Notion. Databases: Jobs ${ids.jobsDb}, Tickets ${ids.ticketsDb}, Reviews ${ids.reviewsDb}.`,
       `Their properties:\n${SCHEMA}`,
       "For each row below: if it has a pageId, update that page's properties; otherwise create a page in its database. Set only the properties given; null clears one. A Job value is the page id of the job to relate to.",
+      "A select or multi-select value that isn't one of its property's options yet is still valid: add it to that property's options on the database first, then set it. Never refuse a row for that.",
       JSON.stringify(rows),
       'Answer {"rows": [{"key", "pageId"}]} for every row.',
     ].join("\n\n"),

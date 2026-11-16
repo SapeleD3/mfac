@@ -23,6 +23,7 @@ const plain = (screen: string) => screen.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\
 const KEYS = new Set(["Up", "Down", "Enter", "Escape", "Tab", "1", "2", "3", "4", "y", "n"]);
 const TRUST_PROMPT = /Yes, I trust this folder|Do you trust the files in this folder/;
 const WAITING_PROMPT = /Enter to confirm|Esc to cancel|\(y\/n\)|Press Enter to continue/i;
+const hardenable = (t: TaskView) => t.machine.kind !== "research" && t.machine.approved.includes("research");
 const AT_GATE: readonly State[] = ["ResearchGate", "PlanGate", "NeedsYou"];
 const RESEARCH_OUTPUTS = ["requirements.md", "research.md", "statechart.md", "tlc-result.md", "review-requirements.md", "review-comments.md", "plan.md", "explainer.md", "lessons.md"];
 const BUILT: readonly State[] = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
@@ -635,6 +636,7 @@ export class Runner {
       case "harden": {
         const title = String(args.title ?? "").trim();
         if (!title) throw new Error('give the hardening task a title: factory coord harden "Lint rule: no floating promises"');
+        if (!hardenable(t)) throw new Error("harden tasks turn a correction to plan or code into a check; research send-backs only change the research, so there's nothing in the repo to harden");
         const h = this.engine.add({
           title,
           body: `${String(args.note ?? "")}\n\nRaised by ${t.id} after a send-back: turn the correction into a check (lint rule, type or test) and clean up old cases.`,
@@ -643,8 +645,10 @@ export class Runner {
           tags: ["harden"],
           source: "factory",
           sourceRef: `${t.id}:${title}`,
+          parent: t.id,
+          backlog: true,
         });
-        return `Queued ${h.id}: ${h.title}`;
+        return `Added ${h.id} to the backlog: ${h.title}. The person starts it when they want it.`;
       }
       default:
         throw new Error(`unknown coordinator command ${command}`);
@@ -880,7 +884,7 @@ export class Runner {
     const verdict = d.verdict === "approve" ? `approved, so the task is now ${s}` : `sent the work back to ${s} (gate round ${t.rounds ?? ""})`;
     this.wake(
       t.id,
-      `The person ${verdict}.${note}${comments} Run the next stage.${d.verdict === "send_back" ? " Also ask whether a lint rule, type or test could have caught this; if so, queue a harden task." : ""}`,
+      `The person ${verdict}.${note}${comments} Run the next stage.${d.verdict === "send_back" && hardenable(t) ? " Also ask whether a lint rule, type or test could have caught this; if so, queue a harden task." : ""}`,
     );
   }
 

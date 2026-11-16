@@ -238,6 +238,7 @@ test("a research task reads its repo in place, gets its research reviewed, and e
   writeFileSync(join(job(t.id), "Queue.cfg"), "INVARIANT Safe");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-1`) });
   assert.match(await coord(t.id, "submit-research"), /research task[\s\S]*review/);
+  await assert.rejects(coord(t.id, "harden", { title: "Lint rule for research docs" }), /nothing in the repo to harden/);
   assert.ok(started.some((s) => s.id === `${t.id}-requirements_review-1`));
 
   writeFileSync(join(job(t.id), "review-requirements.md"), "R1 is answered with evidence.\nVERDICT: covered");
