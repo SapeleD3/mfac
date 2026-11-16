@@ -4,6 +4,7 @@ import type { Connections } from "../connectors/connections.js";
 import type { Engine, TaskView } from "../workflow/engine.js";
 import * as notion from "../connectors/notion.js";
 import { paths } from "../shared/paths.js";
+import type { State } from "../workflow/statechart.js";
 import type { Store } from "../workflow/store.js";
 import type { Ticket, Tickets } from "./tickets.js";
 
@@ -22,6 +23,8 @@ export function pageIdFrom(link: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+const UNTRACKED: readonly State[] = ["Dropped", "Ignored", "Replied"];
+const GIVE_UP = 3;
 const INTRO = (id: string) => `> 💬 Comment on anything above, on the words it's about. Then give one verdict in the factory app, or with factory approve, send-back or drop ${id}.`;
 
 export class NotionSync {
@@ -32,7 +35,8 @@ export class NotionSync {
     private store: Store,
     private engine: Engine,
     private tickets: Tickets,
-    private connections: Connections,
+    private connections: Pick<Connections, "ok">,
+    private upsert: typeof notion.upsertRows = notion.upsertRows,
   ) {}
 
   ids(): NotionIds {
@@ -98,27 +102,53 @@ export class NotionSync {
     const keys = [...this.pending].filter((k) => !k.startsWith("publish:"));
     const jobs = keys.filter((k) => k.startsWith("job:"));
     const rest = keys.filter((k) => !k.startsWith("job:"));
+    const errors: string[] = [];
     for (const batch of [jobs, rest]) {
       const rows: notion.RowUpdate[] = [];
       for (const key of batch) {
         const [kind, id] = key.split(":") as [string, string];
         const t = kind === "job" || kind === "review" ? this.engine.get(id) : undefined;
-        if (kind === "job" && t) rows.push(this.jobRow(t));
+        if (kind === "job" && t && (t.notionJobId || !UNTRACKED.includes(t.machine.state))) rows.push(this.jobRow(t));
         else if (kind === "ticket" && this.tickets.get(id)) rows.push(this.ticketRow(this.tickets.get(id)!));
         else if (kind === "review" && t?.notionReviewId) rows.push({ db: "reviewsDb", key, pageId: t.notionReviewId, properties: { Verdict: this.store.setting<string>(`verdict_${id}`, "Waiting") } });
         else this.pending.delete(key);
       }
       if (!rows.length) continue;
-      const saved = await notion.upsertRows(this.store, this.board(), rows);
-      for (const { key, pageId } of saved) {
-        const [kind, id] = key.split(":") as [string, string];
-        if (kind === "job" && !this.engine.get(id)?.notionJobId) this.engine.store.updateTask(id, { notionJobId: pageId });
-        if (kind === "ticket" && !this.tickets.get(id)?.notionPageId) this.tickets.update(id, { notionPageId: pageId });
-        this.pending.delete(key);
-        n++;
+      // One row Notion refuses would otherwise hold back every other row in its batch, round after round.
+      for (const group of this.failures.size ? rows.map((r) => [r]) : [rows]) {
+        try {
+          n += this.saved(await this.upsert(this.store, this.board(), group));
+          for (const r of group) this.failures.delete(r.key);
+        } catch (e) {
+          const why = e instanceof Error ? e.message : String(e);
+          for (const r of group) this.failed(r.key, why);
+          errors.push(why);
+        }
       }
     }
+    if (errors.length && !n) throw new Error(errors[0]);
     return n;
+  }
+
+  private failures = new Map<string, number>();
+
+  private failed(key: string, why: string) {
+    const tries = (this.failures.get(key) ?? 0) + 1;
+    this.failures.set(key, tries);
+    if (tries < GIVE_UP) return;
+    this.failures.delete(key);
+    this.pending.delete(key);
+    this.engine.emit("alert", { level: "warn", message: `Stopped syncing ${key} to the Notion board after ${GIVE_UP} failed tries: ${why.slice(0, 300)}` });
+  }
+
+  private saved(rows: { key: string; pageId: string }[]): number {
+    for (const { key, pageId } of rows) {
+      const [kind, id] = key.split(":") as [string, string];
+      if (kind === "job" && !this.engine.get(id)?.notionJobId) this.engine.store.updateTask(id, { notionJobId: pageId });
+      if (kind === "ticket" && !this.tickets.get(id)?.notionPageId) this.tickets.update(id, { notionPageId: pageId });
+      this.pending.delete(key);
+    }
+    return rows.length;
   }
 
   private publishing = new Set<string>();

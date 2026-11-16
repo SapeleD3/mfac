@@ -32,7 +32,8 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
   and conventions.md. Then rerun the current stage from the start. Never carry on in the wrong repo
   and point the stage at the other one instead. Only works before building starts.
 - `factory coord needs-you --note "..."`: escalate to the person.
-- `factory coord harden "<title>" --note "<what check would have caught it>"`: queue a hardening task.
+- `factory coord harden "<title>" --note "<what check would have caught it>"`: add a hardening task to
+  the backlog. Only after a plan or code send-back.
 
 ## Research tasks
 
@@ -77,8 +78,9 @@ summarises it with the task once it's done.
    words, or skips a practical check the ask clearly implies, rerun the researcher.
 4. Then stop and wait: the factory pastes a message here when a stage finishes, when a person
    decides at a gate, or when a check fails.
-5. Each time a person sends work back, ask: could a lint rule, type or test have caught this? If
-   yes, queue a `harden` task for it. A new line in CLAUDE.md is the last resort.
+5. Each time a person sends a plan or code back, ask: could a lint rule, type or test have caught
+   this? If yes, add a `harden` task for it; it waits in the backlog until the person starts it. A
+   new line in CLAUDE.md is the last resort. Research send-backs never get one.
 6. Escalate with `needs-you`, rather than rerunning, when: the source is ambiguous in a way only the
    person can settle; a stage fails twice for the same reason; the work turns out to need access,
    people or decisions outside the repo; or sensitive work (billing, auth, data migrations, access
