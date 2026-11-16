@@ -21,6 +21,7 @@ const pasted: { id: string; text: string }[] = [];
 const keyed: { id: string; names: string[] }[] = [];
 const screens = new Map<string, string>();
 const idle = new Map<string, number>();
+const unresumable = new Set<string>();
 const fakeTmux = {
   start: (id: string, cwd: string, command: string[], env: Record<string, string> = {}) => {
     alive.add(id);
@@ -51,7 +52,7 @@ before(async () => {
   const g = (...a: string[]) => execFileSync("git", a, { cwd: repo, stdio: "ignore" });
   g("init", "-q", "-b", "main");
   g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
-  running = await startEngine({ plugins: [ticketsPart, runnerPart({ tmux: fakeTmux, tlc: fakeTlc, tickSeconds: 3600, permissionTimeoutMs: 2000 })] });
+  running = await startEngine({ plugins: [ticketsPart, runnerPart({ tmux: fakeTmux, tlc: fakeTlc, tickSeconds: 3600, permissionTimeoutMs: 2000, resumable: (id) => !unresumable.has(id) })] });
 });
 after(async () => {
   await running.stop();
@@ -330,4 +331,27 @@ test("a new worktree's trust prompt is answered for the folder you chose, and an
     "a session stuck on a question is raised",
   );
   assert.ok(!keyed.some((k) => k.id === rid), "other prompts are left for you to answer");
+});
+
+test("a session that quits on its own keeps its last screen, and its coordinator starts fresh when there's nothing to resume", async () => {
+  await c("settings.set", { slots: 8 });
+  const t = await c<TaskView>("task.add", { title: "Answer No by mistake", repo, recipe: "research" });
+  await c("factory.tick");
+  const first = `${t.id}-coordinator-1`;
+  screens.set(first, "\x1b[1mQuick safety check\x1b[0m: Is this a project you trust?\n❯ No, exit");
+  await c<{ task: TaskView }>("session.takeover", { task: t.id, on: true });
+  await c("factory.tick");
+  assert.ok(!keyed.some((k) => k.id === first), "taken over: the factory leaves the prompt to you");
+  await c("session.keys", { stage: first, keys: ["Enter", "rm -rf"] });
+  assert.deepEqual(keyed.at(-1), { id: first, names: ["Enter"] }, "only menu keys are passed through");
+  await c<{ task: TaskView }>("session.takeover", { task: t.id, on: false });
+  alive.delete(first);
+  unresumable.add((await c<Stage[]>("stage.list", { task: t.id })).find((s) => s.id === first)!.sessionId);
+  await c("factory.tick");
+  const shot = await c<{ live: boolean; screen: string }>("session.capture", { stage: first });
+  assert.equal(shot.live, false);
+  assert.match(shot.screen, /Quick safety check/, "the last screen is kept");
+  const stages = await c<Stage[]>("stage.list", { task: t.id });
+  assert.equal(stages.find((s) => s.id === first)!.status, "stopped");
+  assert.ok(alive.has(`${t.id}-coordinator-2`), "a fresh coordinator, since the quit one had no conversation to resume");
 });
