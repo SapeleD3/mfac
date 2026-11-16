@@ -155,6 +155,12 @@ to the requirement ids, so the chain from the original ask to the merged code ca
 - **The research rule is a check, not a prompt.** `factory coord submit-research` makes the engine check
   requirements.md's shape and run TLC itself on the stage's model. A failure sends research back with the
   reason (max 3).
+- **Research is written to be read.** The researcher first works out what the person actually wants and
+  may ask them up to three multiple-choice questions (they show up in the app). It runs the practical
+  checks the ask implies (for a name: app stores, domains, products doing the same job) before anything
+  else. The engine refuses a research.md that doesn't open with a `## Answer` under 120 words, has no
+  `## Next step`, or runs over 1500 words. In Notion the research comes first and the requirements,
+  statechart and TLC result follow as an appendix.
 - **The plan is checked against the original ask before you see it.** A separate requirements review
   rereads the Slack message or Jira ticket and traces every requirement into the research and the plan.
   Gaps or scope creep go back to the planner (max 3). The engine refuses "covered" unless every
