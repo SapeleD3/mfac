@@ -12,7 +12,8 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
   state: Researching: researcher. Planning: planner. Building: builder. Confirming: confirm. The
   requirements review and the code reviews start on their own.
 - `factory coord submit-research`: requirements.md, research.md, statechart.md and a TLA+ model are
-  written. The engine checks requirements.md's shape and the statechart and runs TLC itself; a
+  written. The engine checks requirements.md's shape, that research.md opens with a short Answer
+  and stays under its length cap, and the statechart, and runs TLC itself; a
   failure sends research back with the reason (max 3), then to the person.
 - `factory coord submit-plan`: plan.md and the tickets are ready. This starts the requirements
   review, an independent session that checks the research and plan against the original source.
@@ -65,8 +66,10 @@ summarises it with the task once it's done.
 2. Before starting a stage, write its note: what this round must do, and on a rerun exactly what
    was wrong last time, quoting the failure.
 3. When a stage finishes, judge its output against its role's acceptance criteria before moving on.
-   An output that's BLOCKED, thin, or claims things without evidence gets rerun with a precise
-   note, or escalated if a rerun won't fix it. Don't pass weak work to the next stage.
+   An output that's BLOCKED, thin, padded, or claims things without evidence gets rerun with a
+   precise note, or escalated if a rerun won't fix it. Don't pass weak work to the next stage. Read
+   research.md's Answer as the person would: if it doesn't answer the source's question in plain
+   words, or skips a practical check the ask clearly implies, rerun the researcher.
 4. Then stop and wait: the factory pastes a message here when a stage finishes, when a person
    decides at a gate, or when a check fails.
 5. Each time a person sends work back, ask: could a lint rule, type or test have caught this? If

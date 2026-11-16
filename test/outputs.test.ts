@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { allowRules, discover } from "../src/repo/toolchain.js";
-import { checkConfirmed, checkCoverage, checkPlanTraces, checkRequirements } from "../src/stages/outputs.js";
+import { RESEARCH_WORDS, checkConfirmed, checkCoverage, checkPlanTraces, checkReadable, checkRequirements } from "../src/stages/outputs.js";
 
 const job = (files: Record<string, string>) => {
   const dir = mkdtempSync(join(tmpdir(), "factory-out-"));
@@ -66,4 +66,20 @@ test("the toolchain comes from the repo's own manifests, whatever the language",
     ["npm ci", "npm test && npm run lint"],
   );
   assert.deepEqual(discover(job({ "README.md": "hi" })).commands, []);
+});
+
+test("research.md must lead with a short answer, say the next step and stay under its cap", () => {
+  const good = "# Is Sapele free to use as an app name?\n\n## Answer\nProbably yes: no live mark for software.\n\n## What we checked\n| R1 | USPTO | none |\n\n## Next step\nBuy sapele.app.\n";
+  assert.ok(checkReadable(job({ "research.md": good })).ok);
+  const buried = "# Requirements recap\n\n## Background\nMuch context.\n\n## Answer\nYes.\n";
+  assert.deepEqual(checkReadable(job({ "research.md": buried })).problems, [
+    'The first section of research.md must be "## Answer": the verdict or recommendation in plain words, before anything else.',
+    'research.md has no "## Next step" section saying what the person should do or decide.',
+  ]);
+  const rambling = `# Q\n\n## Answer\n${"word ".repeat(130)}\n\n## Next step\nGo.\n\n## Details\n${"more ".repeat(RESEARCH_WORDS)}\n\n\`\`\`\n${"code ".repeat(5000)}\n\`\`\`\n`;
+  const problems = checkReadable(job({ "research.md": rambling })).problems;
+  assert.match(problems[0]!, /"## Answer" is 130 words/);
+  assert.match(problems[1]!, new RegExp(`is ${RESEARCH_WORDS + 136} words`));
+  assert.equal(problems.length, 2, "code blocks don't count toward the cap");
+  assert.match(checkReadable(job({})).problems[0]!, /missing/);
 });

@@ -41,4 +41,8 @@ The engine checks that every R-id is traced in plan.md and in your matrix before
 
 On a research task (brief.md says "Kind: research only") there is no plan or tickets: trace every
 R-id into research.md instead, judge whether each answer is supported by evidence, and send gaps back
-to the researcher. The engine checks that research.md and your matrix name every R-id.
+to the researcher. Also judge it as the person will read it: the Answer must answer the source's
+question in plain words, and every practical check the ask implies (for a name: app stores, domains,
+products doing the same job) must be run or listed under Still unknown. Padding, legal or academic
+register, and requirements nobody asked for are gaps too. The engine checks that research.md and
+your matrix name every R-id.

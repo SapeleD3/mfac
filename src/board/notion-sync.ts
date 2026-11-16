@@ -22,6 +22,8 @@ export function pageIdFrom(link: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+const INTRO = (id: string) => `> 💬 Comment on anything above, on the words it's about. Then give one verdict in the factory app, or with factory approve, send-back or drop ${id}.`;
+
 export class NotionSync {
   private pending = new Set<string>();
   private refreshing = new Set<string>();
@@ -142,17 +144,26 @@ export class NotionSync {
     if (this.store.setting<string | undefined>(done, undefined) === `${gate}:${round}`) return t.notionReviewId;
     const md =
       gate === "Research"
-        ? [read("requirements.md"), read("research.md"), "## Statechart", read("statechart.md"), "## Formal check", read("tlc-result.md"), t.tags.includes("learn") ? read("explainer.md") : ""].join(
-            "\n\n",
-          )
+        ? [
+            read("research.md"),
+            INTRO(t.id),
+            t.tags.includes("learn") ? read("explainer.md") : "",
+            "## Appendix: requirements",
+            read("requirements.md").replace(/^#\s+Requirements\s*\n/, ""),
+            "## Appendix: statechart",
+            read("statechart.md"),
+            "## Appendix: formal check",
+            read("tlc-result.md"),
+          ].join("\n\n")
         : [
             read("plan.md"),
+            "",
+            INTRO(t.id),
             "## Requirements review",
             read("review-requirements.md"),
             "## Tickets",
             ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`),
           ].join("\n");
-    const intro = `> 💬 Leave a comment on every issue, on the words it's about. Then give one overall verdict in the factory app or with factory approve, send-back or drop ${t.id}.`;
     const key = `review_${t.id}_${gate}`;
     const existing = this.store.setting<string | undefined>(key, undefined);
     this.store.setSetting(`verdict_${t.id}`, "Waiting");
@@ -161,19 +172,14 @@ export class NotionSync {
         this.store,
         existing,
         { Round: round, Verdict: "Waiting" },
-        `# Round ${round}\n\n${intro}\n\n${md}`,
+        `# Round ${round}\n\n${md}`,
         `Round ${round} is added below and addresses this. Check the new section and resolve this if it's handled.`,
       );
       this.engine.store.updateTask(t.id, { notionReviewId: existing });
       this.store.setSetting(done, `${gate}:${round}`);
       return existing;
     }
-    const pageId = await notion.createReview(
-      this.store,
-      this.board(),
-      { Name: `${t.id} ${gate}: ${t.title}`, Gate: gate, Round: round, Verdict: "Waiting", Job: t.notionJobId ?? null },
-      `${intro}\n\n${md}`,
-    );
+    const pageId = await notion.createReview(this.store, this.board(), { Name: `${t.id} ${gate}: ${t.title}`, Gate: gate, Round: round, Verdict: "Waiting", Job: t.notionJobId ?? null }, md);
     this.store.setSetting(key, pageId);
     this.store.setSetting(done, `${gate}:${round}`);
     this.engine.store.updateTask(t.id, { notionReviewId: pageId });

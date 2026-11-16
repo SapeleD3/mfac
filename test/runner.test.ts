@@ -35,6 +35,7 @@ const fakeTmux = {
   live: () => new Set(alive),
   idleSeconds: (id: string) => idle.get(id) ?? 0,
 };
+const doc = (answer: string) => `# Research\n## Answer\n${answer}\n## Next step\nApprove it.\n`;
 let tlcPasses = true;
 const fakeTlc = async () => ({ ok: tlcPasses, states: 42, output: tlcPasses ? "No error has been found." : "Error: Invariant Safe is violated." });
 
@@ -97,7 +98,7 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-1`) });
   assert.match(lastPaste().text, /without writing research.md/);
 
-  writeFileSync(join(job(t.id), "research.md"), "# Research\nThe button posts the wrong form.");
+  writeFileSync(join(job(t.id), "research.md"), doc("The button posts the wrong form."));
   writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
   writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Exporting: click\n```\n");
   writeFileSync(join(job(t.id), "Export.tla"), "---- MODULE Export ----\n====");
@@ -110,8 +111,12 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   assert.match(await coord(t.id, "submit-research"), /check failed \(round 1\/3\)[\s\S]*Invariant Safe is violated/);
   tlcPasses = true;
   await coord(t.id, "run", { role: "researcher", note: "fix the model" });
-  writeFileSync(join(job(t.id), "research.md"), "# Research v2");
+  writeFileSync(join(job(t.id), "research.md"), "# Research v2\nA long survey with no answer up front.");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-2`) });
+  assert.match(await coord(t.id, "submit-research"), /check failed \(round 2\/3\)[\s\S]*## Answer/);
+  await coord(t.id, "run", { role: "researcher", note: "answer first" });
+  writeFileSync(join(job(t.id), "research.md"), doc("Post the CSV form instead."));
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-3`) });
   assert.match(await coord(t.id, "submit-research"), /research gate is open/);
   assert.equal(alive.has(`${t.id}-coordinator-1`), false, "coordinator's session freed at the gate");
 
@@ -226,7 +231,7 @@ test("a research task reads its repo in place, gets its research reviewed, and e
   assert.equal(now.branch, undefined);
 
   await coord(t.id, "run", { role: "researcher" });
-  writeFileSync(join(job(t.id), "research.md"), "# Research\nR1: SQS, because the events need no ordering.");
+  writeFileSync(join(job(t.id), "research.md"), doc("R1: SQS, because the events need no ordering."));
   writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
   writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Sent: publish\n```\n");
   writeFileSync(join(job(t.id), "Queue.tla"), "---- MODULE Queue ----\n====");
@@ -277,7 +282,7 @@ test("moving a task that's waiting at the research gate sets the old research as
   const t = await c<TaskView>("task.add", { title: "Trademark knockout screen", repo, recipe: "research" });
   await c("factory.tick");
   await coord(t.id, "run", { role: "researcher" });
-  writeFileSync(join(job(t.id), "research.md"), "# Research\nR1: about the wrong repo.");
+  writeFileSync(join(job(t.id), "research.md"), doc("R1: about the wrong repo."));
   writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
   writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Sent: publish\n```\n");
   writeFileSync(join(job(t.id), "Mark.tla"), "---- MODULE Mark ----\n====");

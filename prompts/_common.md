@@ -33,11 +33,20 @@ every claim backed by evidence a reader can check, nothing left for them to gues
 
 ## When to stop and say so
 
-- If the ask is ambiguous in a way that changes what gets built, don't guess silently. Pick the
-  most likely reading, mark it "Assumed:" with why, and list the question under Open questions.
+- If the ask is ambiguous in a way that changes what gets built, don't guess silently. Where your
+  role allows it, ask the person with AskUserQuestion (short, multiple choice, your recommendation
+  first). Otherwise pick the most likely reading, mark it "Assumed:" with why, and list the
+  question under Open questions.
 - If you can't do your job (missing access, a broken environment, a contradiction in the inputs),
   write {{output}} starting with "BLOCKED:" and say exactly what you need and from whom.
 - Never work around a failing check, a refused permission or a hook. Report it.
+
+## Write for a person
+
+Anything a person reads (research, plans, review notes) leads with the answer or decision, then the
+evidence. Short sentences and plain words. No restating your inputs, no filler, no padding to look
+thorough: a longer document isn't a better one, and every word costs the person's attention and the
+token budget. Spend effort on understanding the ask, not on volume.
 
 ## Rules that always apply
 

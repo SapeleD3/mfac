@@ -83,3 +83,28 @@ export function checkConfirmed(job: string): Validation {
   if (verdict(confirm) !== "solved") problems.push('confirm.md must end with "VERDICT: solved".');
   return result(problems);
 }
+
+export const ANSWER_WORDS = 120;
+export const RESEARCH_WORDS = 1500;
+
+const words = (text: string) => text.replace(/```[\s\S]*?```/g, "").match(/[A-Za-z0-9][\w'’.-]*/g)?.length ?? 0;
+
+export function checkReadable(job: string): Validation {
+  const text = read(job, "research.md");
+  if (text === undefined) return result(["research.md is missing."]);
+  const problems: string[] = [];
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (!/^#\s+\S/.test(lines[0] ?? "")) problems.push("research.md must open with a # title that says what the person asked.");
+  const sections = text.split(/^##\s+/m).slice(1);
+  const first = sections[0];
+  if (!first || !/^Answer\b/i.test(first)) problems.push('The first section of research.md must be "## Answer": the verdict or recommendation in plain words, before anything else.');
+  else {
+    const n = words(first.replace(/^.*\n/, ""));
+    if (!n) problems.push('"## Answer" is empty.');
+    if (n > ANSWER_WORDS) problems.push(`"## Answer" is ${n} words; keep it under ${ANSWER_WORDS} so a person gets it at a glance. Move the detail further down.`);
+  }
+  if (!sections.some((s) => /^(Next steps?|Recommended next steps?)\b/i.test(s))) problems.push('research.md has no "## Next step" section saying what the person should do or decide.');
+  const total = words(text);
+  if (total > RESEARCH_WORDS) problems.push(`research.md is ${total} words; the cap is ${RESEARCH_WORDS}. Cut what doesn't help the person decide; link sources instead of quoting them.`);
+  return result(problems);
+}
