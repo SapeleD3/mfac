@@ -244,6 +244,10 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
   const leftBy = t.ended ? (t.ended.by === "human" ? "you" : t.ended.by === "engine" ? "the factory" : `the ${t.ended.by}`) : "";
   const last = (role: string) => [...stages].reverse().find((s) => s.role === role);
   const has = (f: string) => files.includes(f);
+  const live = stages.filter((s) => s.status === "running");
+  const worker = live.find((s) => s.role !== "coordinator");
+  const busy = live.length > 0 && kind === "now";
+  const busyLine = (sub: string) => (worker ? `${worker.role.replace("_", " ")} · ${worker.model} · running` : `${sub} · the coordinator is working on the next step`);
   const rows: { id: string; sub: string; files: string[]; cap?: preact.JSX.Element }[] = [
     { id: "triage", sub: t.source === "manual" ? "Added by you" : `From ${t.source}${t.sourceRef ? ` ${t.sourceRef.split("@")[0]}` : ""}`, files: [] },
     { id: "research", sub: stageLine(last("researcher")) || "researcher", files: ["research.md", "statechart.md"].filter(has).concat(files.filter((f) => f.endsWith(".tla"))) },
@@ -323,7 +327,11 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
         return (
           <div key={r.id} class={cls} style={skipped ? { opacity: 0.4 } : undefined}>
             <span class="st-dot">
-              <span>{state === "done" && !gate ? <Ic n="check" s={12} /> : gate ? state === "done" ? <Ic n="check" s={12} /> : "" : i + 1}</span>
+              {state === "now" && busy ? (
+                <span class="spin" title="Working" />
+              ) : (
+                <span>{state === "done" && !gate ? <Ic n="check" s={12} /> : gate ? state === "done" ? <Ic n="check" s={12} /> : "" : i + 1}</span>
+              )}
             </span>
             <div>
               <div class="st-head">
@@ -332,7 +340,15 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
                 <span class="grow" />
                 <span class="xs dim">{r.cap}</span>
               </div>
-              <div class="st-sub">{i === at && kind === "dropped" ? `Left the loop here: dropped by ${leftBy} ${ago(t.ended!.at)}` : i === at && kind === "fail" ? doing(t) : r.sub}</div>
+              <div class="st-sub">
+                {i === at && kind === "dropped"
+                  ? `Left the loop here: dropped by ${leftBy} ${ago(t.ended!.at)}`
+                  : i === at && kind === "fail"
+                    ? doing(t)
+                    : state === "now" && busy
+                      ? busyLine(r.sub)
+                      : r.sub}
+              </div>
               {r.files.length > 0 && (
                 <div class="st-files">
                   {r.files.map((f) => (
