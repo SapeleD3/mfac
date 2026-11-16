@@ -23,6 +23,26 @@ const plain = (screen: string) => screen.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\
 const KEYS = new Set(["Up", "Down", "Enter", "Escape", "Tab", "1", "2", "3", "4", "y", "n"]);
 const TRUST_PROMPT = /Yes, I trust this folder|Do you trust the files in this folder/;
 const WAITING_PROMPT = /Enter to confirm|Esc to cancel|\(y\/n\)|Press Enter to continue/i;
+const menuText = (screen: string) =>
+  screen
+    .split("\n")
+    .map((l) => l.replace(/[│╭╮╰╯─]+/g, "").trimEnd())
+    .filter((l) => l.trim())
+    .slice(-14)
+    .join("\n");
+
+function answerText(p: Prompt, a: { option?: number; options?: number[]; message?: string }): string {
+  const qs = p.payload.questions ?? [{ question: p.payload.question ?? "", options: p.payload.options ?? [] }];
+  const picks = a.options ?? (a.option ? [a.option] : []);
+  const lines = qs.map((q, i) => {
+    const n = picks[i];
+    const chosen = n && q.options[n - 1] ? q.options[n - 1]!.split(": ")[0] : undefined;
+    return chosen ? `- ${q.header ?? q.question}: ${chosen}` : "";
+  });
+  const note = a.message?.trim();
+  return [...lines.filter(Boolean), note ? `- In their words: ${note}` : ""].filter(Boolean).join("\n") || "- (no choice made)";
+}
+
 const hardenable = (t: TaskView) => t.machine.kind !== "research" && t.machine.approved.includes("research");
 const AT_GATE: readonly State[] = ["ResearchGate", "PlanGate", "NeedsYou"];
 const RESEARCH_OUTPUTS = ["requirements.md", "research.md", "statechart.md", "tlc-result.md", "review-requirements.md", "review-comments.md", "plan.md", "explainer.md", "lessons.md"];
@@ -47,12 +67,18 @@ export interface Stage {
   nudges: number;
 }
 
+export interface Question {
+  header?: string;
+  question: string;
+  options: string[];
+}
+
 export interface Prompt {
   id: string;
   taskId?: string;
   stageId?: string;
   kind: "permission" | "question";
-  payload: { tool?: string; input?: unknown; question?: string; options?: string[]; role?: string; title?: string };
+  payload: { tool?: string; input?: unknown; question?: string; options?: string[]; questions?: Question[]; menu?: boolean; role?: string; title?: string };
   status: "pending" | "allow" | "deny" | "answered" | "expired";
   answer?: string;
   createdAt: string;
@@ -377,10 +403,13 @@ export class Runner {
           continue;
         }
       }
-      if (!WAITING_PROMPT.test(screen) || this.tmux.idleSeconds(s.id) < 90 || this.flagged.has(s.id)) continue;
+      const waiting = WAITING_PROMPT.test(screen);
+      if (!waiting && this.flagged.delete(s.id)) this.closeMenu(s.id);
+      if (!waiting || this.tmux.idleSeconds(s.id) < 90 || this.flagged.has(s.id)) continue;
       this.flagged.add(s.id);
       this.store.addEvent(t.id, "session_waiting", "engine", { stage: s.id });
-      this.engine.emit("alert", { taskId: t.id, level: "warn", message: `${s.id} is waiting on a question in its terminal. Open its live session and answer it (Take over), then hand back.` });
+      this.addPrompt({ taskId: t.id, stageId: s.id, kind: "question", payload: { question: menuText(screen), options: [], menu: true, role: s.role, title: t.title } });
+      this.engine.emit("alert", { taskId: t.id, level: "warn", message: `${s.id} is waiting on a menu in its terminal. Open its live session, Take over and answer it, then hand back.` });
     }
   }
 
@@ -734,6 +763,7 @@ export class Runner {
     if (s?.status !== "running") return { ok: true };
     const t = this.engine.get(s.taskId);
     if (!t) return { ok: true };
+    if (this.asking(s.id)) return { ok: true };
     if (s.role === "coordinator") {
       if (this.moved.has(t.id)) {
         this.wake(t.id, "Rerun the current stage from the start; anything found in the old folder may be about the wrong code.");
@@ -808,12 +838,23 @@ export class Runner {
     return decided.status === "allow" ? { behavior: "allow" } : { behavior: "deny", message: decided.answer || "Denied from the factory panel." };
   }
 
-  onQuestion(sessionId: string, input: { questions?: { question?: string; options?: { label?: string }[] }[] }) {
+  /**
+   * Claude Code's question menu only works for someone watching the terminal, so the factory takes the
+   * question instead: it waits under Needs you, and the answer is pasted back into the session.
+   */
+  onQuestion(sessionId: string, input: { questions?: { header?: string; question?: string; options?: { label?: string; description?: string }[] }[] }) {
     const s = this.stageBySession(sessionId);
-    const q = input.questions?.[0];
-    if (!q) return { ok: true };
-    this.addPrompt({ taskId: s?.taskId, stageId: s?.id, kind: "question", payload: { question: q.question, options: (q.options ?? []).map((o) => o.label ?? ""), role: s?.role } });
-    return { ok: true };
+    const questions: Question[] = (input.questions ?? [])
+      .filter((q) => q.question)
+      .map((q) => ({ header: q.header, question: q.question!, options: (q.options ?? []).map((o) => [o.label, o.description].filter(Boolean).join(": ")) }));
+    if (!s || !questions.length) return { ok: true };
+    const t = this.engine.get(s.taskId);
+    this.addPrompt({ taskId: s.taskId, stageId: s.id, kind: "question", payload: { question: questions[0]!.question, options: questions[0]!.options, questions, role: s.role, title: t?.title } });
+    this.store.addEvent(s.taskId, "asked", "engine", { stage: s.id, questions: questions.map((q) => q.question) });
+    this.engine.emit("alert", { taskId: s.taskId, level: "warn", message: `${s.taskId} has a question for you: ${questions[0]!.question.slice(0, 160)}` });
+    return {
+      deny: `The factory put ${questions.length > 1 ? "these questions" : "this question"} to the person; it waits under Needs you in their app. Don't ask again and don't guess. Stop now and wait: their answer will be pasted here as a message starting "[factory] The person answered".`,
+    };
   }
 
   private addPrompt(p: Omit<Prompt, "id" | "status" | "createdAt">): Prompt {
@@ -831,20 +872,47 @@ export class Runner {
     return r ? toPrompt(r) : undefined;
   }
 
+  private closeMenu(stageId: string) {
+    const open = this.store.db.prepare("SELECT id FROM prompts WHERE stage_id = ? AND status = 'pending' AND json_extract(payload, '$.menu') = 1").all(stageId) as Row[];
+    for (const r of open) {
+      this.store.db.prepare("UPDATE prompts SET status = 'answered', answer = 'in the terminal', decided_at = ? WHERE id = ?").run(now(), String(r.id));
+      this.engine.emit("prompt", { prompt: this.prompt(String(r.id)) });
+    }
+  }
+
+  private asking(stageId: string): boolean {
+    return !!this.store.db.prepare("SELECT 1 FROM prompts WHERE stage_id = ? AND kind = 'question' AND status = 'pending' LIMIT 1").get(stageId);
+  }
+
   prompts(status = "pending"): Prompt[] {
     return (this.store.db.prepare("SELECT * FROM prompts WHERE status = ? ORDER BY created_at").all(status) as Row[]).map(toPrompt);
   }
 
-  answer(id: string, answer: { allow?: boolean; option?: number; message?: string }): Prompt {
+  private deliver(taskId: string, stageId: string | undefined, text: string) {
+    const t = this.engine.get(taskId);
+    if (t?.takenOver) {
+      this.held.set(taskId, [...(this.held.get(taskId) ?? []), text.replace(/^\[factory\] /, "")]);
+      return;
+    }
+    const s = stageId ? this.stage(stageId) : undefined;
+    if (s && s.status === "running" && this.tmux.isAlive(s.id)) {
+      this.tmux.paste(s.id, text);
+      return;
+    }
+    this.wake(taskId, `${s && s.role !== "coordinator" ? `${s.id} had asked the person a question and has since stopped. ` : ""}${text.replace(/^\[factory\] /, "")}`);
+  }
+
+  answer(id: string, answer: { allow?: boolean; option?: number; options?: number[]; message?: string }): Prompt {
     const p = this.prompt(id);
     if (!p) throw new Error(`no prompt ${id}`);
     if (p.status !== "pending") throw new Error(`that prompt is already ${p.status}`);
     if (p.kind === "permission") {
       this.store.db.prepare("UPDATE prompts SET status = ?, answer = ?, decided_at = ? WHERE id = ?").run(answer.allow ? "allow" : "deny", answer.message ?? null, now(), id);
     } else {
-      const option = answer.option ?? 1;
-      if (p.stageId && this.tmux.isAlive(p.stageId)) this.tmux.keys(p.stageId, String(option), "Enter");
-      this.store.db.prepare("UPDATE prompts SET status = 'answered', answer = ?, decided_at = ? WHERE id = ?").run(String(option), now(), id);
+      if (p.payload.menu) throw new Error("that menu is in the session's terminal: open its live session, Take over and answer it there");
+      const text = answerText(p, answer);
+      this.store.db.prepare("UPDATE prompts SET status = 'answered', answer = ?, decided_at = ? WHERE id = ?").run(text, now(), id);
+      if (p.taskId) this.deliver(p.taskId, p.stageId, `[factory] The person answered:\n${text}\nCarry on with this.`);
     }
     const saved = this.prompt(id)!;
     this.waiters.get(id)?.(saved);
@@ -982,7 +1050,7 @@ export const runnerPart =
         "hook.permission": (p: { session_id: string; tool_name: string; tool_input: unknown }) => runner.onPermission(p.session_id, p.tool_name, p.tool_input),
         "hook.question": (p: { session_id: string; tool_input: { questions?: { question?: string; options?: { label?: string }[] }[] } }) => runner.onQuestion(p.session_id, p.tool_input ?? {}),
         "prompt.list": (p: { status?: string }) => runner.prompts(p.status),
-        "prompt.answer": (p: { id: string; allow?: boolean; option?: number; message?: string }) => runner.answer(p.id, p),
+        "prompt.answer": (p: { id: string; allow?: boolean; option?: number; options?: number[]; message?: string }) => runner.answer(p.id, p),
         "factory.pause": (p: { paused: boolean }) => {
           store.setSetting("paused", !!p.paused);
           engine.emit("alert", { level: "info", message: p.paused ? "The factory is paused: no new tasks start." : "The factory is running again." });

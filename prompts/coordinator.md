@@ -32,6 +32,9 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
   and conventions.md. Then rerun the current stage from the start. Never carry on in the wrong repo
   and point the stage at the other one instead. Only works before building starts.
 - `factory coord needs-you --note "..."`: escalate to the person.
+- For a decision only the person can make, ask with the AskUserQuestion tool (short, multiple choice,
+  your recommendation first). The factory takes it to the person, so the call comes back refused on
+  purpose; stop and wait for the message starting "[factory] The person answered".
 - `factory coord harden "<title>" --note "<what check would have caught it>"`: add a hardening task to
   the backlog. Only after a plan or code send-back.
 

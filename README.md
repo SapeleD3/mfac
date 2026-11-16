@@ -124,8 +124,11 @@ else to the board's folder itself, and only then to the default. If a task turns
 place, `factory set-repo F-001 PATH` (or "Wrong folder?" on the task) moves it before anything is built,
 and its coordinator does the same with `factory coord move-repo` when a stage spots the mismatch.
 Claude Code asks whether to trust each folder it hasn't seen, and every new worktree is one; the factory
-answers yes for the task's own folder or worktree only. A session left waiting on any other prompt for 90
-seconds is raised as an alert, so it doesn't hang quietly.
+answers yes for the task's own folder or worktree only. When a session asks the person something
+(AskUserQuestion), the factory turns the terminal menu down and puts every question under Needs you;
+you pick an option per question (or write your own answer) in the app, and the answer is pasted back into
+that session. Any other menu a session sits on for 90 seconds shows under Needs you too, with a link to the
+live session, and leaves once it's answered there.
 
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),

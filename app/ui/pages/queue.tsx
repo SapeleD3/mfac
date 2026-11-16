@@ -36,6 +36,7 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
   const binned = app.tasks.filter((t) => t.column === "Bin").length;
   const waiting = app.intake.filter((i) => i.status === "Inbox" || i.status === "Triage" || i.status === "ReplyDrafted").length;
   const askOf = (t: Task) => app.prompts.find((p) => p.taskId === t.id)?.kind;
+  const colOf = (t: Task): Task["column"] => (askOf(t) && t.column === "Running" ? "Needs you" : t.column);
 
   const drop = async (id: string, to: Task["column"]) => {
     const t = app.tasks.find((x) => x.id === id);
@@ -95,7 +96,7 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
     body = (
       <div class="kb">
         {COLS.map(([col, cls, hint]) => {
-          const cards = tasks.filter((t) => t.column === col).slice(0, col === "Done" ? 12 : 100);
+          const cards = tasks.filter((t) => colOf(t) === col).slice(0, col === "Done" ? 12 : 100);
           return (
             <div
               key={col}
@@ -107,7 +108,7 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
             >
               <div class="kb-h">
                 <b>{col}</b>
-                <span class="chip">{tasks.filter((t) => t.column === col).length}</span>
+                <span class="chip">{tasks.filter((t) => colOf(t) === col).length}</span>
               </div>
               <div class="xs faint kb-hint">{hint}</div>
               {cards.map((t) => (
@@ -139,7 +140,7 @@ export function Queue({ route, only }: { route: Route; only?: Task["column"] }) 
       </div>
     );
   } else {
-    const groups = (only ? [only] : (["Needs you", "Running", "PR ready", "Queued", "Done"] as const)).map((g) => [g, tasks.filter((t) => t.column === g)] as const).filter(([, ts]) => ts.length);
+    const groups = (only ? [only] : (["Needs you", "Running", "PR ready", "Queued", "Done"] as const)).map((g) => [g, tasks.filter((t) => colOf(t) === g)] as const).filter(([, ts]) => ts.length);
     body = groups.length ? (
       groups.map(([g, ts]) => (
         <div key={g}>

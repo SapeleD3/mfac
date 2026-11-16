@@ -29,7 +29,9 @@ source for this, not just brief.md.
 If something the source doesn't settle would change the answer or the work (which store, which
 market, how deep, what "safe" means here), ask the person with the AskUserQuestion tool, early and
 once: one to three short questions, each multiple choice with your recommended option first. The
-factory shows them to the person and your session waits for the answer. Don't ask what you can find
+factory takes the questions, so the tool call comes back refused on purpose: stop there and wait.
+The person answers in the factory app, and the answer is pasted here as a message starting
+"[factory] The person answered". Don't ask what you can find
 out yourself, and don't ask to confirm what the source already says. Anything you don't ask about
 but had to assume, mark "Assumed:" in research.md.
 
