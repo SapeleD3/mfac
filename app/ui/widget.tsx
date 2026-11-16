@@ -263,7 +263,6 @@ function GateRow({ t }: { t: Task }) {
 }
 
 export function AskBody({ p }: { p: Prompt }) {
-  const [pick, setPick] = useState(1);
   if (p.kind === "permission") {
     const input = p.payload.input as { command?: string; file_path?: string } | undefined;
     const cmd = input?.command ?? input?.file_path ?? JSON.stringify(p.payload.input ?? {}).slice(0, 300);
@@ -292,27 +291,58 @@ export function AskBody({ p }: { p: Prompt }) {
       </div>
     );
   }
+  if (p.payload.menu)
+    return (
+      <div class="p-detail" onClick={(e) => e.stopPropagation()}>
+        <span class="p-kind">Waiting in its terminal</span>
+        <pre class="p-cmd" style={{ whiteSpace: "pre-wrap" }}>
+          {p.payload.question}
+        </pre>
+        <div class="p-acts">
+          {p.taskId && (
+            <Btn kind="btn-primary" onClick={() => showMain(`session/${p.taskId}`)}>
+              Open the live session
+            </Btn>
+          )}
+        </div>
+      </div>
+    );
+  return <QuestionBody p={p} />;
+}
+
+function QuestionBody({ p }: { p: Prompt }) {
+  const qs = p.payload.questions ?? [{ question: p.payload.question ?? "", options: p.payload.options ?? [] }];
+  const [picks, setPicks] = useState<number[]>(qs.map(() => 1));
+  const [note, setNote] = useState("");
+  const set = (i: number, n: number) => setPicks(picks.map((x, j) => (j === i ? n : x)));
   return (
     <div class="p-detail" onClick={(e) => e.stopPropagation()}>
-      <span class="p-kind">Question</span>
-      <div class="small" style={{ marginBottom: 6 }}>
-        <b>{p.payload.question}</b>
-      </div>
-      {(p.payload.options ?? []).map((o, i) => (
-        <div key={i} class={`p-opt ${pick === i + 1 ? "on" : ""}`} onClick={() => setPick(i + 1)} style={{ cursor: "pointer" }}>
-          <span class="rad" />
-          {o}
+      <span class="p-kind">{qs.length > 1 ? `${qs.length} questions` : "Question"}</span>
+      {qs.map((q, i) => (
+        <div key={i} style={{ marginBottom: 8 }}>
+          <div class="small" style={{ marginBottom: 4 }}>
+            {q.header && <span class="faint xs">{q.header} · </span>}
+            <b>{q.question}</b>
+          </div>
+          {q.options.map((o, k) => {
+            const [label, ...why] = o.split(": ");
+            return (
+              <div key={k} class={`p-opt ${picks[i] === k + 1 ? "on" : ""}`} onClick={() => set(i, k + 1)} style={{ cursor: "pointer" }}>
+                <span class="rad" />
+                <span>
+                  {label}
+                  {why.length > 0 && <span class="faint xs"> {why.join(": ")}</span>}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ))}
+      <textarea class="in" rows={2} placeholder="Anything to add, or your own answer" value={note} onInput={(e) => setNote(e.currentTarget.value)} />
       <div class="p-acts">
-        <Btn kind="btn-primary" onClick={() => act("prompt.answer", { id: p.id, option: pick }, ["prompts"])}>
+        <Btn kind="btn-primary" onClick={() => act("prompt.answer", { id: p.id, options: picks, message: note }, ["prompts"])}>
           Send
         </Btn>
-        {p.taskId && (
-          <Btn kind="btn-ghost" onClick={() => showMain(`session/${p.taskId}`)}>
-            Type an answer
-          </Btn>
-        )}
       </div>
     </div>
   );

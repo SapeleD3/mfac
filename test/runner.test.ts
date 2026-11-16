@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { call } from "../src/daemon/client.js";
 import type { TaskView } from "../src/workflow/engine.js";
 import { startEngine } from "../src/daemon/host.js";
-import { type Stage, runnerPart } from "../src/stages/runner.js";
+import { type Prompt, type Stage, runnerPart } from "../src/stages/runner.js";
 import { ticketsPart } from "../src/board/tickets.js";
 
 const dir = mkdtempSync(join(tmpdir(), "factory-runner-"));
@@ -337,6 +337,42 @@ test("a new worktree's trust prompt is answered for the folder you chose, and an
     "a session stuck on a question is raised",
   );
   assert.ok(!keyed.some((k) => k.id === rid), "other prompts are left for you to answer");
+  const menu = (await c<Prompt[]>("prompt.list", {})).find((p) => p.stageId === rid)!;
+  assert.ok(menu.payload.menu, "the menu shows under Needs you");
+  assert.match(menu.payload.question!, /make this edit to research\.md/);
+  await assert.rejects(c("prompt.answer", { id: menu.id, option: 1 }), /Take over/);
+  screens.set(rid, "Writing research.md…");
+  await c("factory.tick");
+  assert.ok(!(await c<Prompt[]>("prompt.list", {})).some((p) => p.id === menu.id), "answered in the terminal, so it leaves Needs you");
+});
+
+test("a session's question goes to the person instead of a terminal menu, and the answer comes back as a message", async () => {
+  await c("settings.set", { slots: 8 });
+  const t = await c<TaskView>("task.add", { title: "Pick a data source", repo, recipe: "research" });
+  await c("factory.tick");
+  const coordId = `${t.id}-coordinator-1`;
+  const session = await sessionOf(coordId);
+  const r = await c<{ deny?: string }>("hook.question", {
+    session_id: session,
+    tool_input: {
+      questions: [
+        { header: "Old sources", question: "What happens to the old sources?", options: [{ label: "Drop them", description: "Smaller code" }, { label: "Keep as third" }] },
+        { header: "Max age", question: "How old can a snapshot be?", options: [{ label: "7 days" }, { label: "30 days" }] },
+      ],
+    },
+  });
+  assert.match(r.deny!, /Stop now and wait/, "Claude's own menu is turned down, so nothing sits in the terminal");
+  const q = (await c<Prompt[]>("prompt.list", {})).find((p) => p.taskId === t.id)!;
+  assert.equal(q.payload.questions!.length, 2, "every question is kept, not just the first");
+  assert.equal(q.payload.questions![0]!.options[0], "Drop them: Smaller code");
+
+  const n = pasted.length;
+  await c("hook.stop", { session_id: session });
+  assert.equal(pasted.length, n, "a session waiting on the person isn't nudged");
+
+  await c("prompt.answer", { id: q.id, options: [1, 2], message: "Only for workspaces with a sync" });
+  assert.equal(lastPaste().id, coordId);
+  assert.equal(lastPaste().text, "[factory] The person answered:\n- Old sources: Drop them\n- Max age: 30 days\n- In their words: Only for workspaces with a sync\nCarry on with this.");
 });
 
 test("a session that quits on its own keeps its last screen, and its coordinator starts fresh when there's nothing to resume", async () => {

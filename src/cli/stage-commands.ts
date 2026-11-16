@@ -98,8 +98,10 @@ export function extend(commands: Record<string, Command>) {
         const input = JSON.parse((await readStdin()) || "{}") as Record<string, unknown>;
         try {
           if (args[0] === "stop") await call("hook.stop", input);
-          else if (args[0] === "question") await call("hook.question", input);
-          else if (args[0] === "permission") {
+          else if (args[0] === "question") {
+            const d = await call<{ deny?: string }>("hook.question", input);
+            if (d.deny) out(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: d.deny } }));
+          } else if (args[0] === "permission") {
             const d = await call<{ behavior: string; message?: string }>("hook.permission", input);
             if (d.behavior === "allow" || d.behavior === "deny")
               out(JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: d.behavior, ...(d.message ? { message: d.message } : {}) } } }));

@@ -97,7 +97,16 @@ export interface Prompt {
   taskId?: string;
   stageId?: string;
   kind: "permission" | "question";
-  payload: { tool?: string; input?: unknown; question?: string; options?: string[]; role?: string; title?: string };
+  payload: {
+    tool?: string;
+    input?: unknown;
+    question?: string;
+    options?: string[];
+    questions?: { header?: string; question: string; options: string[] }[];
+    menu?: boolean;
+    role?: string;
+    title?: string;
+  };
   status: string;
   createdAt: string;
 }
