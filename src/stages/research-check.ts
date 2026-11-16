@@ -23,8 +23,28 @@ export function hasStatechart(text: string): boolean {
   return /```mermaid\s+stateDiagram(-v2)?\b[\s\S]*-->[\s\S]*```/.test(text);
 }
 
+const LABELLED = /^(\s*(?:note\s+(?:left|right)\s+of\s+\S+|\S+\s*-->\s*\S+))\s*:\s*(.*)$/;
+
+/** Mermaid ends a state label or note at a second colon or a semicolon, which agents' prose often has; the diagram then draws nowhere, Notion included. */
+export function mendStatechart(text: string): string {
+  return text.replace(/```mermaid\s+stateDiagram[\s\S]*?```/g, (block) =>
+    block
+      .split("\n")
+      .map((line) => {
+        const m = line.match(LABELLED);
+        return m ? `${m[1]} : ${m[2]!.replace(/\s*:\s*/g, " - ").replace(/;/g, ",")}` : line;
+      })
+      .join("\n"),
+  );
+}
+
 export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise<CheckResult> {
   const chartFile = join(jobDir, "statechart.md");
+  if (existsSync(chartFile)) {
+    const raw = readFileSync(chartFile, "utf8");
+    const mended = mendStatechart(raw);
+    if (mended !== raw) writeFileSync(chartFile, mended);
+  }
   const chart = existsSync(chartFile) && hasStatechart(readFileSync(chartFile, "utf8"));
   const models = existsSync(jobDir) ? readdirSync(jobDir).filter((f) => f.endsWith(".tla") && !f.includes("_TTrace_")) : [];
   if (!chart) return record(jobDir, { chart, proved: false, detail: "statechart.md is missing or has no ```mermaid stateDiagram block with transitions." });

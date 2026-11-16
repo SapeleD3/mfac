@@ -83,3 +83,32 @@ test("research.md must lead with a short answer, say the next step and stay unde
   assert.equal(problems.length, 2, "code blocks don't count toward the cap");
   assert.match(checkReadable(job({})).problems[0]!, /missing/);
 });
+
+test("statechart labels and notes lose the extra colons mermaid can't draw, and nothing else changes", async () => {
+  const { mendStatechart } = await import("../src/stages/research-check.js");
+  const chart = [
+    "# Statechart",
+    "Intro: kept as written.",
+    "```mermaid",
+    "stateDiagram-v2",
+    "    [*] --> Asking: you ask (R1)",
+    "    Asking --> Answered: match; fresh (R2)",
+    "    note right of Answered: logs its source: system or gpr (R6)",
+    "    Answered --> [*]",
+    "```",
+  ].join("\n");
+  assert.equal(
+    mendStatechart(chart),
+    [
+      "# Statechart",
+      "Intro: kept as written.",
+      "```mermaid",
+      "stateDiagram-v2",
+      "    [*] --> Asking : you ask (R1)",
+      "    Asking --> Answered : match, fresh (R2)",
+      "    note right of Answered : logs its source - system or gpr (R6)",
+      "    Answered --> [*]",
+      "```",
+    ].join("\n"),
+  );
+});
