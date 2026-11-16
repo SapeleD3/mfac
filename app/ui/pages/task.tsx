@@ -370,6 +370,7 @@ function EventLine({ e }: { e: TaskEvent }) {
     as?: string;
     to?: string;
     why?: string;
+    aside?: string;
   };
   let text: preact.ComponentChildren;
   let cls = "";
@@ -413,6 +414,9 @@ function EventLine({ e }: { e: TaskEvent }) {
       break;
     case "repo_setup":
       text = "Ran the repo's setup.";
+      break;
+    case "restarted_research":
+      text = d.aside ? `Earlier research set aside in ${d.aside}; research starts again in the new folder.` : "Research starts again in the new folder.";
       break;
     case "rehomed":
       text = `Moved from ${d.from ?? "no folder"} to ${d.to}${d.why ? `: ${d.why}` : ""}.`;
