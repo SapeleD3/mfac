@@ -145,7 +145,7 @@ step with `factory coord` commands. The engine checks every one of those against
 | Stage | Writes (in `~/.factory/jobs/<task>/`) | May do without asking |
 | --- | --- | --- |
 | researcher | requirements.md (R1, R2, … each with source quote, acceptance criterion and how to verify), research.md, statechart.md, a TLA+ model + .cfg | read the repo, search the web, run TLC |
-| planner | plan.md with a traceability table, tickets (`factory ticket add`) | read the repo |
+| planner | plan.md with a traceability table, tickets (`factory ticket add`, `edit`, `drop`) | read the repo |
 | requirements_review (Opus) | review-requirements.md: its own read of the source, a traceability matrix, gaps, scope creep, `VERDICT: covered` or `gaps` | read the repo and the source in Slack or Jira |
 | builder | build.md, pr.md, commits on the task branch | edit code, run the repo's checks, `git add`/`commit` |
 | code_review, security_review, ui_review (ui tag) | review-*.md with a row per requirement, a ticket per blocking finding | read, run the repo's checks |
@@ -161,9 +161,15 @@ to the requirement ids, so the chain from the original ask to the merged code ca
 - **Research is written to be read.** The researcher first works out what the person actually wants and
   may ask them up to three multiple-choice questions (they show up in the app). It runs the practical
   checks the ask implies (for a name: app stores, domains, products doing the same job) before anything
-  else. The engine refuses a research.md that doesn't open with a `## Answer` under 120 words, has no
-  `## Next step`, or runs over 1500 words. In Notion the research comes first and the requirements,
-  statechart and TLC result follow as an appendix.
+  else.
+- **Less is more.** Research and plans have a part for you and a part for the builder, split at
+  `## For the builder`. Your part opens with a `## Answer` under 120 words, then `## Today` and `## After`
+  (the user's journey, at most 6 numbered steps each) and `## What it imposes`. It has no file names,
+  line numbers, requirement or ticket ids, or review-round history, and stays under 800 words for research
+  and 1000 for a plan. The engine refuses research or a plan that breaks this. Anything the ask didn't
+  request is listed under `## Extras, yes or no?` for you to decide, and the requirements review can't
+  wave it through. In Notion and the app, everything for the builder (requirements, review, statechart,
+  TLC) is folded away under one toggle.
 - **The plan is checked against the original ask before you see it.** A separate requirements review
   rereads the Slack message or Jira ticket and traces every requirement into the research and the plan.
   Gaps or scope creep go back to the planner (max 3). The engine refuses "covered" unless every

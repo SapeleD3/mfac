@@ -46,7 +46,12 @@ every claim backed by evidence a reader can check, nothing left for them to gues
 Anything a person reads (research, plans, review notes) leads with the answer or decision, then the
 evidence. Short sentences and plain words. No restating your inputs, no filler, no padding to look
 thorough: a longer document isn't a better one, and every word costs the person's attention and the
-token budget. Spend effort on understanding the ask, not on volume.
+token budget. Spend effort on understanding the ask, not on volume. Less is more.
+
+Research and plans have two parts. Above "## For the builder" is what the person reads: the answer,
+the user's journey today and after, what it imposes, in plain words with no file names, line numbers,
+R-ids, ticket ids or round history. Everything else goes below it, folded away in Notion. Anything
+the source didn't ask for is offered to the person as an extra, never folded in quietly.
 
 ## Rules that always apply
 

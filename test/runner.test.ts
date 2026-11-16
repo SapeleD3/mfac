@@ -35,7 +35,10 @@ const fakeTmux = {
   live: () => new Set(alive),
   idleSeconds: (id: string) => idle.get(id) ?? 0,
 };
-const doc = (answer: string) => `# Research\n## Answer\n${answer}\n## Next step\nApprove it.\n`;
+const doc = (answer: string) =>
+  `# Research\n## Answer\n${answer.replace(/\bR\d+:\s*/g, "")}\n## Today\n1. The export fails.\n## After\n1. The export works.\n## What it imposes\nNothing.\n## Next step\nApprove it.\n## For the builder\n${answer}\n`;
+const plan = (builder: string) =>
+  `# Fix the export\n## Answer\nThe export button sends the right form.\n## Today\n1. The export fails.\n## After\n1. The export works.\n## What it imposes\nNothing.\n## For the builder\n${builder}\n`;
 let tlcPasses = true;
 const fakeTlc = async () => ({ ok: tlcPasses, states: 42, output: tlcPasses ? "No error has been found." : "Error: Invariant Safe is violated." });
 
@@ -130,8 +133,10 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   await coord(t.id, "run", { role: "planner" });
   const filed = await call<{ id: string; createdBy: string }>("ticket.add", { task: t.id, title: "Fix form target", createdBy: "planner", pickedUpBy: "builder", check: "export test passes" }, socket);
   assert.equal(filed.createdBy, "planner");
-  writeFileSync(join(job(t.id), "plan.md"), "# Plan\nFix the form target.");
+  writeFileSync(join(job(t.id), "plan.md"), "# Plan\nRound 2 closes G4: see src/form.ts:12.");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-planner-1`) });
+  await assert.rejects(coord(t.id, "submit-plan"), /isn't ready for the person[\s\S]*## Answer[\s\S]*## Today[\s\S]*file:line[\s\S]*round history/);
+  writeFileSync(join(job(t.id), "plan.md"), plan("Fix the form target."));
   assert.match(await coord(t.id, "submit-plan"), /requirements_review-1[\s\S]*never mentions R1/);
   writeFileSync(join(job(t.id), "review-requirements.md"), "| R1 | missing |\nVERDICT: gaps");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-requirements_review-1`) });
@@ -139,7 +144,7 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   await assert.rejects(coord(t.id, "requirements", { covered: true }), /never mentions R1/);
   assert.match(await coord(t.id, "requirements", { gaps: true }), /back to the planner \(round 1\/3\)/);
   await coord(t.id, "run", { role: "planner", note: "trace R1" });
-  writeFileSync(join(job(t.id), "plan.md"), "# Plan\n## Traceability\n| R1 | Fix form target | export test |");
+  writeFileSync(join(job(t.id), "plan.md"), plan("### Traceability\n| R1 | Fix form target | export test |"));
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-planner-2`) });
   await coord(t.id, "submit-plan");
   writeFileSync(join(job(t.id), "review-requirements.md"), "| R1 | covered |\nVERDICT: covered");

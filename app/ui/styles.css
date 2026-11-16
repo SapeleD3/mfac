@@ -621,3 +621,6 @@ a.ls b { color: var(--text); }
 .brief .brief-md { color: #a8a8a8; }
 .brief.folded .brief-md { max-height: 9.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
 .brief-toggle { background: none; border: 0; padding: 2px 0; color: var(--working); cursor: pointer; }
+.for-builder { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 10px; }
+.for-builder > summary { cursor: pointer; color: var(--text-muted); font-size: var(--text-sm, 13px); }
+.for-builder[open] > summary { margin-bottom: 8px; }

@@ -83,7 +83,26 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
     case "requirements_review":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, "Bash(factory ticket ls:*)"] };
     case "builder":
-      return { ...base, allow: [...READ, ...GIT_READ, ...CHECKS, ...job, "Edit", "Write", "Bash(git add:*)", "Bash(git commit:*)", "Bash(git mv:*)", "Bash(git rm:*)", "Bash(mkdir:*)", "Bash(ls:*)"] };
+      return {
+        ...base,
+        allow: [
+          ...READ,
+          ...GIT_READ,
+          ...CHECKS,
+          ...job,
+          "Edit",
+          "Write",
+          "Bash(git add:*)",
+          "Bash(git commit:*)",
+          "Bash(git mv:*)",
+          "Bash(git rm:*)",
+          "Bash(mkdir:*)",
+          "Bash(ls:*)",
+          "Bash(factory ticket ls:*)",
+          "Bash(factory ticket done:*)",
+          "Bash(factory ticket move:*)",
+        ],
+      };
     case "code_review":
     case "security_review":
     case "ui_review":

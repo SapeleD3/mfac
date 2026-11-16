@@ -4,6 +4,7 @@ import type { Connections } from "../connectors/connections.js";
 import type { Engine, TaskView } from "../workflow/engine.js";
 import * as notion from "../connectors/notion.js";
 import { paths } from "../shared/paths.js";
+import { BUILDER, forBuilder, forPerson } from "../stages/outputs.js";
 import type { State } from "../workflow/statechart.js";
 import type { Store } from "../workflow/store.js";
 import type { Ticket, Tickets } from "./tickets.js";
@@ -22,6 +23,12 @@ export function pageIdFrom(link: string): string {
   if (!hex) throw new Error("that doesn't look like a Notion page link");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+export const fold = (title: string, body: string) =>
+  `## ${title} {toggle="true"}\n${body
+    .split("\n")
+    .map((l) => (l ? `\t${l}` : l))
+    .join("\n")}`;
 
 const UNTRACKED: readonly State[] = ["Dropped", "Ignored", "Replied"];
 const GIVE_UP = 3;
@@ -172,28 +179,14 @@ export class NotionSync {
     // Every task change while the gate is open lands here; each round is published once.
     const done = `published_${t.id}`;
     if (this.store.setting<string | undefined>(done, undefined) === `${gate}:${round}`) return t.notionReviewId;
-    const md =
+    const doc = read(gate === "Research" ? "research.md" : "plan.md");
+    const builder =
       gate === "Research"
-        ? [
-            read("research.md"),
-            INTRO(t.id),
-            t.tags.includes("learn") ? read("explainer.md") : "",
-            "## Appendix: requirements",
-            read("requirements.md").replace(/^#\s+Requirements\s*\n/, ""),
-            "## Appendix: statechart",
-            read("statechart.md"),
-            "## Appendix: formal check",
-            read("tlc-result.md"),
-          ].join("\n\n")
-        : [
-            read("plan.md"),
-            "",
-            INTRO(t.id),
-            "## Requirements review",
-            read("review-requirements.md"),
-            "## Tickets",
-            ...this.tickets.list(t.id).map((k) => `- **${k.id}** ${k.title} (check: ${k.check || "n/a"}; picked up by ${stageName(k.pickedUpBy) ?? "?"})`),
-          ].join("\n");
+        ? [forBuilder(doc), "### Requirements", read("requirements.md").replace(/^#\s+Requirements\s*\n/, ""), "### Statechart", read("statechart.md"), "### Formal check", read("tlc-result.md")]
+        : [forBuilder(doc), "### Requirements review", read("review-requirements.md")];
+    const md = [forPerson(doc), INTRO(t.id), gate === "Research" && t.tags.includes("learn") ? read("explainer.md") : "", fold(BUILDER, builder.filter((p) => p.trim()).join("\n\n"))]
+      .filter(Boolean)
+      .join("\n\n");
     const key = `review_${t.id}_${gate}`;
     const existing = this.store.setting<string | undefined>(key, undefined);
     this.store.setSetting(`verdict_${t.id}`, "Waiting");
@@ -264,7 +257,8 @@ export class NotionSync {
       commentsReadAt: cached.at,
       boardReady: this.ready(),
       publishing: this.publishing.has(t.id),
-      summary: text.slice(0, 40_000),
+      summary: forPerson(text).slice(0, 40_000),
+      builder: forBuilder(text).slice(0, 40_000),
       tlc: existsSync(join(job, "tlc-result.md")) ? readFileSync(join(job, "tlc-result.md"), "utf8") : undefined,
       statechart: existsSync(join(job, "statechart.md")) ? readFileSync(join(job, "statechart.md"), "utf8") : undefined,
     };

@@ -13,6 +13,7 @@ interface Summary {
   discussions: number;
   commentsReadAt?: string;
   summary: string;
+  builder?: string;
   boardReady?: boolean;
   publishing?: boolean;
   tlc?: string;
@@ -204,13 +205,19 @@ function DocGate({ t }: { t: Task }) {
           </div>
           <h2>{isPlan ? "Plan" : "Research"}</h2>
           {s?.summary ? <Markdown text={untitled(s.summary)} class="doc-body" /> : <p class="dim">{sum.error ?? "Loading…"}</p>}
-          {!isPlan && (
-            <>
-              <h2>Statechart</h2>
-              {s?.statechart ? <Markdown text={untitled(s.statechart.slice(0, 20_000))} class="doc-body" /> : <p class="dim">No statechart.md (the engine wouldn't open this gate without one).</p>}
-              <h2>Verification</h2>
-              {s?.tlc ? <Markdown text={untitled(s.tlc.slice(0, 8000))} class="doc-body" /> : <p class="dim">No TLC result.</p>}
-            </>
+          {s && (s.builder || !isPlan) && (
+            <details class="for-builder">
+              <summary>For the builder</summary>
+              {s.builder && <Markdown text={s.builder} class="doc-body" />}
+              {!isPlan && (
+                <>
+                  <h3>Statechart</h3>
+                  {s.statechart ? <Markdown text={untitled(s.statechart.slice(0, 20_000))} class="doc-body" /> : <p class="dim">No statechart.md (the engine wouldn't open this gate without one).</p>}
+                  <h3>Verification</h3>
+                  {s.tlc ? <Markdown text={untitled(s.tlc.slice(0, 8000))} class="doc-body" /> : <p class="dim">No TLC result.</p>}
+                </>
+              )}
+            </details>
           )}
           <p style={{ marginTop: 12, color: "#9b9b9b", fontSize: 13 }}>
             In Notion the same doc also has requirements.md, and that's where comments go.

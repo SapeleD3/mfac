@@ -28,7 +28,7 @@ export interface NotionComment {
 }
 
 const SCHEMA = `Jobs: Name (title), Task (text), State (select: ${STATES.join(", ")}), Column (select: ${[...COLUMNS, "Inbox"].join(", ")}), Rounds (text), Tags (multi-select: learn, urgent, ui, sensitive, harden), Source (url), PR (url).
-Tickets: Name (title), Ticket (text), Job (relation to Jobs), Created by (select), Picked up by (select), Status (select: Backlog, In progress, In review, Blocked, Done), Tags (multi-select, as in Jobs), Check (text), Links (text).
+Tickets: Name (title), Ticket (text), Job (relation to Jobs), Created by (select), Picked up by (select), Status (select: Backlog, In progress, In review, Blocked, Done, Dropped), Tags (multi-select, as in Jobs), Check (text), Links (text).
 Reviews: Name (title), Job (relation to Jobs), Gate (select: Research, Plan), Round (number), Verdict (select: Waiting, Approved, Sent back, Dropped).`;
 
 export async function setupBoard(store: Store, parentPage: string): Promise<BoardIds> {
@@ -64,7 +64,7 @@ export async function createReview(store: Store, ids: BoardIds, properties: Reco
   const r = await ask<{ pageId?: string }>(
     store,
     "notion",
-    `Create a page in the Reviews database ${ids.reviewsDb} with these properties:\n${JSON.stringify(properties)}\n\nIts content is this markdown, exactly as written (keep mermaid code blocks as code blocks with language mermaid):\n\n${markdown}\n\nAnswer {"pageId": "<id>"}.`,
+    `Create a page in the Reviews database ${ids.reviewsDb} with these properties:\n${JSON.stringify(properties)}\n\nIts content is this markdown, exactly as written (keep mermaid code blocks as code blocks with language mermaid; a heading marked {toggle="true"} is a toggle heading, and the tab-indented lines under it are its contents, so they stay folded inside it):\n\n${markdown}\n\nAnswer {"pageId": "<id>"}.`,
     { write: true },
   );
   if (!r.pageId) throw new Error("Notion didn't return the review page");
@@ -75,7 +75,7 @@ export async function addRound(store: Store, pageId: string, properties: Record<
   await ask(
     store,
     "notion",
-    `On the Notion page ${pageId}: set these properties ${JSON.stringify(properties)}; add a divider and then this markdown at the end of the page, exactly as written:\n\n${markdown}\n\nThen reply to every open comment discussion on the page with: "${reply}". Answer {"ok": true}.`,
+    `On the Notion page ${pageId}: set these properties ${JSON.stringify(properties)}; add a divider and then this markdown at the end of the page, exactly as written (a heading marked {toggle="true"} is a toggle heading, and the tab-indented lines under it stay folded inside it):\n\n${markdown}\n\nThen reply to every open comment discussion on the page with: "${reply}". Answer {"ok": true}.`,
     { write: true },
   );
 }

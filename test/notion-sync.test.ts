@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Tickets } from "../src/board/tickets.js";
-import { NotionSync } from "../src/board/notion-sync.js";
+import { NotionSync, fold } from "../src/board/notion-sync.js";
 import type { RowUpdate } from "../src/connectors/notion.js";
 import { Engine } from "../src/workflow/engine.js";
 import { Store } from "../src/workflow/store.js";
@@ -37,4 +37,21 @@ test("the board skips dropped tasks it never showed, and one row Notion refuses 
   const before = calls.length;
   assert.equal(await sync.flush(), 0);
   assert.equal(calls.length, before, "a row it gave up on isn't tried again");
+});
+
+test("the builder's part folds into one toggle, and a superseded ticket is dropped instead of patched", () => {
+  assert.equal(fold("For the builder", "### Tickets\n\n- T1\n  - check"), '## For the builder {toggle="true"}\n\t### Tickets\n\n\t- T1\n\t  - check');
+
+  const store = new Store(":memory:");
+  const engine = new Engine(store);
+  const tickets = new Tickets(store, engine);
+  const t = engine.add({ title: "Count properties" });
+  const first = tickets.add({ taskId: t.id, title: "Check in Langfuse", createdBy: "planner", check: "shows a log" });
+  const edited = tickets.update(first.id, { check: "lookup_sources has system" });
+  assert.equal(edited.check, "lookup_sources has system");
+  assert.throws(() => tickets.drop(first.id, " "), /say why/);
+  const dropped = tickets.drop(first.id, "the person checks it after deploy");
+  assert.equal(dropped.status, "Dropped");
+  assert.equal(dropped.links.dropped, "the person checks it after deploy");
+  assert.equal(tickets.add({ taskId: t.id, title: "Next", createdBy: "planner" }).id, `${t.id}-T2`, "a dropped ticket keeps its number");
 });
