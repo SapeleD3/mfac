@@ -387,6 +387,7 @@ function EventLine({ e }: { e: TaskEvent }) {
     to?: string;
     why?: string;
     aside?: string;
+    stage?: string;
   };
   let text: preact.ComponentChildren;
   let cls = "";
@@ -430,6 +431,13 @@ function EventLine({ e }: { e: TaskEvent }) {
       break;
     case "repo_setup":
       text = "Ran the repo's setup.";
+      break;
+    case "trusted_folder":
+      text = `Told Claude Code to trust ${d.folder}, the folder this task works in.`;
+      break;
+    case "session_waiting":
+      cls = "engine-no";
+      text = `${d.stage} is waiting on a question in its terminal. Open the live session and answer it.`;
       break;
     case "restarted_research":
       text = d.aside ? `Earlier research set aside in ${d.aside}; research starts again in the new folder.` : "Research starts again in the new folder.";

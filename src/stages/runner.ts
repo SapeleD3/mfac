@@ -19,6 +19,8 @@ import { paths } from "../shared/paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
 import { RUNNING, type State } from "../workflow/statechart.js";
 
+const TRUST_PROMPT = /Yes, I trust this folder|Do you trust the files in this folder/;
+const WAITING_PROMPT = /Enter to confirm|Esc to cancel|\(y\/n\)|Press Enter to continue/i;
 const AT_GATE: readonly State[] = ["ResearchGate", "PlanGate", "NeedsYou"];
 const RESEARCH_OUTPUTS = ["requirements.md", "research.md", "statechart.md", "tlc-result.md", "review-requirements.md", "review-comments.md", "plan.md", "explainer.md", "lessons.md"];
 const BUILT: readonly State[] = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
@@ -113,6 +115,8 @@ export class Runner {
   private held = new Map<string, string[]>();
   /** A Claude session keeps the folder it started in, so a moved task gets a fresh coordinator rather than a resumed one. */
   private moved = new Set<string>();
+  private trusted = new Set<string>();
+  private flagged = new Set<string>();
   private ticking = false;
 
   constructor(
@@ -312,6 +316,7 @@ export class Runner {
     if (this.ticking) return;
     this.ticking = true;
     try {
+      this.unblock();
       const settings = this.engine.settings();
       if (this.store.setting("paused", false)) return;
       const active = this.engine.list().filter((t) => RUNNING.includes(t.machine.state) || t.machine.state === "ResearchCheck");
@@ -326,6 +331,38 @@ export class Runner {
       }
     } finally {
       this.ticking = false;
+    }
+  }
+
+  /**
+   * Claude Code asks before it works in a folder it hasn't seen, and every new worktree is one. The folder is
+   * one the person pointed the task at (or the factory's own worktree of it), so the factory says yes; any other
+   * prompt a session sits on is raised to the person instead of hanging quietly.
+   */
+  unblock() {
+    for (const s of this.stages().filter((x) => x.status === "running" && this.tmux.isAlive(x.id))) {
+      const t = this.engine.get(s.taskId);
+      if (!t || t.takenOver) continue;
+      let screen = "";
+      try {
+        screen = this.tmux.capture(s.id, 40, false);
+      } catch {
+        continue;
+      }
+      if (TRUST_PROMPT.test(screen)) {
+        const folder = t.worktree ?? this.jobDir(t.id);
+        const ours = folder === t.repo || folder.startsWith(`${paths.worktrees()}/`) || folder === this.jobDir(t.id);
+        if (ours && !this.trusted.has(s.id)) {
+          this.trusted.add(s.id);
+          this.tmux.keys(s.id, "Down", "Enter");
+          this.store.addEvent(t.id, "trusted_folder", "engine", { stage: s.id, folder });
+          continue;
+        }
+      }
+      if (!WAITING_PROMPT.test(screen) || this.tmux.idleSeconds(s.id) < 90 || this.flagged.has(s.id)) continue;
+      this.flagged.add(s.id);
+      this.store.addEvent(t.id, "session_waiting", "engine", { stage: s.id });
+      this.engine.emit("alert", { taskId: t.id, level: "warn", message: `${s.id} is waiting on a question in its terminal. Open its live session and answer it (Take over), then hand back.` });
     }
   }
 
