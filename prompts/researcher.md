@@ -82,46 +82,62 @@ Typical checks by kind of ask, when they apply:
    linked tickets and acceptance criteria fields. One behaviour per requirement. Acceptance
    criteria must be observable and testable, never "works correctly". Only what the person asked:
    don't invent requirements to look thorough. A basic check usually needs two to five.
-2. research.md, written for a busy person who reads the first lines and stops. In this shape:
+2. research.md, written for a busy person who reads the first lines and stops. Less is more: the
+   part above "## For the builder" is under 800 words. In this shape:
 
    ```
    # <the question, in the person's words>
    ## Answer
    <the verdict or recommendation in two to four plain sentences, how sure you are, and the one
    thing that would change it. Under 120 words.>
+   ## Today
+   <when the ask changes how something behaves: the user's journey as it is now, numbered steps, at
+   most 6, plain sentences, no code names>
+   ## After
+   <the same journey with the recommended change, at most 6 numbered steps>
+   ## What it imposes
+   <what changes for users that they might notice, what has to happen first, who isn't affected>
    ## What we checked
-   <a table: R-id | check | result | evidence (link or file:line). One row per check.>
+   <a table: check | result | link. Plain words; one row per check.>
    ## Still unknown
    <what couldn't be checked and why, or "Nothing">
    ## Next step
    <what the person should do or decide now>
-   ## Details
-   <only what a reviewer needs to trust the answer: for a change, how the system behaves today with
-   file:line references, the options with trade-offs, risks, and the toolchain you confirmed>
+   ## For the builder
+   <only what a reviewer or planner needs to trust the answer: the R-id each check settles, how the
+   system behaves today with file:line references, the options with trade-offs, risks, the toolchain
+   you confirmed, and one line per invariant of the model>
    ```
 
-   Under 1500 words in all. Short sentences, plain words, no legal or academic register, no
-   restating requirements.md or the brief, no filler ("it is important to note"). Link sources
-   rather than quoting them at length. If a sentence doesn't help the person decide, cut it.
+   Today, After and What it imposes are required when the task changes code (brief.md doesn't say
+   "Kind: research only"); for a research-only ask, include them when the answer is about how
+   something behaves. Nothing above "## For the builder" names files, line numbers, R-ids or review
+   rounds. Short sentences, plain words, no legal or academic register, no restating
+   requirements.md or the brief, no filler ("it is important to note"). Link sources rather than
+   quoting them at length. If a sentence doesn't help the person decide, cut it. When you find
+   existing code that does the same job as what's proposed (another cache, an older path), say so
+   under What it imposes and ask whether it should go, rather than adding beside it.
 3. statechart.md: a Mermaid `stateDiagram-v2` of the behaviour being changed, written with pstack's
    /statechart skill if it's available, in a ```mermaid fenced block. Name states for what a user
    sees and transitions for the event that causes them. Label which R-ids each part covers.
 4. A TLA+ model of that statechart (<Name>.tla) with a <Name>.cfg naming its invariants and
    properties, written with the create-formal-verification skill if available. Check it yourself
-   with `factory tlc <Name>.tla` until it passes. State each invariant in plain words under Details in research.md
-   and the requirement it protects.
+   with `factory tlc <Name>.tla` until it passes. State each invariant in plain words under "For the
+   builder" in research.md and the requirement it protects.
 
 ## Research tasks
 
 When brief.md says "Kind: research only", research.md is the deliverable the person reads: answer
-every R-id in it by name, with the evidence (code paths, docs, measurements, links) and a clear
+every R-id in it by name under "For the builder", with the evidence (code paths, docs, measurements, links) and a clear
 recommendation where the ask wants one. The statechart and model still describe the behaviour the
 research is about; they go in their own files, which the factory shows after research.md as an
-appendix. Don't repeat them in research.md beyond one line per invariant under Details.
+appendix. Don't repeat them in research.md beyond one line per invariant under "For the builder".
 
 ## Acceptance criteria
 
 - research.md opens with "## Answer", and someone who reads only that section knows the verdict.
+- Someone who reads only the part above "## For the builder" knows what the user sees today, what
+  they'd see after, and what it costs.
 - Every practical check the ask implies was run, or is listed under Still unknown with why.
 - Every statement of need in the source maps to an R-id, or is listed under Out of scope with why.
 - Every R-id has a Source, an observable Acceptance and a concrete Verify by.

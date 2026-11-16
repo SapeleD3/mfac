@@ -15,7 +15,10 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
   written. The engine checks requirements.md's shape, that research.md opens with a short Answer
   and stays under its length cap, and the statechart, and runs TLC itself; a
   failure sends research back with the reason (max 3), then to the person.
-- `factory coord submit-plan`: plan.md and the tickets are ready. This starts the requirements
+- `factory coord submit-plan`: plan.md and the tickets are ready. The engine first checks that
+  plan.md's part for the person (above "## For the builder") has the Answer, Today, After and What it
+  imposes, stays under its word caps and has no file names, R-ids or round history; if not, it
+  refuses with the problems: run the planner again with them as the note. Then it starts the requirements
   review, an independent session that checks the research and plan against the original source.
 - `factory coord requirements --covered|--gaps --note "..."`: after the requirements review, record
   its verdict. Covered opens the plan gate; the engine refuses it unless every R-id is traced in

@@ -38,7 +38,7 @@ export function mendStatechart(text: string): string {
   );
 }
 
-export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise<CheckResult> {
+export async function checkResearch(jobDir: string, tlc: Tlc = realTlc, opts: { journey?: boolean } = {}): Promise<CheckResult> {
   const chartFile = join(jobDir, "statechart.md");
   if (existsSync(chartFile)) {
     const raw = readFileSync(chartFile, "utf8");
@@ -50,7 +50,7 @@ export async function checkResearch(jobDir: string, tlc: Tlc = realTlc): Promise
   if (!chart) return record(jobDir, { chart, proved: false, detail: "statechart.md is missing or has no ```mermaid stateDiagram block with transitions." });
   const requirements = checkRequirements(jobDir);
   if (!requirements.ok) return record(jobDir, { chart, proved: false, detail: `requirements.md isn't usable yet:\n- ${requirements.problems.join("\n- ")}` });
-  const readable = checkReadable(jobDir);
+  const readable = checkReadable(jobDir, opts);
   if (!readable.ok) return record(jobDir, { chart, proved: false, detail: `research.md isn't readable yet:\n- ${readable.problems.join("\n- ")}` });
   if (!models.length) return record(jobDir, { chart, proved: false, detail: "No TLA+ model (*.tla) was written next to statechart.md." });
   const model = models[0]!;

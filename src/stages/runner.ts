@@ -10,7 +10,7 @@ import { recall } from "../memory/recall.js";
 import type { Decision, Engine, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
-import { checkConfirmed, checkCoverage, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
+import { checkConfirmed, checkCoverage, checkPlanReadable, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
 import { baseBranch, changedFiles, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
 import { isGitRepo } from "../repo/registry.js";
@@ -557,7 +557,7 @@ export class Runner {
       case "submit-research": {
         idle("researcher");
         if (t.machine.state !== "Researching") throw new Error(`research can only be submitted while Researching (the task is ${t.machine.state})`);
-        const check: CheckResult = await checkResearch(job, this.tlc);
+        const check: CheckResult = await checkResearch(job, this.tlc, { journey: t.machine.kind !== "research" });
         refuse(this.engine.move(taskId, { type: "research_done", chart: check.chart, proved: check.proved }, "engine", { detail: check.detail }));
         const r = this.engine.move(taskId, { type: "check" }, "engine", { detail: check.detail });
         refuse(r);
@@ -579,6 +579,8 @@ export class Runner {
       case "submit-plan": {
         idle("planner");
         if (!existsSync(join(job, "plan.md"))) throw new Error("plan.md isn't written yet");
+        const readable = checkPlanReadable(job);
+        if (!readable.ok) throw new Error(`plan.md isn't ready for the person yet. Run the planner again with this as the note:\n- ${readable.problems.join("\n- ")}`);
         const r = this.engine.move(taskId, { type: "plan_done" }, "coordinator");
         refuse(r);
         if (!r.ok) return "";

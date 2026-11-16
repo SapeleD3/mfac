@@ -3,7 +3,7 @@ import type { Engine } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { type Row, type Store, now, opt, parseJson } from "../workflow/store.js";
 
-export const TICKET_STATUSES = ["Backlog", "In progress", "In review", "Blocked", "Done"] as const;
+export const TICKET_STATUSES = ["Backlog", "In progress", "In review", "Blocked", "Done", "Dropped"] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 export interface Ticket {
@@ -41,6 +41,13 @@ export class Tickets {
     private store: Store,
     private engine: Engine,
   ) {}
+
+  drop(id: string, why: string): Ticket {
+    if (!why.trim()) throw new Error('say why it\'s dropped: factory ticket drop ID --why "superseded by T9"');
+    const cur = this.get(id);
+    if (!cur) throw new Error(`no ticket ${id}`);
+    return this.update(id, { status: "Dropped", links: { ...cur.links, dropped: why.trim() } });
+  }
 
   list(taskId?: string): Ticket[] {
     const rows = taskId ? this.store.db.prepare("SELECT * FROM tickets WHERE task_id = ? ORDER BY created_at").all(taskId) : this.store.db.prepare("SELECT * FROM tickets ORDER BY created_at").all();
@@ -90,6 +97,7 @@ export const ticketsPart: PluginFactory = ({ engine, store }) => {
       "ticket.add": (p: { task: string; title: string; createdBy?: string; pickedUpBy?: string; check?: string; tags?: string[] }) =>
         tickets.add({ taskId: p.task, title: p.title, createdBy: p.createdBy ?? "you", pickedUpBy: p.pickedUpBy, check: p.check, tags: p.tags }),
       "ticket.update": (p: { id: string; patch: Parameters<Tickets["update"]>[1] }) => tickets.update(p.id, p.patch),
+      "ticket.drop": (p: { id: string; why: string }) => tickets.drop(p.id, p.why ?? ""),
     },
   };
 };

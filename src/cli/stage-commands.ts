@@ -67,7 +67,7 @@ export function extend(commands: Record<string, Command>) {
       },
     },
     ticket: {
-      usage: 'ticket add "TITLE" [--check TEXT] [--picked-up-by STAGE] | ls | done ID | move ID STATUS',
+      usage: 'ticket add "TITLE" [--check TEXT] [--picked-up-by STAGE] | ls [--all] | edit ID [--title TEXT] [--check TEXT] | drop ID --why TEXT | done ID | move ID STATUS',
       help: "Tickets on the task's board (stages file them; you can too)",
       async run(args: string[], f: Flags) {
         const [sub, ...rest] = args;
@@ -82,11 +82,21 @@ export function extend(commands: Record<string, Command>) {
           });
           return out(`Filed ${t.id}: ${t.title}`);
         }
+        if (sub === "edit") {
+          const patch = Object.fromEntries((["title", "check"] as const).flatMap((k) => (str(f[k]) === undefined ? [] : [[k, str(f[k])]])));
+          if (!rest[0] || !Object.keys(patch).length) throw new Error('give the ticket and what changes: factory ticket edit ID --title "..." --check "..."');
+          const t = await call<Ticket>("ticket.update", { id: rest[0], patch });
+          return out(`${t.id} is now: ${t.title}${t.check ? ` (check: ${t.check})` : ""}`);
+        }
+        if (sub === "drop") {
+          const t = await call<Ticket>("ticket.drop", { id: rest[0], why: str(f.why) ?? "" });
+          return out(`${t.id} is Dropped`);
+        }
         if (sub === "done" || sub === "move") {
           const t = await call<Ticket>("ticket.update", { id: rest[0], patch: { status: sub === "done" ? "Done" : rest.slice(1).join(" ") } });
           return out(`${t.id} is ${t.status}`);
         }
-        const list = await call<Ticket[]>("ticket.list", { task });
+        const list = (await call<Ticket[]>("ticket.list", { task })).filter((t) => f.all || t.status !== "Dropped");
         if (!list.length) return out("No tickets yet.");
         out(table([["ID", "STATUS", "CREATED BY", "PICKED UP BY", "TITLE"], ...list.map((t) => [t.id, t.status, t.createdBy, t.pickedUpBy ?? "", t.title])]));
       },

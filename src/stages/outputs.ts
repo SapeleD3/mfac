@@ -45,7 +45,7 @@ export function checkPlanTraces(job: string): Validation {
   if (plan === undefined) return result(["plan.md is missing."]);
   const ids = requirementIds(job);
   const problems = ids.filter((id) => !mentions(plan, id)).map((id) => `plan.md never mentions ${id}, so no ticket covers it.`);
-  if (!/^##\s+Traceability/im.test(plan)) problems.push('plan.md has no "## Traceability" section mapping each requirement to its tickets.');
+  if (!/^#{2,4}\s+Traceability/im.test(plan)) problems.push('plan.md has no "## Traceability" section mapping each requirement to its tickets.');
   return result(problems);
 }
 
@@ -85,26 +85,78 @@ export function checkConfirmed(job: string): Validation {
 }
 
 export const ANSWER_WORDS = 120;
-export const RESEARCH_WORDS = 1500;
+export const RESEARCH_WORDS = 800;
+export const PLAN_WORDS = 1000;
+export const JOURNEY_STEPS = 6;
+export const BUILDER = "For the builder";
 
 const words = (text: string) => text.replace(/```[\s\S]*?```/g, "").match(/[A-Za-z0-9][\w'’.-]*/g)?.length ?? 0;
+const builderHeading = new RegExp(`^##\\s+${BUILDER}\\b.*$`, "im");
 
-export function checkReadable(job: string): Validation {
-  const text = read(job, "research.md");
-  if (text === undefined) return result(["research.md is missing."]);
+export function forPerson(text: string): string {
+  const m = builderHeading.exec(text);
+  return m ? text.slice(0, m.index).trimEnd() : text;
+}
+
+export function forBuilder(text: string): string {
+  const m = builderHeading.exec(text);
+  return m ? text.slice(m.index + m[0].length).trim() : "";
+}
+
+const NOT_FOR_PEOPLE: [RegExp, string][] = [
+  [/`?[\w./-]+\.[a-z]{1,5}:\d+(?:-\d+)?`?/, "file:line references"],
+  [/\bR\d+\b/, "requirement ids"],
+  [/\b[A-Z][A-Z0-9]*-\d+-T\d+\b/, "ticket ids"],
+  [/\b(?:round \d+|G\d+)\b/i, "review-round history"],
+];
+
+const section = (sections: string[], name: RegExp) => sections.find((s) => name.test(s));
+const steps = (body: string) => body.split("\n").filter((l) => /^\s*\d+[.)]\s+\S/.test(l)).length;
+
+function checkForPerson(file: string, text: string, opts: { cap: number; journey: boolean; nextStep: boolean }): string[] {
   const problems: string[] = [];
-  const lines = text.split("\n").filter((l) => l.trim());
-  if (!/^#\s+\S/.test(lines[0] ?? "")) problems.push("research.md must open with a # title that says what the person asked.");
-  const sections = text.split(/^##\s+/m).slice(1);
+  const person = forPerson(text);
+  const lines = person.split("\n").filter((l) => l.trim());
+  if (!/^#\s+\S/.test(lines[0] ?? "")) problems.push(`${file} must open with a # title that says what the person asked.`);
+  const sections = person.split(/^##\s+/m).slice(1);
   const first = sections[0];
-  if (!first || !/^Answer\b/i.test(first)) problems.push('The first section of research.md must be "## Answer": the verdict or recommendation in plain words, before anything else.');
+  if (!first || !/^Answer\b/i.test(first)) problems.push(`The first section of ${file} must be "## Answer": the verdict or recommendation in plain words, before anything else.`);
   else {
     const n = words(first.replace(/^.*\n/, ""));
     if (!n) problems.push('"## Answer" is empty.');
     if (n > ANSWER_WORDS) problems.push(`"## Answer" is ${n} words; keep it under ${ANSWER_WORDS} so a person gets it at a glance. Move the detail further down.`);
   }
-  if (!sections.some((s) => /^(Next steps?|Recommended next steps?)\b/i.test(s))) problems.push('research.md has no "## Next step" section saying what the person should do or decide.');
-  const total = words(text);
-  if (total > RESEARCH_WORDS) problems.push(`research.md is ${total} words; the cap is ${RESEARCH_WORDS}. Cut what doesn't help the person decide; link sources instead of quoting them.`);
+  if (opts.journey) {
+    for (const name of ["Today", "After"]) {
+      const s = section(sections, new RegExp(`^${name}\\b`, "i"));
+      if (!s) problems.push(`${file} has no "## ${name}" section: the user's journey ${name === "Today" ? "as it is now" : "once this ships"}, as numbered steps in plain words.`);
+      else if (!steps(s)) problems.push(`"## ${name}" has no numbered steps; write the journey as 1., 2., 3.`);
+      else if (steps(s) > JOURNEY_STEPS) problems.push(`"## ${name}" has ${steps(s)} steps; keep it to ${JOURNEY_STEPS} or fewer, the ones a user would notice.`);
+    }
+    if (!section(sections, /^What it imposes\b/i)) problems.push(`${file} has no "## What it imposes" section: what changes for users, what it costs, and what must happen before it works.`);
+  }
+  if (opts.nextStep && !section(sections, /^(Next steps?|Recommended next steps?)\b/i)) problems.push(`${file} has no "## Next step" section saying what the person should do or decide.`);
+  const total = words(person);
+  if (total > opts.cap)
+    problems.push(`The part of ${file} above "## ${BUILDER}" is ${total} words; the cap is ${opts.cap}. Cut what doesn't help the person decide, or move it under "## ${BUILDER}".`);
+  const prose = person.replace(/```[\s\S]*?```/g, "");
+  for (const [re, what] of NOT_FOR_PEOPLE) {
+    const m = re.exec(prose);
+    if (m) problems.push(`The part of ${file} for the person has ${what} (e.g. "${m[0]}"); those go under "## ${BUILDER}".`);
+  }
+  return problems;
+}
+
+export function checkReadable(job: string, opts: { journey?: boolean } = {}): Validation {
+  const text = read(job, "research.md");
+  if (text === undefined) return result(["research.md is missing."]);
+  return result(checkForPerson("research.md", text, { cap: RESEARCH_WORDS, journey: !!opts.journey, nextStep: true }));
+}
+
+export function checkPlanReadable(job: string): Validation {
+  const text = read(job, "plan.md");
+  if (text === undefined) return result(["plan.md is missing."]);
+  const problems = checkForPerson("plan.md", text, { cap: PLAN_WORDS, journey: true, nextStep: false });
+  if (!forBuilder(text)) problems.push(`plan.md has no "## ${BUILDER}" section; the approach, tickets, traceability, verification and rollback go there.`);
   return result(problems);
 }
