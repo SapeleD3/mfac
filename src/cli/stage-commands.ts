@@ -8,6 +8,7 @@ import type { TaskView } from "../workflow/engine.js";
 import type { Prompt, Stage } from "../stages/runner.js";
 import type { Ticket } from "../board/tickets.js";
 import * as tmux from "../stages/tmux.js";
+import { appStores, domains } from "../stages/lookup.js";
 
 const out = (s = ""): void => void process.stdout.write(`${s}\n`);
 const str = (v: Flags[string] | undefined) => (Array.isArray(v) ? v[v.length - 1] : typeof v === "string" ? v : undefined);
@@ -27,6 +28,30 @@ async function readStdin(): Promise<string> {
 
 export function extend(commands: Record<string, Command>) {
   Object.assign(commands, {
+    lookup: {
+      usage: "lookup apps NAME [--country us,gb] | domains NAME [--tld com,app,dev,io,co]",
+      help: "Quick facts for research, a few lines each: apps with that name on the App Store and Google Play, and which domains are registered",
+      async run(args: string[], f: Flags) {
+        const [what, ...rest] = args;
+        const name = rest.join(" ").trim();
+        if (!name || (what !== "apps" && what !== "domains")) throw new Error("usage: factory lookup apps NAME | domains NAME");
+        if (what === "apps") {
+          const r = await appStores(name, { countries: (str(f.country) ?? "us").split(",").map((c) => c.trim().toLowerCase()) });
+          const exact = r.hits.filter((h) => h.exact);
+          out(exact.length ? `${exact.length} listing(s) with "${name}" in the name:` : `No listing with "${name}" in its name.`);
+          for (const h of exact) out(`- ${h.store}: ${h.name}${h.by ? ` by ${h.by}` : ""}${h.genre ? ` (${h.genre})` : ""} ${h.url ?? ""}`.trimEnd());
+          const near = r.hits.filter((h) => !h.exact).slice(0, 5);
+          if (near.length) out(`Other top results: ${near.map((h) => `${h.name} [${h.store}]`).join("; ")}`);
+          for (const x of r.failed) out(`Couldn't check ${x}`);
+          return;
+        }
+        for (const d of await domains(
+          name,
+          (str(f.tld) ?? "com,app,dev,io,co").split(",").map((t) => t.trim()),
+        ))
+          out(`- ${d.domain}: ${d.status}${d.since ? ` since ${d.since}` : ""}${d.detail ? ` (${d.detail})` : ""}`);
+      },
+    },
     coord: {
       usage: "coord status|run ROLE|move-repo PATH --why TEXT|submit-research|submit-plan|requirements --covered|--gaps|submit-build|findings --blocking N|confirm --solved|needs-you|harden TITLE",
       help: "The coordinator's tools (used by the Opus coordinator session; the engine checks each one)",

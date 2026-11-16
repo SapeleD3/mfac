@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
 import { type Event, type Machine, type State, allowed, column, isGateState, step } from "./statechart.js";
-import { type Actor, type Recipe, type Row, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
+import { type Actor, RECIPES, type Recipe, type Row, type Source, type Store, TAGS, type Tag, type Task, now } from "./store.js";
+
+const RECIPE_CHANGEABLE: readonly State[] = ["Inbox", "Triage", "Queued", "Backlog", "Researching", "ResearchGate", "NeedsYou"];
 
 /** One of your own Notion boards the factory takes work from, read through its own server. */
 export interface IntakeBoard {
@@ -311,8 +313,28 @@ export class Engine extends EventEmitter {
     return v;
   }
 
+  setRecipe(id: string, recipe: Recipe): TaskView {
+    const t = this.store.task(id);
+    if (!t) throw new Error(`no task ${id}`);
+    if (!(RECIPES as readonly string[]).includes(recipe)) throw new Error(`unknown recipe ${recipe}; recipes are ${RECIPES.join(", ")}`);
+    const kind = recipe === "research" ? "research" : "change";
+    const at = t.machine.state === "Parked" ? t.machine.parkedFrom : t.machine.state;
+    if (kind !== t.machine.kind && !RECIPE_CHANGEABLE.includes(at as State)) throw new Error(`${id} is ${t.machine.state}; its recipe can change only before planning or while it waits in Needs you`);
+    this.store.updateTask(id, { recipe });
+    if (kind !== t.machine.kind) this.store.saveMachine(id, { ...t.machine, kind, approved: kind === "research" ? t.machine.approved.filter((a) => a === "research") : t.machine.approved });
+    this.store.addEvent(id, "recipe_changed", "human", { from: t.recipe, to: recipe });
+    const v = this.get(id)!;
+    this.emit("change", { kind: "task", task: v });
+    return v;
+  }
+
   update(id: string, patch: Parameters<Store["updateTask"]>[1]): TaskView {
-    this.store.updateTask(id, patch);
+    if (patch.recipe) {
+      this.setRecipe(id, patch.recipe);
+      const { recipe: _, ...rest } = patch;
+      patch = rest;
+    }
+    if (Object.keys(patch).length) this.store.updateTask(id, patch);
     const v = this.get(id);
     if (!v) throw new Error(`no task ${id}`);
     this.emit("change", { kind: "task", task: v });

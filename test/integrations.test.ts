@@ -222,6 +222,7 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   assert.equal(task.title, "Speed up the reports page");
   assert.equal(task.column, "Queued");
   assert.equal(task.sourceRef, "card-1");
+  assert.equal(task.recipe, "feature", "a card with no Type stays a feature");
   assert.match(task.body, /8s to load/);
   const reads = connectorCalls.length;
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the same card isn't queued twice");
@@ -552,4 +553,41 @@ test("a routine left running by a restart, or one that never answers, ends with 
   const r = await routines.run("hangs");
   assert.equal(r.lastResult, "failed");
   assert.match(r.lastDetail!, /gave up/);
+});
+
+test("a Notion card's Type, or a title that asks for research, picks the recipe without a model call", async () => {
+  const { recipeFrom } = await import("../src/integrations/intake.js");
+  assert.equal(recipeFrom("Sapele: trademark check for the name", "Project: Sapele\nType: Research\nStatus: Ready for agent"), "research");
+  assert.equal(recipeFrom("Login loops", "Type: Bug"), "bugfix");
+  assert.equal(recipeFrom("Dark mode", "Type: Feature"), "feature");
+  assert.equal(recipeFrom("Investigate why exports are slow", "No properties here."), "research");
+  assert.equal(recipeFrom("Speed up the reports page", "It takes 8s to load."), undefined);
+});
+
+test("research lookups answer in a few facts: store listings with the name, and which domains are taken", async () => {
+  const { appStores, domains } = await import("../src/stages/lookup.js");
+  const res = (status: number, body: unknown) => ({ status, ok: status < 400, json: async () => body, text: async () => String(body) });
+  const seen: string[] = [];
+  const fake = async (url: string) => {
+    seen.push(url);
+    if (url.includes("itunes") && url.includes("entity=software"))
+      return res(200, { results: [{ trackName: "Sapele Wood Guide", sellerName: "Timber Co", primaryGenreName: "Reference" }, { trackName: "Sappy" }] });
+    if (url.includes("itunes")) return res(200, { results: [] });
+    if (url.includes("play.google")) return res(200, '<a href="/store/apps/details?id=com.other.app">x</a><a href="/store/apps/details?id=com.other.app">x</a>');
+    if (url.endsWith("sapele.com")) return res(200, { events: [{ eventAction: "registration", eventDate: "1998-03-02T00:00:00Z" }] });
+    if (url.endsWith("sapele.app")) return res(404, {});
+    throw new Error("timed out");
+  };
+  const apps = await appStores("Sapele", { fetch: fake });
+  assert.deepEqual(
+    apps.hits.filter((h) => h.exact).map((h) => `${h.store}: ${h.name}`),
+    ["Apple iOS (US): Sapele Wood Guide"],
+  );
+  assert.equal(apps.hits.filter((h) => h.store === "Google Play").length, 1, "duplicate ids are listed once");
+  assert.deepEqual(apps.failed, []);
+  assert.deepEqual(await domains("Sapele", ["com", "app", "dev"], { fetch: fake }), [
+    { domain: "sapele.com", status: "registered", since: "1998-03-02" },
+    { domain: "sapele.app", status: "available" },
+    { domain: "sapele.dev", status: "unknown", detail: "timed out" },
+  ]);
 });

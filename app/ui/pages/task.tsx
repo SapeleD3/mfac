@@ -7,6 +7,7 @@ import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
 
 const BUILT = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
+const RECIPE_CHANGEABLE = ["Inbox", "Triage", "Queued", "Backlog", "Researching", "ResearchGate", "NeedsYou"];
 
 const notionUrl = (id?: string) => (id ? `https://www.notion.so/${id.replace(/-/g, "")}` : undefined);
 
@@ -67,6 +68,16 @@ function Detail({ t }: { t: Task }) {
         {inApp && !BUILT.includes(s) && (
           <a href="#" class="xs" onClick={(e) => (e.preventDefault(), void move())} title="Moves the task; a running stage starts over in the new folder">
             Wrong folder?
+          </a>
+        )}
+        {RECIPE_CHANGEABLE.includes(s) && (
+          <a
+            href="#"
+            class="xs"
+            onClick={(e) => (e.preventDefault(), void act("task.recipe", { id: t.id, recipe: t.machine.kind === "research" ? "feature" : "research" }, ["tasks"]))}
+            title={t.machine.kind === "research" ? "Plan and build after the research is approved" : "End at the research gate, with no plan, build or PR"}
+          >
+            {t.machine.kind === "research" ? "Needs a change too?" : "Research only?"}
           </a>
         )}
         <span class="grow" />
@@ -441,6 +452,9 @@ function EventLine({ e }: { e: TaskEvent }) {
       break;
     case "restarted_research":
       text = d.aside ? `Earlier research set aside in ${d.aside}; research starts again in the new folder.` : "Research starts again in the new folder.";
+      break;
+    case "recipe_changed":
+      text = `Recipe changed from ${d.from} to ${d.to}${d.to === "research" ? ": it ends at the research gate." : "."}`;
       break;
     case "rehomed":
       text = `Moved from ${d.from ?? "no folder"} to ${d.to}${d.why ? `: ${d.why}` : ""}.`;

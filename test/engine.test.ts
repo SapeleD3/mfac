@@ -167,3 +167,24 @@ test("a chat hands its work to one task: new context goes to that task, and once
   const fresh = await call<{ how: string; task: TaskView }>("task.fromChat", { chat, title: "Unrelated", body: "Rename the logger.", fresh: true }, socket);
   assert.equal(fresh.how, "new");
 });
+
+test("a task's recipe can switch to research before planning or from Needs you, and research-only stops at its gate", async () => {
+  const t = await call<TaskView>("task.add", { title: "Is the name free to use" }, socket);
+  assert.equal(t.machine.kind, "change");
+  const r = await call<TaskView>("task.recipe", { id: t.id, recipe: "research" }, socket);
+  assert.equal(r.recipe, "research");
+  assert.equal(r.machine.kind, "research");
+  await assert.rejects(call("task.recipe", { id: t.id, recipe: "nonsense" }, socket), /unknown recipe/);
+
+  const store = running.engine.store;
+  store.saveMachine(t.id, { ...store.task(t.id)!.machine, kind: "change", state: "Planning", approved: ["research"] });
+  await assert.rejects(call("task.recipe", { id: t.id, recipe: "research" }, socket), /only before planning or while it waits in Needs you/);
+
+  store.saveMachine(t.id, { ...store.task(t.id)!.machine, state: "NeedsYou", approved: ["research", "plan"] });
+  const back = await call<TaskView>("task.update", { id: t.id, patch: { recipe: "research" } }, socket);
+  assert.equal(back.machine.kind, "research");
+  assert.deepEqual(back.machine.approved, ["research"]);
+  const sent = await call<{ ok: boolean; task: TaskView }>("task.decide", { id: t.id, verdict: "send_back", note: "Answer first" }, socket);
+  assert.equal(sent.task.machine.state, "Researching");
+  assert.ok(!sent.task.allowed.some((a) => a.includes("Planning")));
+});

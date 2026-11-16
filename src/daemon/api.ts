@@ -39,6 +39,7 @@ export function coreApi(engine: Engine, startedAt: string): Record<string, Handl
     "task.restore": (p: { id: string }) => engine.restore(p.id),
     "task.interrupt": (p: { id: string; note?: string }) => engine.move(p.id, { type: "interrupt" }, "human", { note: p.note ?? "" }),
     "task.tag": (p: { id: string; add?: string[]; remove?: string[] }) => engine.tag(p.id, p.add, p.remove),
+    "task.recipe": (p: { id: string; recipe: Recipe }) => engine.setRecipe(p.id, p.recipe),
     "task.update": (p: { id: string; patch: Record<string, unknown> }) => {
       const allowedKeys = ["title", "body", "repo", "recipe", "priority"];
       const patch = Object.fromEntries(Object.entries(p.patch ?? {}).filter(([k]) => allowedKeys.includes(k)));
