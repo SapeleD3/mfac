@@ -118,6 +118,11 @@ Repos: triage puts work from Slack, Jira and your Notion board in the registered
 judged by each repo's `--about` line and any repo named in the message, and falls back to the default repo
 (`factory repo default NAME`, or Settings). A task you add yourself starts in the default too, or in any folder
 you pick in the New task window; a folder that isn't a git repo is worked in place, with no branch or PR.
+A watched Notion board can have a folder (`--folder`, or Set folder on Connections): a card from it goes to
+the registered repo it names, else to a folder it names inside the board's folder (or next to your repos),
+else to the board's folder itself, and only then to the default. If a task turns out to be in the wrong
+place, `factory set-repo F-001 PATH` (or "Wrong folder?" on the task) moves it before anything is built,
+and its coordinator does the same with `factory coord move-repo` when a stage spots the mismatch.
 
 Gate commands: `factory approve`, `factory send-back --to Planning --note "..."`, `factory drop`,
 `factory park`, `factory unpark`, `factory stop` (stops a running stage; the task goes to Needs you),
@@ -292,7 +297,7 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
 - `factory disconnect slack` stops the factory using a connector; Claude keeps it. Remove it in Claude's
   connector settings to revoke access entirely.
 
-`factory connect notion` also builds your factory board on a page you pick: **Jobs**, **Tickets**
+`factory connect notion` also builds your factory board on a page you name (`factory notion setup "Factory"`, or its link): **Jobs**, **Tickets**
 (each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.
 At the research and plan gates the review doc is published there. Comment in Notion on every issue,
 then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every
@@ -304,7 +309,8 @@ pages are published as soon as a gate opens, and tickets you add on the board ar
 
 Your own Notion kanban boards can be sources of work too: `factory notion intake "<board name>"` (or the
 Connections page) adds one; the name is looked up once through the Notion connector, and a link works too.
-Run it once per board, each with `--server` for the Notion it lives in; `factory notion boards` lists them
+Run it once per board, each with `--server` for the Notion it lives in and `--folder` for where its work
+lives (`factory notion folder "<board name>" PATH` changes it); `factory notion boards` lists them
 and `factory notion unwatch "<board name>"` removes one. Each board keeps its own ready column and its
 own column mapping, and a board that can't be read doesn't hold up the others. Every 15 minutes in working hours, cards in its "Ready for agent" column (change it with
 `--status`) go straight to the queue without triage, once each, and the factory comments on the card when

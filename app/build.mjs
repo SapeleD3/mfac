@@ -1,10 +1,11 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, "..", "dist-app");
+rmSync(join(out, "chunks"), { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 for (const f of ["index.html", "styles.css"]) copyFileSync(join(here, "ui", f), join(out, f));
 
@@ -13,7 +14,10 @@ const opts = {
   bundle: true,
   format: "esm",
   target: "safari16",
-  outfile: join(out, "app.js"),
+  outdir: out,
+  entryNames: "app",
+  chunkNames: "chunks/[name]-[hash]",
+  splitting: true,
   jsx: "automatic",
   jsxImportSource: "preact",
   sourcemap: process.argv.includes("--watch") ? "inline" : false,

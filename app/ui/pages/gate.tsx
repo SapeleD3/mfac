@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openUrl } from "../bridge";
 import { Brand, Btn, Ic, Pips, Tags, ago, taskSource } from "../kit";
+import { Markdown } from "../markdown";
 import { act, useApp, useCall } from "../store";
 import { CAP, type Task } from "../types";
 import { FileView } from "./task";
@@ -12,9 +13,13 @@ interface Summary {
   discussions: number;
   commentsReadAt?: string;
   summary: string;
+  boardReady?: boolean;
+  publishing?: boolean;
   tlc?: string;
   statechart?: string;
 }
+
+const untitled = (md: string) => md.replace(/^\s*#\s[^\n]*\n/, "");
 
 const STAGE_NAME: Record<string, string> = { Researching: "Revise research", Planning: "Revise the plan", Building: "Back to build", Queued: "Reject to the start", Triage: "Reject to triage" };
 
@@ -117,7 +122,14 @@ function Decide({ t, note, extra }: { t: Task; note: string; extra?: preact.Comp
 }
 
 function DocGate({ t }: { t: Task }) {
-  const sum = useCall<Summary>("review.summary", { id: t.id }, [t.id]);
+  const sum = useCall<Summary>("review.summary", { id: t.id }, [t.id, t.notionReviewId]);
+  const [publishing, setPublishing] = useState(false);
+  const publish = async () => {
+    setPublishing(true);
+    await act("notion.publish", { id: t.id }, ["tasks"]);
+    setPublishing(false);
+    sum.reload();
+  };
   const [verdict, setVerdict] = useState<"solid" | "work" | "off">("work");
   const [text, setText] = useState("");
   const isPlan = t.machine.state === "PlanGate";
@@ -138,11 +150,30 @@ function DocGate({ t }: { t: Task }) {
           </ol>
         </div>
         <div class="col" style={{ alignItems: "flex-end" }}>
-          <Btn kind="btn-primary" disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}>
-            <Ic n="external-link" s={14} />
-            Open in Notion
-          </Btn>
-          <span class="xs faint">{s?.url ? `Factory Reviews / ${t.id} / Round ${round}` : s || sum.error ? "Not on Notion yet: set up the board on Connections" : "Loading…"}</span>
+          {s?.url || !s ? (
+            <Btn kind="btn-primary" disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}>
+              <Ic n="external-link" s={14} />
+              Open in Notion
+            </Btn>
+          ) : s.boardReady ? (
+            <Btn kind="btn-primary" disabled={publishing || s.publishing} onClick={publish}>
+              <Ic n="external-link" s={14} />
+              {publishing || s.publishing ? "Publishing…" : "Publish to Notion"}
+            </Btn>
+          ) : (
+            <Btn kind="btn-primary" onClick={() => go("connections")}>
+              Create the factory board
+            </Btn>
+          )}
+          <span class="xs faint">
+            {s?.url
+              ? `Factory Reviews / ${t.id} / Round ${round}`
+              : s?.boardReady
+                ? "Not published yet. It goes to the Reviews database on your factory board."
+                : s
+                  ? "Reviews go to your factory board, which isn't created yet. Your watched boards are only for picking up work."
+                  : (sum.error ?? "Loading…")}
+          </span>
         </div>
       </div>
       <div class="gate-wrap">
@@ -163,27 +194,18 @@ function DocGate({ t }: { t: Task }) {
               <span class="chip warn">Waiting for you</span>
             </b>
           </div>
-          <h2>Summary</h2>
-          {s?.summary ? (
-            <pre class="doc-md prose">
-              {s.summary
-                .split("\n")
-                .filter((l) => !/^#\s/.test(l))
-                .join("\n\n")}
-            </pre>
-          ) : (
-            <p class="dim">{sum.error ?? "Loading…"}</p>
-          )}
+          <h2>{isPlan ? "Plan" : "Research"}</h2>
+          {s?.summary ? <Markdown text={untitled(s.summary)} class="doc-body" /> : <p class="dim">{sum.error ?? "Loading…"}</p>}
           {!isPlan && (
             <>
               <h2>Statechart</h2>
-              {s?.statechart ? <pre class="tlc">{s.statechart.slice(0, 4000)}</pre> : <p class="dim">No statechart.md (the engine wouldn't open this gate without one).</p>}
+              {s?.statechart ? <Markdown text={untitled(s.statechart.slice(0, 20_000))} class="doc-body" /> : <p class="dim">No statechart.md (the engine wouldn't open this gate without one).</p>}
               <h2>Verification</h2>
-              {s?.tlc ? <pre class="tlc">{s.tlc.slice(0, 3000)}</pre> : <p class="dim">No TLC result.</p>}
+              {s?.tlc ? <Markdown text={untitled(s.tlc.slice(0, 8000))} class="doc-body" /> : <p class="dim">No TLC result.</p>}
             </>
           )}
           <p style={{ marginTop: 12, color: "#9b9b9b", fontSize: 13 }}>
-            The full doc in Notion also has the evidence, file:line references and the open questions.
+            In Notion the same doc also has requirements.md, and that's where comments go.
             {t.tags.includes("learn") && (
               <>
                 {" "}

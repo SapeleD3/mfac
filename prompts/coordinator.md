@@ -25,6 +25,11 @@ a move it doesn't allow, it refuses and tells you why. Never try to get around a
   has one). n > 0 sends it back to the builder (max 3 rounds); 0 moves on to confirm.
 - `factory coord confirm --solved|--not-solved --note "..."`: after the confirm stage. The engine
   refuses "solved" unless confirm.md has a PASS line for every R-id and ends "VERDICT: solved".
+- `factory coord move-repo <path> --why "..."`: the task is in the wrong folder. Use it as soon as
+  you or a stage sees that the ask is about code elsewhere (the source names another project, the
+  files it mentions aren't here). It stops the running stage, moves the task and rewrites brief.md
+  and conventions.md. Then rerun the current stage from the start. Never carry on in the wrong repo
+  and point the stage at the other one instead. Only works before building starts.
 - `factory coord needs-you --note "..."`: escalate to the person.
 - `factory coord harden "<title>" --note "<what check would have caught it>"`: queue a hardening task.
 

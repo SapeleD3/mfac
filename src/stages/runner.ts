@@ -18,6 +18,8 @@ import { stripCredits } from "../repo/rules.js";
 import { paths } from "../shared/paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
 import { RUNNING, type State } from "../workflow/statechart.js";
+
+const BUILT: readonly State[] = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
 import { type Row, type Store, now, opt, parseJson } from "../workflow/store.js";
 import * as realTmux from "./tmux.js";
 
@@ -319,7 +321,16 @@ export class Runner {
   }
 
   async startTask(taskId: string) {
-    let t = this.engine.get(taskId)!;
+    const t = this.home(this.engine.get(taskId)!);
+    if (!t) return;
+    const r = this.engine.move(t.id, { type: "start" }, "engine");
+    if (!r.ok) return;
+    await this.writeBrief(r.task);
+    this.launch(r.task, "coordinator", { prompt: `Task ${t.id} is starting in Researching. Read ${this.jobDir(t.id)}/brief.md and begin.` });
+  }
+
+  private home(task: TaskView): TaskView | undefined {
+    let t = task;
     if (t.repo && !t.worktree && (t.machine.kind === "research" || !isGitRepo(t.repo))) {
       t = this.engine.update(t.id, { worktree: t.repo });
       this.store.addEvent(t.id, "plain_folder", "engine", { folder: t.repo, research: t.machine.kind === "research" });
@@ -335,13 +346,42 @@ export class Runner {
       } catch (e) {
         this.store.addEvent(t.id, "worktree_failed", "engine", { error: String(e) });
         this.engine.emit("alert", { taskId: t.id, level: "error", message: `Couldn't create a worktree for ${t.id}: ${e instanceof Error ? e.message : e}` });
-        return;
+        return undefined;
       }
     }
-    const r = this.engine.move(t.id, { type: "start" }, "engine");
-    if (!r.ok) return;
-    await this.writeBrief(r.task);
-    this.launch(r.task, "coordinator", { prompt: `Task ${t.id} is starting in Researching. Read ${this.jobDir(t.id)}/brief.md and begin.` });
+    return t;
+  }
+
+  /** Before anything is built the work can still move; afterwards the branch holds real changes, so it's a new task instead. */
+  async rehome(taskId: string, path: string, by: "coordinator" | "human", why = ""): Promise<string> {
+    const t = this.engine.get(taskId);
+    if (!t) throw new Error(`no task ${taskId}`);
+    const folder = path.trim().replace(/\/+$/, "");
+    if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) throw new Error(`${path} isn't a folder on this Mac`);
+    if (t.repo === folder) return `${t.id} already works in ${folder}.`;
+    if (BUILT.includes(t.machine.state)) throw new Error(`${t.id} is already ${t.machine.state} in ${t.repo}; drop it and add a new task for ${folder}`);
+    const started = !!t.worktree;
+    for (const s of this.running(t.id).filter((x) => x.role !== "coordinator")) this.finishStage(s, "stopped");
+    if (t.repo && t.worktree && t.branch && t.worktree !== t.repo) {
+      try {
+        removeWorktree(t.repo, t.worktree);
+      } catch (e) {
+        this.store.addEvent(t.id, "worktree_left", "engine", { worktree: t.worktree, error: String(e) });
+      }
+    }
+    let v = this.engine.update(t.id, { repo: folder, worktree: undefined, branch: undefined });
+    this.store.addEvent(t.id, "rehomed", by, { from: t.repo ?? null, to: folder, why });
+    if (!started) return `${t.id} will work in ${folder}.`;
+    const homed = this.home(v);
+    if (!homed) throw new Error(`moved ${t.id} to ${folder}, but couldn't make its worktree; see the alert`);
+    v = homed;
+    await this.writeBrief(v);
+    const fresh = `${t.id} now works in ${v.worktree}. brief.md and conventions.md were rewritten for it.`;
+    if (by === "human") {
+      this.wake(t.id, `The person moved this task to ${folder}${why ? ` (${why})` : ""}. ${fresh} Anything found in ${t.repo} may be about the wrong code: rerun the current stage from the start.`);
+      return fresh;
+    }
+    return `${fresh} Rerun the current stage from the start; anything found in ${t.repo} may be about the wrong code.`;
   }
 
   private repoSetup(t: TaskView) {
@@ -371,6 +411,11 @@ export class Runner {
         if (!(ROLES as readonly string[]).includes(role)) throw new Error(`unknown role ${role}; roles are ${ROLES.filter((r) => r !== "coordinator").join(", ")}`);
         const s = this.runStage(taskId, role, String(args.note ?? ""));
         return `Started ${s.id} (${s.model}). Stop now; the factory will message you when it finishes.`;
+      }
+      case "move-repo": {
+        const to = String(args.to ?? "");
+        if (!to) throw new Error('give the folder: factory coord move-repo PATH --why "what showed it was wrong"');
+        return this.rehome(taskId, to, "coordinator", String(args.why ?? ""));
       }
       case "submit-research": {
         idle("researcher");
@@ -782,6 +827,7 @@ export const runnerPart =
       stop: () => runner.stop(),
       api: {
         "coord.do": (p: { task: string; command: string; args?: Record<string, unknown> }) => runner.coord(p.task, p.command, p.args ?? {}),
+        "task.rehome": (p: { id: string; path: string; why?: string }) => runner.rehome(p.id, p.path, "human", p.why),
         "stage.run": (p: { task: string; role: Role; note?: string }) => runner.runStage(p.task, p.role, p.note),
         "stage.list": (p: { task?: string }) => runner.stages(p.task),
         "session.capture": (p: { stage: string; lines?: number; escapes?: boolean }) => {

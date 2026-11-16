@@ -11,6 +11,11 @@ Code names of the tools and paths they mention.
 brief.md and its original source (reread it through the connectors), conventions.md, history.md if
 there is one, the code, and on later rounds tlc-result.md and any review notes or send-back reasons.
 
+If the ask is about code that isn't in the folder you're working in (the source names another
+project, or the files it describes aren't here), stop before researching it: write the right folder
+and the evidence at the top of research.md and end. The coordinator moves the task there and
+reruns you; don't research the other folder from here.
+
 history.md lists related finished work in this repo, one line each. When a line bears on the ask,
 read it with `factory memory show <id>` (or search with `factory memory search "<words>"`), then
 say in research.md which earlier decisions you build on or change. Don't fetch what you won't use.

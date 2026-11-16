@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Ic, LOGO } from "./kit";
 import { Connections } from "./pages/connections";
@@ -21,8 +22,23 @@ const parse = (): Route => {
   return { page: page || "queue", id, query: new URLSearchParams(q) };
 };
 export const go = (to: string) => (location.hash = to);
+type Crumb = { label: string; href?: string };
+
+const SHELF: Record<string, [string, string]> = {
+  Running: ["Running", "#running"],
+  Done: ["Done", "#done"],
+  Bin: ["Bin", "#bin"],
+  Backlog: ["Backlog", "#backlog"],
+  "Needs you": ["Needs you", "#needs"],
+  "PR ready": ["Needs you", "#needs"],
+};
+const shelf = (column?: string): Crumb => {
+  const [label, href] = SHELF[column ?? ""] ?? ["Queue", "#queue"];
+  return { label, href };
+};
 
 export function App() {
+  const app = useApp();
   const [route, setRoute] = useState(parse);
   const [min, setMin] = useState(() => localStorage.getItem("factory.sideMin") === "1");
   useEffect(() => {
@@ -33,6 +49,10 @@ export function App() {
         e.preventDefault();
         setMin((m) => !m);
       }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "[" || e.key === "ArrowLeft") && !(e.target instanceof HTMLElement && e.target.closest("input, textarea"))) {
+        e.preventDefault();
+        history.back();
+      }
     };
     addEventListener("keydown", key);
     return () => (removeEventListener("hashchange", on), removeEventListener("keydown", key));
@@ -42,14 +62,14 @@ export function App() {
     localStorage.setItem("factory.sideMin", min ? "1" : "0");
   }, [min]);
 
-  const pages: Record<string, [string, () => preact.JSX.Element]> = {
+  const pages: Record<string, [string | Crumb[], () => preact.JSX.Element]> = {
     queue: ["Queue", () => <Queue route={route} />],
     running: ["Running", () => <Queue route={route} only="Running" />],
     done: ["Done", () => <Queue route={route} only="Done" />],
-    task: [route.id ?? "Task", () => <TaskPage id={route.id!} />],
-    gate: [`Review gate · ${route.id}`, () => <Gate id={route.id!} />],
+    task: [[shelf(app.tasks.find((x) => x.id === route.id)?.column), { label: route.id ?? "Task" }], () => <TaskPage id={route.id!} />],
+    gate: [[{ label: route.id ?? "Task", href: `#task/${route.id}` }, { label: "Review gate" }], () => <Gate id={route.id!} />],
     needs: ["Needs you", () => <NeedsYou id={route.id} />],
-    session: [`${route.id} · live session`, () => <Session id={route.id!} stage={route.query.get("stage") ?? undefined} />],
+    session: [[{ label: route.id ?? "Task", href: `#task/${route.id}` }, { label: "Live session" }], () => <Session id={route.id!} stage={route.query.get("stage") ?? undefined} />],
     inbox: ["Inbox", () => <Inbox />],
     projects: ["Projects", () => <Projects route={route} />],
     backlog: ["Backlog", () => <Backlog />],
@@ -60,11 +80,22 @@ export function App() {
     settings: ["Settings", () => <SettingsPage />],
   };
   const [title, render] = pages[route.page] ?? pages.queue!;
+  const crumbs: Crumb[] = typeof title === "string" ? [{ label: title }] : title;
+  const up = crumbs.at(-2)?.href;
+  useEffect(() => {
+    if (!up) return;
+    const key = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]");
+      if (e.key === "Escape" && !typing) go(up);
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [up]);
   return (
     <div class="app">
       <Side on={route.page} min={min} toggle={() => setMin(!min)} />
       <div class="pane">
-        <TopBar title={title} />
+        <TopBar crumbs={crumbs} />
         {render()}
       </div>
       <Toasts />
@@ -142,20 +173,26 @@ function Side({ on, min, toggle }: { on: string; min: boolean; toggle: () => voi
   );
 }
 
-function TopBar({ title }: { title: string }) {
+function TopBar({ crumbs }: { crumbs: Crumb[] }) {
   const app = useApp();
   return (
     <header class="topbar" data-tauri-drag-region>
-      <b class="tb-title">
+      <a class="tb-title" href="#queue" title="Back to the queue">
         {LOGO}
         <span>Factory</span>
-      </b>
-      {title && (
-        <>
+      </a>
+      {crumbs.map((c) => (
+        <Fragment key={c.label}>
           <span class="tb-sep">/</span>
-          <span class="tb-crumb">{title}</span>
-        </>
-      )}
+          {c.href ? (
+            <a class="tb-crumb tb-link" href={c.href}>
+              {c.label}
+            </a>
+          ) : (
+            <span class="tb-crumb">{c.label}</span>
+          )}
+        </Fragment>
+      ))}
       <span class="grow" data-tauri-drag-region />
       <span class="tb-engine" title="The engine runs on its own; closing this window leaves the factory working.">
         <span class={`dot ${app.up ? "ok" : "err"}`} />

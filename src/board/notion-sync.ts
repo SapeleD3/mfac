@@ -44,11 +44,12 @@ export class NotionSync {
 
   private board(): notion.BoardIds {
     const ids = this.ids();
-    if (!ids.jobsDb || !ids.ticketsDb || !ids.reviewsDb) throw new Error("the Notion board isn't set up (factory notion setup <page link>)");
+    if (!ids.jobsDb || !ids.ticketsDb || !ids.reviewsDb) throw new Error("the Notion board isn't set up (factory notion setup PAGE_NAME)");
     return { jobsDb: ids.jobsDb, ticketsDb: ids.ticketsDb, reviewsDb: ids.reviewsDb };
   }
 
-  async setup(parentLink: string): Promise<NotionIds> {
+  async setup(page: string): Promise<NotionIds> {
+    const parentLink = notion.looksLikeLink(page.trim()) ? page.trim() : (await notion.findPage(this.store, page.trim())).url;
     const parentPageId = pageIdFrom(parentLink);
     const existing = this.ids();
     if (existing.parentPageId === parentPageId && this.ready()) return existing;
@@ -225,11 +226,9 @@ export class NotionSync {
       comments: cached.count,
       discussions: cached.discussions,
       commentsReadAt: cached.at,
-      summary: text
-        .split("\n")
-        .filter((l) => l.trim() && !l.startsWith("```"))
-        .slice(0, 14)
-        .join("\n"),
+      boardReady: this.ready(),
+      publishing: this.publishing.has(t.id),
+      summary: text.slice(0, 40_000),
       tlc: existsSync(join(job, "tlc-result.md")) ? readFileSync(join(job, "tlc-result.md"), "utf8") : undefined,
       statechart: existsSync(join(job, "statechart.md")) ? readFileSync(join(job, "statechart.md"), "utf8") : undefined,
     };
