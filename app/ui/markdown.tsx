@@ -64,3 +64,30 @@ export function Markdown({ text, class: cls = "", breaks = false }: { text: stri
   };
   return <div ref={ref} class={`md ${cls}`} onClick={click} dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+const BUILDER = /^##\s+For the builder\b.*$/im;
+
+export function splitDoc(text: string): { lead: string; rest: string; label: string } {
+  const body = text.replace(/^\s*#\s[^\n]*\n/, "").replace(/^VERDICT:.*$/gm, "");
+  const builder = BUILDER.exec(body);
+  if (builder) return { lead: body.slice(0, builder.index).trim(), rest: body.slice(builder.index + builder[0].length).trim(), label: "For the builder" };
+  // Docs written before the person/builder split: show up to the first section's end, fold the rest.
+  const second = [...body.matchAll(/^##\s/gm)][1];
+  if (!second?.index) return { lead: body.trim(), rest: "", label: "" };
+  return { lead: body.slice(0, second.index).trim(), rest: body.slice(second.index).trim(), label: "The full write-up" };
+}
+
+export function Doc({ text, class: cls = "doc-body small-md" }: { text: string; class?: string }) {
+  const { lead, rest, label } = useMemo(() => splitDoc(text), [text]);
+  return (
+    <>
+      <Markdown text={lead} class={cls} />
+      {rest && (
+        <details class="for-builder">
+          <summary>{label}</summary>
+          <Markdown text={rest} class={cls} />
+        </details>
+      )}
+    </>
+  );
+}

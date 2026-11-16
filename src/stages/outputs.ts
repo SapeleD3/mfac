@@ -87,6 +87,7 @@ export function checkConfirmed(job: string): Validation {
 export const ANSWER_WORDS = 120;
 export const RESEARCH_WORDS = 800;
 export const PLAN_WORDS = 1000;
+export const CONFIRM_WORDS = 250;
 export const JOURNEY_STEPS = 6;
 export const BUILDER = "For the builder";
 
@@ -158,5 +159,13 @@ export function checkPlanReadable(job: string): Validation {
   if (text === undefined) return result(["plan.md is missing."]);
   const problems = checkForPerson("plan.md", text, { cap: PLAN_WORDS, journey: true, nextStep: false });
   if (!forBuilder(text)) problems.push(`plan.md has no "## ${BUILDER}" section; the approach, tickets, traceability, verification and rollback go there.`);
+  return result(problems);
+}
+
+export function checkConfirmReadable(job: string): Validation {
+  const text = read(job, "confirm.md");
+  if (text === undefined) return result(["confirm.md is missing."]);
+  const problems = checkForPerson("confirm.md", text, { cap: CONFIRM_WORDS, journey: false, nextStep: false });
+  if (!forBuilder(text)) problems.push(`confirm.md has no "## ${BUILDER}" section; the results table, commands and evidence go there.`);
   return result(problems);
 }

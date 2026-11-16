@@ -37,3 +37,7 @@ End with "Blocking findings: <n>".
 - Every R-id appears in the requirements table.
 - Every blocking finding has evidence and a fix someone could act on without asking you.
 - You ran the repo's checks and pasted the summary.
+
+The person sees your output at the gate. Open with "## Answer": the verdict and what matters most, in
+two or three plain sentences with no file names, line numbers or ids. Put everything else under
+"## For the builder", which the app folds away.

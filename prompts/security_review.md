@@ -27,3 +27,7 @@ could be exploited, the evidence and the fix. File each blocking one as a ticket
 - Every new input, external call, permission check and stored secret in the diff is either listed
   as safe with the reason, or has a finding.
 - Each finding is specific to this diff, not generic advice.
+
+The person sees your output at the gate. Open with "## Answer": the verdict and what matters most, in
+two or three plain sentences with no file names, line numbers or ids. Put everything else under
+"## For the builder", which the app folds away.

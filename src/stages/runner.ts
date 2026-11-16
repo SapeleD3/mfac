@@ -10,7 +10,7 @@ import { recall } from "../memory/recall.js";
 import type { Decision, Engine, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { allowRules, discover, toolchainMarkdown } from "../repo/toolchain.js";
-import { checkConfirmed, checkCoverage, checkPlanReadable, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
+import { checkConfirmReadable, checkConfirmed, checkCoverage, checkPlanReadable, checkPlanTraces, checkResearchCoverage } from "./outputs.js";
 import { conventionsMarkdown, copyLocalAgentFiles, gather, parsePrDraft, recentBranches, validBranch } from "../repo/conventions.js";
 import { baseBranch, changedFiles, diffStat, ensureWorktree, openPullRequest, rebaseOnBase, removeWorktree, renameBranch, stripBranchCredits } from "../repo/git.js";
 import { isGitRepo } from "../repo/registry.js";
@@ -642,6 +642,8 @@ export class Runner {
         if (solved) {
           const c = checkConfirmed(job);
           if (!c.ok) throw new Error(`it isn't shown to be solved yet:\n- ${c.problems.join("\n- ")}`);
+          const readable = checkConfirmReadable(job);
+          if (!readable.ok) throw new Error(`confirm.md isn't ready for the person yet. Run confirm again with this as the note:\n- ${readable.problems.join("\n- ")}`);
         }
         if (solved) {
           const pr = this.preparePullRequest(t);

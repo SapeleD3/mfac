@@ -4,7 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { allowRules, discover } from "../src/repo/toolchain.js";
-import { PLAN_WORDS, RESEARCH_WORDS, checkConfirmed, checkCoverage, checkPlanReadable, checkPlanTraces, checkReadable, checkRequirements, forBuilder, forPerson } from "../src/stages/outputs.js";
+import {
+  CONFIRM_WORDS,
+  PLAN_WORDS,
+  RESEARCH_WORDS,
+  checkConfirmReadable,
+  checkConfirmed,
+  checkCoverage,
+  checkPlanReadable,
+  checkPlanTraces,
+  checkReadable,
+  checkRequirements,
+  forBuilder,
+  forPerson,
+} from "../src/stages/outputs.js";
 
 const job = (files: Record<string, string>) => {
   const dir = mkdtempSync(join(tmpdir(), "factory-out-"));
@@ -113,6 +126,18 @@ test("a change's research and every plan show the user's journey today and after
   assert.match(problems[5]!, /review-round history \(e\.g\. "Round 3"\)/);
   assert.match(problems[6]!, /no "## For the builder" section/);
   assert.equal(problems.length, 7);
+});
+
+test("confirm.md opens with a short plain answer and keeps test names, ids and paths for the builder", () => {
+  const good =
+    "# Properties are counted from the synced table\n\n## Answer\nSolved. Asking how many properties you have no longer calls AppFolio.\n\n## For the builder\n| R1 PASS | `test_order` in tests/x.py:12 | PASS |\nVERDICT: solved\n";
+  assert.ok(checkConfirmReadable(job({ "confirm.md": good })).ok);
+  const raw = `# Confirm: F-004 (round 1)\nBranch \`x\`, HEAD \`7c8890d\`.\n## Results\n| R1 PASS | \`lookups.py:150\` | PASS |\n${"word ".repeat(CONFIRM_WORDS)}\nVERDICT: solved\n`;
+  const problems = checkConfirmReadable(job({ "confirm.md": raw })).problems;
+  assert.match(problems[0]!, /first section of confirm\.md must be "## Answer"/);
+  assert.match(problems[1]!, /cap is 250/);
+  assert.ok(problems.some((p) => /file:line/.test(p)));
+  assert.match(problems[problems.length - 1]!, /no "## For the builder" section/);
 });
 
 test("statechart labels and notes lose the extra colons mermaid can't draw, and nothing else changes", async () => {

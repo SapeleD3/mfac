@@ -57,3 +57,7 @@ question in plain words, and every practical check the ask implies (for a name: 
 products doing the same job) must be run or listed under Still unknown. Padding, legal or academic
 register, and requirements nobody asked for are gaps too. The engine checks that research.md and
 your matrix name every R-id.
+
+The person sees your output at the gate. Open with "## Answer": the verdict and what matters most, in
+two or three plain sentences with no file names, line numbers or ids. Put everything else under
+"## For the builder", which the app folds away.
