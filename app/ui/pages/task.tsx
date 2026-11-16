@@ -7,6 +7,29 @@ import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
 
 const BUILT = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
+const LONG_BRIEF = { lines: 8, chars: 700 };
+
+/** Ingested tickets can run to pages; folded, the steps and the coordinator stay in view. */
+function Brief({ id, text }: { id: string; text: string }) {
+  const key = `factory.brief.${id}`;
+  const long = text.split("\n").length > LONG_BRIEF.lines || text.length > LONG_BRIEF.chars;
+  const [open, setOpen] = useState(() => !long || localStorage.getItem(key) === "open");
+  const toggle = () => {
+    localStorage.setItem(key, open ? "closed" : "open");
+    setOpen(!open);
+  };
+  return (
+    <div class={`brief ${open ? "" : "folded"}`}>
+      <Markdown text={text} breaks class="small-md brief-md" />
+      {long && (
+        <button type="button" class="brief-toggle xs" onClick={toggle}>
+          {open ? "Show less" : "Show the whole brief"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const RECIPE_CHANGEABLE = ["Inbox", "Triage", "Queued", "Backlog", "Researching", "ResearchGate", "NeedsYou"];
 
 const notionUrl = (id?: string) => (id ? `https://www.notion.so/${id.replace(/-/g, "")}` : undefined);
@@ -154,11 +177,7 @@ function Detail({ t }: { t: Task }) {
         )}
         {t.worktree && <span class="faint small">· {t.worktree}</span>}
       </div>
-      {t.body && (
-        <p class="small dim" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
-          {t.body}
-        </p>
-      )}
+      {t.body && <Brief key={t.id} id={t.id} text={t.body} />}
       {(t.machine.kind === "research" || t.parent) && (
         <div class="xs dim" style={{ marginTop: 4 }}>
           {t.machine.kind === "research" ? "Research only: it ends when you approve the research. " : ""}
