@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUTPUT, ROLES, type Role, claudeCommand } from "./agent.js";
@@ -19,6 +19,8 @@ import { paths } from "../shared/paths.js";
 import { type CheckResult, type Tlc, checkResearch, realTlc } from "./research-check.js";
 import { RUNNING, type State } from "../workflow/statechart.js";
 
+const AT_GATE: readonly State[] = ["ResearchGate", "PlanGate", "NeedsYou"];
+const RESEARCH_OUTPUTS = ["requirements.md", "research.md", "statechart.md", "tlc-result.md", "review-requirements.md", "review-comments.md", "plan.md", "explainer.md", "lessons.md"];
 const BUILT: readonly State[] = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
 import { type Row, type Store, now, opt, parseJson } from "../workflow/store.js";
 import * as realTmux from "./tmux.js";
@@ -358,30 +360,55 @@ export class Runner {
     if (!t) throw new Error(`no task ${taskId}`);
     const folder = path.trim().replace(/\/+$/, "");
     if (!folder || !existsSync(folder) || !statSync(folder).isDirectory()) throw new Error(`${path} isn't a folder on this Mac`);
-    if (t.repo === folder) return `${t.id} already works in ${folder}.`;
+    const same = t.repo === folder && t.worktree === folder;
+    if (same && !AT_GATE.includes(t.machine.state)) return `${t.id} already works in ${folder}.`;
     if (BUILT.includes(t.machine.state)) throw new Error(`${t.id} is already ${t.machine.state} in ${t.repo}; drop it and add a new task for ${folder}`);
     const started = !!t.worktree;
     for (const s of this.running(t.id).filter((x) => x.role !== "coordinator")) this.finishStage(s, "stopped");
-    if (t.repo && t.worktree && t.branch && t.worktree !== t.repo) {
+    if (!same && t.repo && t.worktree && t.branch && t.worktree !== t.repo) {
       try {
         removeWorktree(t.repo, t.worktree);
       } catch (e) {
         this.store.addEvent(t.id, "worktree_left", "engine", { worktree: t.worktree, error: String(e) });
       }
     }
-    let v = this.engine.update(t.id, { repo: folder, worktree: undefined, branch: undefined });
-    this.store.addEvent(t.id, "rehomed", by, { from: t.repo ?? null, to: folder, why });
+    let v = same ? t : this.engine.update(t.id, { repo: folder, worktree: undefined, branch: undefined });
+    if (!same) this.store.addEvent(t.id, "rehomed", by, { from: t.repo ?? null, to: folder, why });
     if (!started) return `${t.id} will work in ${folder}.`;
     const homed = this.home(v);
     if (!homed) throw new Error(`moved ${t.id} to ${folder}, but couldn't make its worktree; see the alert`);
     v = homed;
     await this.writeBrief(v);
-    const fresh = `${t.id} now works in ${v.worktree}. brief.md and conventions.md were rewritten for it.`;
+    const state = v.machine.state;
+    const backToResearch = AT_GATE.includes(state);
+    const aside = backToResearch || state === "Researching" ? this.setAside(t.id) : undefined;
+    const fresh = `${t.id} now works in ${v.worktree}. brief.md and conventions.md were rewritten for it${aside ? `, and the earlier research was moved to ${aside} so it can't mislead the next round` : ""}.`;
+    if (backToResearch || state === "Researching") this.store.addEvent(t.id, "restarted_research", by, { folder, aside: aside ?? null, from: state });
+    if (backToResearch) {
+      const r = this.engine.decide(t.id, "send_back", {
+        to: "Researching",
+        note: `Moved to ${folder}${why ? ` (${why})` : ""}. ${fresh} Research again from scratch in the new folder.`,
+      });
+      if (!r.ok) throw new Error(`moved ${t.id} to ${folder}, but couldn't send it back to research: ${r.reason}`);
+      return `${fresh} Research starts again there.`;
+    }
     if (by === "human") {
       this.wake(t.id, `The person moved this task to ${folder}${why ? ` (${why})` : ""}. ${fresh} Anything found in ${t.repo} may be about the wrong code: rerun the current stage from the start.`);
       return fresh;
     }
     return `${fresh} Rerun the current stage from the start; anything found in ${t.repo} may be about the wrong code.`;
+  }
+
+  /** Research written about the wrong code would be read as evidence by the next round, so it's kept aside rather than deleted. */
+  private setAside(taskId: string): string | undefined {
+    const job = this.jobDir(taskId);
+    if (!existsSync(job)) return undefined;
+    const files = readdirSync(job).filter((f) => RESEARCH_OUTPUTS.includes(f) || /\.(tla|cfg)$/.test(f));
+    if (!files.length) return undefined;
+    const rel = join(".factory", `set-aside-${now().replace(/[:.]/g, "-")}`);
+    mkdirSync(join(job, rel), { recursive: true });
+    for (const f of files) renameSync(join(job, f), join(job, rel, f));
+    return rel;
   }
 
   private repoSetup(t: TaskView) {

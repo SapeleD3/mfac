@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -260,5 +260,39 @@ test("a task in the wrong folder moves before anything is built, and its stages 
   assert.equal(started.at(-1)!.cwd, other, "the next stage runs in the new folder");
   const queued = await c<TaskView>("task.add", { title: "Not started yet", repo, backlog: true });
   assert.match(await c<string>("task.rehome", { id: queued.id, path: other }), /will work in/);
+  rmSync(other, { recursive: true, force: true });
+});
+
+test("moving a task that's waiting at the research gate sets the old research aside and starts research again there", async () => {
+  await c("settings.set", { slots: 8 });
+  const other = mkdtempSync(join(tmpdir(), "factory-right-"));
+  const t = await c<TaskView>("task.add", { title: "Trademark knockout screen", repo, recipe: "research" });
+  await c("factory.tick");
+  await coord(t.id, "run", { role: "researcher" });
+  writeFileSync(join(job(t.id), "research.md"), "# Research\nR1: about the wrong repo.");
+  writeFileSync(join(job(t.id), "requirements.md"), REQUIREMENTS);
+  writeFileSync(join(job(t.id), "statechart.md"), "```mermaid\nstateDiagram-v2\n  Idle --> Sent: publish\n```\n");
+  writeFileSync(join(job(t.id), "Mark.tla"), "---- MODULE Mark ----\n====");
+  writeFileSync(join(job(t.id), "Mark.cfg"), "INVARIANT Safe");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-researcher-1`) });
+  await coord(t.id, "submit-research");
+  writeFileSync(join(job(t.id), "review-requirements.md"), "R1 is answered.\nVERDICT: covered");
+  await c("hook.stop", { session_id: await sessionOf(`${t.id}-requirements_review-1`) });
+  await coord(t.id, "requirements", { covered: true });
+  assert.equal((await c<{ task: TaskView }>("task.get", { id: t.id })).task.machine.state, "ResearchGate");
+
+  const pastes = pasted.length;
+  const said = await c<string>("task.rehome", { id: t.id, path: other, why: "the card names sapele-app" });
+  assert.match(said, /Research starts again/);
+  await new Promise((r) => setTimeout(r, 50));
+  const got = await c<{ task: TaskView; events: { kind: string }[] }>("task.get", { id: t.id });
+  assert.equal(got.task.machine.state, "Researching");
+  assert.equal(got.task.worktree, other);
+  assert.ok(!existsSync(join(job(t.id), "research.md")) && !existsSync(join(job(t.id), "Mark.tla")), "the old research no longer sits where the next round reads");
+  const aside = readdirSync(join(job(t.id), ".factory")).find((f) => f.startsWith("set-aside-"))!;
+  assert.ok(existsSync(join(job(t.id), ".factory", aside, "research.md")), "kept, not deleted");
+  assert.ok(got.events.some((e) => e.kind === "restarted_research"));
+  assert.match(await c<string>("task.rehome", { id: t.id, path: other }), /already works/, "once research is running again, the same folder is a no-op");
+  assert.ok(pasted.length > pastes || started.some((s) => s.id.startsWith(`${t.id}-coordinator`) && s.cwd === other), "the coordinator is told to research again");
   rmSync(other, { recursive: true, force: true });
 });

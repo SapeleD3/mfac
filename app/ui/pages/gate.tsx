@@ -137,7 +137,7 @@ function DocGate({ t }: { t: Task }) {
   const round = t.machine.tries[t.machine.state as "ResearchGate"] + 1;
   const note = [`Overall: ${verdict === "solid" ? "solid" : verdict === "work" ? "needs work" : "off track"}.`, text.trim()].filter(Boolean).join(" ");
   return (
-    <div class="pane-body">
+    <div class="pane-body gate-body">
       <div class="notion-route">
         <Brand n="notion" s={34} />
         <div class="grow">

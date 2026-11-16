@@ -262,6 +262,10 @@ textarea.in { resize: vertical; }
 .engine-no { color: var(--danger); }
 
 .gate-wrap { display: grid; grid-template-columns: 1fr 360px; height: 760px; }
+.gate-body { display: flex; flex-direction: column; overflow: hidden; }
+.gate-body > .notion-route { flex: none; }
+.gate-body > .gate-wrap { flex: 1; height: auto; min-height: 0; }
+.gate-body .doc, .gate-body .decide { min-height: 0; overflow: auto; }
 .doc { overflow: auto; padding: var(--s5) var(--s6); background: #191919; color: #e6e6e6; font-family: ui-sans-serif, -apple-system, sans-serif; position: relative; }
 .doc h1 { font-size: 30px; font-weight: 700; margin: var(--s3) 0 var(--s2); }
 .doc h2 { font-size: 18px; margin: var(--s5) 0 var(--s2); }
