@@ -420,7 +420,10 @@ export class Intake {
       return this.moveItem(id, { type: "triage", as: "reply" }, { ...base, draft });
     }
     const parentRepo = item.meta.parentTask ? this.engine.get(item.meta.parentTask)?.repo : undefined;
-    const repoPath = this.repos.resolve(d.repo) ?? parentRepo ?? this.repos.mentionedIn(item.text) ?? this.repos.defaultPath();
+    const board = item.meta.board ? boards(this.engine).find((b) => b.url === item.meta.board) : undefined;
+    const boardFolder = this.repos.resolve(board?.folder) ?? board?.folder;
+    const repoPath =
+      this.repos.resolve(d.repo) ?? parentRepo ?? this.repos.mentionedIn(item.text) ?? this.repos.folderIn(item.text, [boardFolder, ...this.repos.roots()]) ?? boardFolder ?? this.repos.defaultPath();
     const existing = this.engine.store.taskBySource(item.source, item.sourceId);
     const task: TaskView = existing
       ? this.engine.get(existing.id)!

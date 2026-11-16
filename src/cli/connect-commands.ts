@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
+import { resolve } from "node:path";
 import { call } from "../daemon/client.js";
 import type { Command, Flags } from "./cli.js";
 import { CONNECTIONS, type Connection, type ConnectionName, INFO } from "../connectors/connections.js";
@@ -207,8 +208,9 @@ export const connectCommands: Record<string, Command> = {
     },
   },
   notion: {
-    usage: 'notion setup "PAGE NAME" | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] | boards | unwatch "BOARD NAME" | meetings [--server NAME] [--on|--off] | status',
-    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake adds one of your own boards to watch (through --server when its workspace differs) and queues cards moved to its ready column; run it once per board",
+    usage:
+      'notion setup "PAGE NAME" | intake "BOARD NAME" [--status "Ready for agent"] [--server NAME] [--folder PATH] | folder "BOARD NAME" [PATH] | boards | unwatch "BOARD NAME" | meetings [--server NAME] [--on|--off] | status',
+    help: "setup creates the factory board (Jobs, Tickets, Reviews) on a page you can edit; intake adds one of your own boards to watch (through --server when its workspace differs) and queues cards moved to its ready column; run it once per board. --folder, or folder, says where its cards' work lives: one repo, or a folder of repos that the card's text picks from",
     async run(args, f) {
       if (args[0] === "setup") return out(JSON.stringify(await call("notion.setup", { page: args[1] }), null, 2));
       if (args[0] === "intake") {
@@ -216,15 +218,20 @@ export const connectCommands: Record<string, Command> = {
           board: args[1],
           status: f.status,
           server: str(f.server),
+          folder: str(f.folder) ? resolve(str(f.folder)!) : undefined,
           wait: true,
         });
         const { lastResult, lastDetail } = r.routine;
         return out(lastResult === "ok" ? `Watching ${r.board}. Cards moved to "${r.status}" go to the queue. Now: ${lastDetail}.` : `Saved, but the check ${lastResult}: ${lastDetail}`);
       }
+      if (args[0] === "folder") {
+        const r = await call<{ board: string; folder: string | null }>("notion.folder", { board: args[1], folder: args[2] ? resolve(args[2]) : undefined });
+        return out(r.folder ? `Cards from ${r.board} work in ${r.folder}.` : `${r.board} has no folder; its cards use the repo their text names, else your default.`);
+      }
       if (args[0] === "boards") {
-        const s = await call<{ boards: { url: string; name?: string; server?: string; status: string }[] }>("notion.status");
+        const s = await call<{ boards: { url: string; name?: string; server?: string; status: string; folder?: string }[] }>("notion.status");
         if (!s.boards.length) return out('No boards watched yet: factory notion intake "<board name>"');
-        return out(s.boards.map((b) => `- ${b.name ?? b.url} · "${b.status}" · ${b.server ?? "the Notion connection's server"}`).join("\n"));
+        return out(s.boards.map((b) => `- ${b.name ?? b.url} · "${b.status}" · ${b.server ?? "the Notion connection's server"} · ${b.folder ?? "no folder"}`).join("\n"));
       }
       if (args[0] === "unwatch") {
         const r = await call<{ removed: string; boards: unknown[] }>("notion.unwatch", { board: args.slice(1).join(" ") });

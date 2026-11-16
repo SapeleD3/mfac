@@ -1,4 +1,5 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Engine } from "../workflow/engine.js";
 import type { Row, Store } from "../workflow/store.js";
 import { tryGit } from "./git.js";
@@ -71,8 +72,28 @@ export class Repos {
   }
 
   mentionedIn(text: string): string | undefined {
-    const hits = this.list().filter((r) => new RegExp(`(^|[^\\w-])${r.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w-]|$)`, "i").test(text));
+    const hits = this.list().filter((r) => named(text, r.name));
     return hits.length === 1 ? hits[0]!.path : undefined;
+  }
+
+  /** A folder named in the text that sits in one of the roots (a board's folder, or where your repos live), when exactly one matches. */
+  folderIn(text: string, roots: (string | undefined)[]): string | undefined {
+    const seen = new Set<string>();
+    const hits = new Set<string>();
+    for (const root of roots) {
+      if (!root || seen.has(root) || !isDir(root)) continue;
+      seen.add(root);
+      for (const name of readdirSync(root)) {
+        if (name.startsWith(".") || !distinctive(name) || !isDir(join(root, name))) continue;
+        if (named(text, name)) hits.add(join(root, name));
+      }
+    }
+    return hits.size === 1 ? [...hits][0] : undefined;
+  }
+
+  /** Where your registered repos live, so a sibling the text names can be found without registering it first. */
+  roots(): string[] {
+    return [...new Set(this.list().map((r) => dirname(r.path)))];
   }
 
   defaultPath(): string | undefined {
@@ -85,3 +106,16 @@ export class Repos {
 }
 
 export const isGitRepo = (path: string) => tryGit(path, ["rev-parse", "--is-inside-work-tree"]).ok;
+
+const isDir = (p: string) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+const named = (text: string, name: string) => new RegExp(`(^|[^\\w-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w-]|$)`, "i").test(text);
+
+/** Short or everyday folder names (app, docs, web) turn up in any ticket, so only names that read as a project count. */
+const distinctive = (name: string) => name.length >= 5 && !/^(docs?|tests?|build|dist|src|scripts?|tools?|assets?|public|vendor|archive|backup|temp|tmp|notes?|design)$/i.test(name);

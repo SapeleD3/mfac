@@ -28,7 +28,7 @@ async function readStdin(): Promise<string> {
 export function extend(commands: Record<string, Command>) {
   Object.assign(commands, {
     coord: {
-      usage: "coord status|run ROLE|submit-research|submit-plan|requirements --covered|--gaps|submit-build|findings --blocking N|confirm --solved|needs-you|harden TITLE",
+      usage: "coord status|run ROLE|move-repo PATH --why TEXT|submit-research|submit-plan|requirements --covered|--gaps|submit-build|findings --blocking N|confirm --solved|needs-you|harden TITLE",
       help: "The coordinator's tools (used by the Opus coordinator session; the engine checks each one)",
       async run(args: string[], f: Flags) {
         const [command, ...rest] = args;
@@ -36,6 +36,7 @@ export function extend(commands: Record<string, Command>) {
         const a: Record<string, unknown> = { ...f };
         if (command === "run") a.role = rest[0];
         if (command === "harden") a.title = rest.join(" ");
+        if (command === "move-repo") a.to = rest[0] ? resolve(rest[0]) : undefined;
         const text = await call<string>("coord.do", { task: taskOf(f), command, args: a });
         out(text);
       },
@@ -140,8 +141,8 @@ export function extend(commands: Record<string, Command>) {
     resume: { usage: "resume", help: "Start taking tasks again", run: async () => out(JSON.stringify(await call("factory.pause", { paused: false }))) },
     "set-repo": {
       usage: "set-repo TASK PATH",
-      help: "Point a task at a repo (before it starts)",
-      run: async (a: string[]) => out(`${(await call<TaskView>("task.update", { id: a[0], patch: { repo: resolve(a[1] ?? ".") } })).repo}`),
+      help: "Point a task at the folder or repo its work is in; a started task moves there and reruns its current stage",
+      run: async (a: string[]) => out(await call<string>("task.rehome", { id: a[0], path: resolve(a[1] ?? ".") })),
     },
     tlc: {
       usage: "tlc MODEL.tla",

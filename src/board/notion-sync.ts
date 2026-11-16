@@ -226,11 +226,9 @@ export class NotionSync {
       comments: cached.count,
       discussions: cached.discussions,
       commentsReadAt: cached.at,
-      summary: text
-        .split("\n")
-        .filter((l) => l.trim() && !l.startsWith("```"))
-        .slice(0, 14)
-        .join("\n"),
+      boardReady: this.ready(),
+      publishing: this.publishing.has(t.id),
+      summary: text.slice(0, 40_000),
       tlc: existsSync(join(job, "tlc-result.md")) ? readFileSync(join(job, "tlc-result.md"), "utf8") : undefined,
       statechart: existsSync(join(job, "statechart.md")) ? readFileSync(join(job, "statechart.md"), "utf8") : undefined,
     };

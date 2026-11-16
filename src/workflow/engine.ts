@@ -8,6 +8,8 @@ export interface IntakeBoard {
   name?: string;
   server?: string;
   status: string;
+  /** The folder its cards' work lives in: one repo, or a folder of repos that the card's text picks from. */
+  folder?: string;
   columns?: Partial<Record<"working" | "review" | "done" | "dropped", string>>;
 }
 

@@ -47,3 +47,26 @@ test("a folder that isn't a git repo is told apart from one that is", () => {
   assert.equal(isGitRepo(plain), false);
   assert.equal(isGitRepo(repo), true);
 });
+
+test("a card's work goes where its board's folder and its own text point, ahead of the default repo", async () => {
+  const { Intake } = await import("../src/integrations/intake.js");
+  const { saveBoards } = await import("../src/integrations/boards.js");
+  const engine = new Engine(new Store(":memory:"));
+  const repos = new Repos(engine.store, engine);
+  const work = repos.add({ path: folder("system-automation") });
+  const tools = folder("Custom Tools");
+  for (const name of ["sapele-app", "docs", "ledger-cli"]) mkdirSync(join(tools, name));
+  saveBoards(engine, [{ url: "https://notion.so/tools", name: "Custom Tools Board", status: "Ready for agent", folder: tools }]);
+  const intake = new Intake(engine.store, engine, {} as never);
+  const queue = async (id: string, text: string, board = "https://notion.so/tools") => {
+    const item = intake.add({ source: "notion", sourceId: id, text, meta: { pageId: id, board } })!;
+    (intake as unknown as { moveItem: (id: string, e: { type: string }) => void }).moveItem(item.id, { type: "pick" });
+    const saved = await intake.apply(item.id, { action: "task" });
+    return engine.get(saved.taskId!)!.repo;
+  };
+  assert.equal(await queue("c1", "Project: sapele-app\nTrademark check for the name"), join(tools, "sapele-app"), "the card names a folder under its board's folder");
+  assert.equal(await queue("c2", "Tidy the docs"), tools, "nothing distinctive named: the board's folder itself");
+  assert.equal(await queue("c3", "Fix the cron in system-automation"), work.path, "a registered repo named in the text wins");
+  assert.equal(await queue("c4", "Something from another board", "https://notion.so/other"), work.path, "no board folder: the default");
+  assert.equal(repos.folderIn("bump ledger-cli and sapele-app", [tools]), undefined, "two named: don't guess");
+});

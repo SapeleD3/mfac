@@ -149,11 +149,16 @@ export async function readyCards(store: Store, board: string, status: string, se
 }
 
 export async function cardText(store: Store, pageId: string, server?: string): Promise<string> {
-  const r = await ask<{ text?: string }>(store, "notion", `Read the Notion page ${pageUrl(pageId)}. Answer {"text": "<its content as plain text, at most 3000 characters>"}.`, {
-    ...INTAKE,
-    server,
-    timeoutMs: 90_000,
-  });
+  const r = await ask<{ text?: string }>(
+    store,
+    "notion",
+    `Read the Notion page ${pageUrl(pageId)}. Answer {"text": "<its properties first, one 'Name: value' line each (Project, Repo, Type and the like), then its content as plain text; at most 3000 characters>"}.`,
+    {
+      ...INTAKE,
+      server,
+      timeoutMs: 90_000,
+    },
+  );
   return typeof r.text === "string" ? r.text : "";
 }
 

@@ -1,3 +1,6 @@
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Engine, IntakeBoard } from "../workflow/engine.js";
 import type { Row, Store } from "../workflow/store.js";
 
@@ -13,6 +16,15 @@ export function boards(engine: Engine): IntakeBoard[] {
 export function saveBoards(engine: Engine, list: IntakeBoard[]) {
   const { intakeBoard: _b, intakeBoardName: _n, intakeServer: _s, intakeStatus: _t, columns: _c, ...rest } = engine.settings().notion;
   engine.updateSettings({ notion: { ...rest, boards: list } });
+}
+
+/** A board's folder must exist on this Mac; ~ is your home folder. Empty clears it. */
+export function folderOf(given?: string): string | undefined {
+  const raw = given?.trim().replace(/\/+$/, "");
+  if (!raw) return undefined;
+  const path = raw.startsWith("~") ? join(homedir(), raw.slice(1)) : raw;
+  if (!existsSync(path) || !statSync(path).isDirectory()) throw new Error(`${given} isn't a folder on this Mac`);
+  return path;
 }
 
 export const boardLabel = (b: IntakeBoard) => b.name ?? b.url;

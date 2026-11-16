@@ -5,7 +5,7 @@ import { type ConnectionName, Connections, type Tester, realTester } from "../co
 import type { Decision, TaskView } from "../workflow/engine.js";
 import type { PluginFactory } from "../daemon/host.js";
 import { meetingsSince, saveMeetings } from "../memory/meetings.js";
-import { READY, boardLabel, boardOfCard, boards, findWatched, saveBoards } from "./boards.js";
+import { READY, boardLabel, boardOfCard, boards, findWatched, folderOf, saveBoards } from "./boards.js";
 import { CardMoves } from "./card-moves.js";
 import { Intake, type TriageAction } from "./intake.js";
 import * as jira from "../connectors/jira.js";
@@ -232,17 +232,27 @@ export const integrationsPart =
         "connections.snooze": (p: { name: ConnectionName; hours?: number }) => connections.snooze(p.name, p.hours ?? 4),
         "connections.alerts": () => connections.alerts(),
         "intake.list": (p: { status?: string[]; limit?: number }) => intake.items({ status: p.status as never, limit: p.limit }),
-        "notion.intake": async (p: { board: string; status?: string; server?: string; wait?: boolean }) => {
+        "notion.intake": async (p: { board: string; status?: string; server?: string; folder?: string; wait?: boolean }) => {
           const given = p.board?.trim();
           if (!given) throw new Error("give the name of your Notion board (the one you move cards on)");
           const server = p.server?.trim() || undefined;
           const found = notion.looksLikeLink(given) ? { url: given, title: undefined } : await notion.findBoard(store, given, server);
           const prev = boards(engine).find((b) => b.url === found.url);
-          const board = { ...prev, url: found.url, name: found.title ?? prev?.name, server, status: p.status?.trim() || prev?.status || READY };
+          const board = { ...prev, url: found.url, name: found.title ?? prev?.name, server, status: p.status?.trim() || prev?.status || READY, folder: folderOf(p.folder) ?? prev?.folder };
           saveBoards(engine, [...boards(engine).filter((b) => b.url !== found.url), board]);
           routines.update("intake-notion", { workingHours: false });
           const check = routines.run("intake-notion", { manual: true });
           return { board: boardLabel(board), status: board.status, boards: boards(engine), routine: p.wait ? await check : routines.get("intake-notion") };
+        },
+        "notion.folder": (p: { board: string; folder?: string }) => {
+          const b = findWatched(engine, p.board?.trim() ?? "");
+          if (!b) throw new Error(`you don't watch a board called ${p.board}: factory notion boards lists them`);
+          const folder = folderOf(p.folder);
+          saveBoards(
+            engine,
+            boards(engine).map((x) => (x.url === b.url ? { ...x, folder } : x)),
+          );
+          return { board: boardLabel(b), folder: folder ?? null, boards: boards(engine) };
         },
         "notion.unwatch": (p: { board: string }) => {
           const b = findWatched(engine, p.board?.trim() ?? "");
@@ -263,7 +273,13 @@ export const integrationsPart =
         "intake.send": (p: { id: string; text?: string }) => intake.send(p.id, p.text),
         "rules.list": () => intake.rules(),
         "rules.set": (p: { id: string; status: "active" | "rejected" | "proposed" }) => intake.setRule(p.id, p.status),
-        "notion.setup": (p: { page: string }) => sync.setup(p.page),
+        "notion.setup": async (p: { page: string }) => {
+          const ids = await sync.setup(p.page);
+          for (const t of engine.list().filter((x) => (x.machine.state === "ResearchGate" || x.machine.state === "PlanGate") && !x.notionReviewId)) {
+            sync.later("review", t.id, () => sync.publishReview(t));
+          }
+          return ids;
+        },
         "notion.status": () => ({
           ...sync.ids(),
           ready: sync.ready(),

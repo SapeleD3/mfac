@@ -240,3 +240,25 @@ test("a research task reads its repo in place, gets its research reviewed, and e
   assert.equal(done.machine.state, "Done");
   assert.deepEqual(done.machine.approved, ["research"]);
 });
+
+test("a task in the wrong folder moves before anything is built, and its stages start over there", async () => {
+  await c("settings.set", { slots: 8 });
+  const other = mkdtempSync(join(tmpdir(), "factory-other-"));
+  const t = await c<TaskView>("task.add", { title: "Trademark check for the app's name", repo, recipe: "research" });
+  await c("factory.tick");
+  await coord(t.id, "run", { role: "researcher" });
+  assert.ok(alive.has(`${t.id}-researcher-1`));
+  await assert.rejects(coord(t.id, "move-repo", { to: join(other, "missing") }), /isn't a folder/);
+  const said = await coord(t.id, "move-repo", { to: other, why: "the card names sapele-app" });
+  assert.match(said, /now works in .*Rerun the current stage/s);
+  assert.ok(!alive.has(`${t.id}-researcher-1`), "the stage reading the wrong folder is stopped");
+  const moved = (await c<{ task: TaskView; events: { kind: string }[] }>("task.get", { id: t.id })).task;
+  assert.equal(moved.repo, other);
+  assert.equal(moved.worktree, other);
+  assert.equal(moved.machine.state, "Researching", "the task keeps its place in the loop");
+  await coord(t.id, "run", { role: "researcher" });
+  assert.equal(started.at(-1)!.cwd, other, "the next stage runs in the new folder");
+  const queued = await c<TaskView>("task.add", { title: "Not started yet", repo, backlog: true });
+  assert.match(await c<string>("task.rehome", { id: queued.id, path: other }), /will work in/);
+  rmSync(other, { recursive: true, force: true });
+});

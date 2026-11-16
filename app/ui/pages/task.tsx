@@ -1,9 +1,12 @@
 import { useState } from "preact/hooks";
 import { go } from "../app";
-import { openInVSCode, openTerminal, openUrl } from "../bridge";
+import { inApp, openInVSCode, openTerminal, openUrl, pickFolder } from "../bridge";
 import { Btn, Ic, Pips, ago, RECIPE, StateChip, StateDot, TagChip, Tags, clock, doing, position, taskSource, tokens } from "../kit";
+import { Markdown } from "../markdown";
 import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
+
+const BUILT = ["Building", "Reviewing", "Confirming", "PRGate", "Done", "Dropped"];
 
 const notionUrl = (id?: string) => (id ? `https://www.notion.so/${id.replace(/-/g, "")}` : undefined);
 
@@ -49,6 +52,10 @@ function Detail({ t }: { t: Task }) {
   const running = stages.some((x) => x.status === "running");
   const minutes = Math.round((Date.parse(t.updatedAt) - Date.parse(t.createdAt)) / 60000);
   const sendBacks = Object.values(t.machine.tries).reduce((a, b) => a + b, 0);
+  const move = async () => {
+    const to = await pickFolder(`Where does ${t.id}'s work live?`);
+    if (to) await act("task.rehome", { id: t.id, path: to, why: "you picked the folder" }, ["tasks"]);
+  };
 
   return (
     <section class="detail">
@@ -57,6 +64,11 @@ function Detail({ t }: { t: Task }) {
         <span class="faint small">
           {t.id} · {t.repo ?? "repo not chosen yet"}
         </span>
+        {inApp && !BUILT.includes(s) && (
+          <a href="#" class="xs" onClick={(e) => (e.preventDefault(), void move())} title="Moves the task; a running stage starts over in the new folder">
+            Wrong folder?
+          </a>
+        )}
         <span class="grow" />
         {stages.length > 0 && (
           <Btn onClick={() => go(`session/${t.id}`)}>
@@ -356,6 +368,8 @@ function EventLine({ e }: { e: TaskEvent }) {
     from?: string;
     text?: string;
     as?: string;
+    to?: string;
+    why?: string;
   };
   let text: preact.ComponentChildren;
   let cls = "";
@@ -400,6 +414,9 @@ function EventLine({ e }: { e: TaskEvent }) {
     case "repo_setup":
       text = "Ran the repo's setup.";
       break;
+    case "rehomed":
+      text = `Moved from ${d.from ?? "no folder"} to ${d.to}${d.why ? `: ${d.why}` : ""}.`;
+      break;
     case "plain_folder":
       text = d.research ? `Reads ${d.folder} in place: a research task makes no branch.` : `Works in ${d.folder} directly: it isn't a git repo, so there's no branch or PR.`;
       break;
@@ -443,6 +460,8 @@ export function FileView({ id, name }: { id: string; name: string }) {
       <div class="card-b" style={{ maxHeight: 360, overflow: "auto" }}>
         {f.error ? (
           <div class="err-line">{f.error}</div>
+        ) : name.endsWith(".md") && f.data ? (
+          <Markdown text={f.data.text} class="doc-body small-md" />
         ) : (
           <pre class="doc-md" style={{ margin: 0 }}>
             {f.data?.text ?? "Loading…"}

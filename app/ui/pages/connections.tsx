@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { openTerminal, openUrl } from "../bridge";
+import { inApp, openTerminal, openUrl, pickFolder } from "../bridge";
 import { Brand, Btn, Ic, ago } from "../kit";
 import { act, toast, useApp, useCall } from "../store";
 import type { Connection, ServerChoice } from "../types";
@@ -272,7 +272,10 @@ interface WatchedBoard {
   name?: string;
   server?: string;
   status: string;
+  folder?: string;
 }
+
+const home = (p?: string) => p?.replace(/^\/Users\/[^/]+/, "~");
 
 interface NotionStatus {
   ready: boolean;
@@ -372,6 +375,7 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
   const [board, setBoard] = useState("");
   const [status, setStatus] = useState("Ready for agent");
   const [server, setServer] = useState("");
+  const [folder, setFolder] = useState("");
   const choices = useCall<ServerChoice[]>("connections.choices", { name: "notion" });
   const [saving, setSaving] = useState(false);
   const r = app.routines.find((x) => x.id === "intake-notion");
@@ -379,9 +383,19 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
   const watched = s.boards ?? [];
   const save = async () => {
     setSaving(true);
-    const ok = await act("notion.intake", { board: board.trim(), status: status.trim(), server: server || undefined }, ["routines"]);
+    const ok = await act("notion.intake", { board: board.trim(), status: status.trim(), server: server || undefined, folder: folder.trim() || undefined }, ["routines"]);
     setSaving(false);
-    if (ok) setBoard("");
+    if (ok) {
+      setBoard("");
+      setFolder("");
+    }
+    reload();
+  };
+  const choose = async (b?: WatchedBoard) => {
+    const picked = await pickFolder(b ? `Where does the work on ${b.name ?? "this board"} live?` : "Where does this board's work live?");
+    if (!picked) return;
+    if (!b) return setFolder(picked);
+    await act("notion.folder", { board: b.url, folder: picked });
     reload();
   };
   const unwatch = async (b: WatchedBoard) => {
@@ -435,10 +449,20 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
                   <span class="xs dim" title={workspace(b.server)}>
                     "{b.status}" column · {workspace(b.server)}
                   </span>
+                  <span class={`xs ${b.folder ? "dim" : "warn-text"}`} title={b.folder}>
+                    {b.folder ? `Work lives in ${home(b.folder)}` : "No folder: cards use the repo they name, else your default repo"}
+                  </span>
                 </span>
-                <Btn kind="btn-ghost" onClick={() => unwatch(b)}>
-                  Stop watching
-                </Btn>
+                <span class="watch-acts">
+                  {inApp && (
+                    <Btn kind="btn-ghost" onClick={() => choose(b)}>
+                      {b.folder ? "Change folder" : "Set folder"}
+                    </Btn>
+                  )}
+                  <Btn kind="btn-ghost" onClick={() => unwatch(b)}>
+                    Stop watching
+                  </Btn>
+                </span>
               </div>
             ))}
           </div>
@@ -452,8 +476,18 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
             <Field label="Ready column">
               <input class="in" placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected || saving} />
             </Field>
+            <Field label="Its work lives in (one repo, or a folder of repos the card names)" wide>
+              <span class="row">
+                <input class="in" placeholder="~/Documents/Custom Tools" value={folder} onInput={(e) => setFolder(e.currentTarget.value)} disabled={!connected || saving} />
+                {inApp && (
+                  <Btn onClick={() => choose()} disabled={!connected || saving}>
+                    Choose…
+                  </Btn>
+                )}
+              </span>
+            </Field>
             {(choices.data?.length ?? 0) > 1 && (
-              <Field label="It lives in" wide>
+              <Field label="It's in this Notion" wide>
                 <select class="in" value={server} onChange={(e) => setServer(e.currentTarget.value)} disabled={!connected || saving}>
                   <option value="">the same Notion as the factory board</option>
                   {choices.data!.map((x) => (
