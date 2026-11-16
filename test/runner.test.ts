@@ -180,7 +180,12 @@ test("a task runs from queue to PR gate, with the engine holding every rule", as
   writeFileSync(join(job(t.id), "confirm.md"), "| R1 | clicked export | csv.png | FAIL |\nVERDICT: not solved");
   await c("hook.stop", { session_id: await sessionOf(`${t.id}-confirm-1`) });
   await assert.rejects(coord(t.id, "confirm", { solved: true }), /R1 failed[\s\S]*VERDICT: solved/);
-  writeFileSync(join(job(t.id), "confirm.md"), "| R1 | clicked export | csv.png | PASS |\nVERDICT: solved");
+  writeFileSync(join(job(t.id), "confirm.md"), "# Confirm F-1, round 1\nR1 PASS at src/export.ts:12\nVERDICT: solved");
+  await assert.rejects(coord(t.id, "confirm", { solved: true }), /confirm\.md isn't ready for the person[\s\S]*## Answer/);
+  writeFileSync(
+    join(job(t.id), "confirm.md"),
+    "# The export button saves a CSV\n## Answer\nSolved: the button now downloads the CSV.\n## For the builder\n| R1 | clicked export | csv.png | PASS |\nVERDICT: solved",
+  );
   assert.match(await coord(t.id, "confirm", { solved: true }), /PR gate is open/);
   const final = (await c<{ task: TaskView }>("task.get", { id: t.id })).task;
   assert.equal(final.machine.state, "PRGate");

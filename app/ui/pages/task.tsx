@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { go } from "../app";
 import { inApp, openInVSCode, openTerminal, openUrl, pickFolder } from "../bridge";
 import { Btn, Ic, Pips, ago, RECIPE, StateChip, StateDot, TagChip, Tags, clock, doing, position, taskSource, tokens } from "../kit";
-import { Markdown } from "../markdown";
+import { Doc, Markdown } from "../markdown";
 import { act, toast, useApp, useCall } from "../store";
 import { TAGS, type Stage, type Task, type TaskEvent } from "../types";
 
@@ -522,7 +522,7 @@ export function FileView({ id, name }: { id: string; name: string }) {
         {f.error ? (
           <div class="err-line">{f.error}</div>
         ) : name.endsWith(".md") && f.data ? (
-          <Markdown text={f.data.text} class="doc-body small-md" />
+          <Doc text={f.data.text} />
         ) : (
           <pre class="doc-md" style={{ margin: 0 }}>
             {f.data?.text ?? "Loading…"}

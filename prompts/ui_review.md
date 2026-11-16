@@ -24,3 +24,7 @@ with screenshot paths. File blocking findings as tickets
 
 - Every changed screen has a screenshot, and every visible R-id has one that proves it.
 - Each finding points at a screen and says what a user would hit.
+
+The person sees your output at the gate. Open with "## Answer": the verdict and what matters most, in
+two or three plain sentences with no file names, line numbers or ids. Put everything else under
+"## For the builder", which the app folds away.

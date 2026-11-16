@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { go } from "../app";
 import { openInVSCode, openUrl } from "../bridge";
 import { Brand, Btn, Ic, Pips, Tags, ago, taskSource } from "../kit";
-import { Markdown } from "../markdown";
+import { Doc, Markdown } from "../markdown";
 import { act, useApp, useCall } from "../store";
 import { CAP, type Task } from "../types";
 import { FileView } from "./task";
@@ -311,15 +311,9 @@ function PRReady({ t }: { t: Task }) {
             <div class="card" style={{ borderColor: "var(--ok)", marginBottom: 8 }}>
               <div class="card-b row" style={{ alignItems: "flex-start" }}>
                 <span class="dot ok" style={{ marginTop: 5 }} />
-                <div>
-                  <b>Confirmed it solves the problem.</b>{" "}
-                  <pre class="doc-md prose dim small" style={{ margin: "4px 0 0", fontSize: 13 }}>
-                    {confirm?.text
-                      .split("\n")
-                      .filter((l) => l.trim())
-                      .slice(0, 12)
-                      .join("\n") ?? "The confirm stage's write-up is in confirm.md."}
-                  </pre>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b>Confirmed it solves the problem.</b>
+                  {confirm ? <Doc text={confirm.text} /> : <p class="small dim">The confirm stage's write-up is in confirm.md.</p>}
                 </div>
               </div>
             </div>
