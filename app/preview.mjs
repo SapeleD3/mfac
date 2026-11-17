@@ -15,8 +15,15 @@ await client.subscribe((event, data) => {
   for (const res of streams) res.write(`data: ${JSON.stringify({ event, data })}\n\n`);
 });
 
+const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+const origins = new Set([...hosts].map((h) => `http://${h}`));
+
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  // Any web page can reach a loopback port, so engine calls need our own Host (no DNS rebinding), our own Origin and a JSON body (no form posts).
+  const own = hosts.has(req.headers.host ?? "") && (!req.headers.origin || origins.has(req.headers.origin));
+  if ((url.pathname === "/call" || url.pathname === "/events") && !own) return res.writeHead(403).end();
+  if (url.pathname === "/call" && !(req.headers["content-type"] ?? "").startsWith("application/json")) return res.writeHead(415).end();
   if (url.pathname === "/call" && req.method === "POST") {
     let body = "";
     for await (const chunk of req) body += chunk;

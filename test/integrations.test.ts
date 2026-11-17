@@ -38,8 +38,8 @@ setPrintRunner(async (prompt, opts) => {
     connectorCalls.push({ prompt, allowed: opts.allowedTools });
     if (prompt.startsWith("Use the Notion tools from plugin:engineering:notion"))
       return '{"error": "No plugin:engineering:notion tools are exposed in this session, so no access check or tool listing was possible. The only Notion tools available are from the claude.ai Notion connector (mcp__claude_ai_Notion__*), which I was told not to use."}';
-    if (prompt.includes("list the exact names") && prompt.startsWith("Use the Notion tools from notion-propstrata"))
-      return JSON.stringify({ who: "Moses", workspace: "Propstrata", tools: [`${toolPrefix("notion-propstrata")}__notion-search`, `${toolPrefix("notion-propstrata")}__notion-create-pages`] });
+    if (prompt.includes("list the exact names") && prompt.startsWith("Use the Notion tools from notion-work"))
+      return JSON.stringify({ who: "Dana", workspace: "Acme", tools: [`${toolPrefix("notion-work")}__notion-search`, `${toolPrefix("notion-work")}__notion-create-pages`] });
     if (prompt.includes("list the exact names"))
       return JSON.stringify({ who: "me at Acme", tools: [`${SLACK}__slack_search_messages`, `${SLACK}__slack_read_channel`, `${SLACK}__slack_send_message`] });
     if (prompt.includes("Find Slack messages")) return `\`\`\`json\n${JSON.stringify({ items: slackItems })}\n\`\`\``;
@@ -48,18 +48,18 @@ setPrintRunner(async (prompt, opts) => {
       assert.equal(opts.session, "factory-mcp-notion-intake");
       return JSON.stringify({
         found: [
-          { title: "🛠️ Custom Tools Board", url: "https://notion.so/custom-tools-board" },
-          { title: "Custom Tools Board archive", url: "https://notion.so/old-board" },
+          { title: "🛠️ Side Projects Board", url: "https://notion.so/side-projects-board" },
+          { title: "Side Projects Board archive", url: "https://notion.so/old-board" },
         ],
       });
     }
     if (prompt.includes("https://notion.so/broken-board is a Notion database")) return '{"error": "Notion: page not found"}';
     if (prompt.includes("https://notion.so/second-board is a Notion database")) {
-      assert.ok(prompt.startsWith("Use the Notion tools from notion-propstrata"), "each board is read through its own server");
+      assert.ok(prompt.startsWith("Use the Notion tools from notion-work"), "each board is read through its own server");
       return JSON.stringify({ cards: [{ pageId: "card-2b", title: "Tidy the onboarding emails", url: "https://notion.so/card2b" }] });
     }
     if (prompt.includes('status is "Ready for agent"')) {
-      assert.match(prompt, /^Use the .*https:\/\/notion\.so\/custom-tools-board is a Notion database/s, "polls read the board found by name, without searching again");
+      assert.match(prompt, /^Use the .*https:\/\/notion\.so\/side-projects-board is a Notion database/s, "polls read the board found by name, without searching again");
       assert.equal(opts.session, "factory-mcp-notion-intake", "board intake never queues behind the board sync");
       return JSON.stringify({ cards: [{ pageId: "card-1", title: "Speed up the reports page", url: "https://notion.so/card1" }] });
     }
@@ -211,8 +211,8 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   assert.match(none.skipped!, /no Notion board to watch/);
   const before = triageCalls.length;
   await assert.rejects(c("notion.intake", { board: "Custom" }), /more than one Notion board matches "Custom"/);
-  const r = await c<{ board: string; status: string; routine: Routine }>("notion.intake", { board: "custom tools board", wait: true });
-  assert.equal(r.board, "🛠️ Custom Tools Board");
+  const r = await c<{ board: string; status: string; routine: Routine }>("notion.intake", { board: "side projects board", wait: true });
+  assert.equal(r.board, "🛠️ Side Projects Board");
   assert.equal(r.status, "Ready for agent");
   assert.equal(r.routine.lastResult, "ok");
   assert.equal(r.routine.lastDetail, "1 card queued");
@@ -227,7 +227,7 @@ test("cards moved to Ready for agent on your own Notion board go straight to the
   const reads = connectorCalls.length;
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "the same card isn't queued twice");
   assert.equal(connectorCalls.length, reads + 1, "a card already queued isn't read again");
-  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  await c("notion.intake", { board: "https://notion.so/side-projects-board" });
   assert.equal(connectorCalls.filter((x) => x.prompt.includes("Search Notion for databases")).length, 2, "a link is used as it is");
 });
 
@@ -293,24 +293,24 @@ test("a pinned server is the only one used, so a call never lands in another wor
 test("each Notion server shows its workspace, and the board you watch can be read through a different one", async () => {
   const saved = mcpList;
   const { servers } = await import("../src/connectors/mcp.js");
-  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  mcpList = `${saved}notion-work: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
   await servers(true);
   const choices = await c<{ name: string; workspace?: string }[]>("connections.choices", { name: "notion" });
   assert.deepEqual(
     choices.map((x) => x.name),
-    ["claude.ai Notion", "notion-propstrata"],
+    ["claude.ai Notion", "notion-work"],
   );
-  const checked = await c<{ workspace?: string; who: string }>("connections.check", { name: "notion", server: "notion-propstrata" });
-  assert.equal(checked.workspace, "Propstrata");
-  assert.equal((await c<{ name: string; workspace?: string }[]>("connections.choices", { name: "notion" })).find((x) => x.name === "notion-propstrata")!.workspace, "Propstrata");
+  const checked = await c<{ workspace?: string; who: string }>("connections.check", { name: "notion", server: "notion-work" });
+  assert.equal(checked.workspace, "Acme");
+  assert.equal((await c<{ name: string; workspace?: string }[]>("connections.choices", { name: "notion" })).find((x) => x.name === "notion-work")!.workspace, "Acme");
   const calls = connectorCalls.length;
-  await c("notion.intake", { board: "Custom Tools Board", server: "notion-propstrata", wait: true });
+  await c("notion.intake", { board: "Side Projects Board", server: "notion-work", wait: true });
   const used = connectorCalls.slice(calls);
-  assert.ok(used.length >= 2 && used.every((x) => x.prompt.startsWith("Use the Notion tools from notion-propstrata")), "the search and the poll both go through the server you chose");
-  assert.deepEqual(used.at(-1)!.allowed, [`${toolPrefix("notion-propstrata")}__notion-search`], "only the read tools that server listed");
+  assert.ok(used.length >= 2 && used.every((x) => x.prompt.startsWith("Use the Notion tools from notion-work")), "the search and the poll both go through the server you chose");
+  assert.deepEqual(used.at(-1)!.allowed, [`${toolPrefix("notion-work")}__notion-search`], "only the read tools that server listed");
   const status = await c<{ boards: { url: string; server?: string }[] }>("notion.status");
-  assert.equal(status.boards.find((b) => b.url === "https://notion.so/custom-tools-board")?.server, "notion-propstrata");
-  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  assert.equal(status.boards.find((b) => b.url === "https://notion.so/side-projects-board")?.server, "notion-work");
+  await c("notion.intake", { board: "https://notion.so/side-projects-board" });
   mcpList = saved;
   await servers(true);
 });
@@ -361,20 +361,20 @@ test("a Notion card follows its task one milestone at a time; a team Jira ticket
 test("Notion meetings are read through the server you pick, summaries only, and kept for matching", async () => {
   const saved = mcpList;
   const { servers } = await import("../src/connectors/mcp.js");
-  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  mcpList = `${saved}notion-work: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
   await servers(true);
   const calls = connectorCalls.length;
-  const r = await c<Routine>("notion.meetings", { server: "notion-propstrata" });
+  const r = await c<Routine>("notion.meetings", { server: "notion-work" });
   assert.equal(r.lastResult, "ok");
   assert.equal(r.lastDetail, "1 new meeting remembered (1 read)");
   const read = connectorCalls.slice(calls);
   assert.equal(read.length, 1);
-  assert.ok(read[0]!.prompt.startsWith("Use the Notion tools from notion-propstrata"));
+  assert.ok(read[0]!.prompt.startsWith("Use the Notion tools from notion-work"));
   const row = running.store.db.prepare("SELECT title, server FROM meetings WHERE id = 'meet-1'").get() as { title: string; server: string };
-  assert.deepEqual({ ...row }, { title: "Reports perf sync", server: "notion-propstrata" });
+  assert.deepEqual({ ...row }, { title: "Reports perf sync", server: "notion-work" });
   assert.equal(running.store.db.prepare("SELECT COUNT(*) AS n FROM edges WHERE src = 'meeting:meet-1' AND dst = 'ticket:REP-9'").get()!.n, 1);
   const { meetingExcerpt } = await import("../src/connectors/notion.js");
-  assert.match(await meetingExcerpt(running.store, "meet-1", "why the reports page is slow", "notion-propstrata"), /scans the whole table/);
+  assert.match(await meetingExcerpt(running.store, "meet-1", "why the reports page is slow", "notion-work"), /scans the whole table/);
   const off = await c<Routine>("notion.meetings", { on: false });
   assert.equal(off.lastResult, "skipped");
   await c("notion.meetings", { on: true, server: "" });
@@ -384,7 +384,7 @@ test("Notion meetings are read through the server you pick, summaries only, and 
 
 test("a Notion card you put back in the ready column after its task finished becomes a follow-up, once; one never moved is left alone", async () => {
   const first = (await c<TaskView[]>("task.list", { all: true })).find((t) => t.sourceRef === "card-1" && !t.parent)!;
-  await c("notion.intake", { board: "https://notion.so/custom-tools-board" });
+  await c("notion.intake", { board: "https://notion.so/side-projects-board" });
   running.store.saveMachine(first.id, { ...running.store.task(first.id)!.machine, state: "Dropped" });
   assert.equal((await c<{ added: number }>("intake.poll", { source: "notion" })).added, 0, "dropped, but the factory never moved the card, so it hasn't been put back");
   running.store.setSetting("card_moves", { ...running.store.setting<Record<string, string>>("card_moves", {}), [first.id]: "dropped" });
@@ -399,9 +399,9 @@ test("a Notion card you put back in the ready column after its task finished bec
 test("several Notion boards are watched at once, each through its own server; one failing doesn't stop the others", async () => {
   const saved = mcpList;
   const { servers } = await import("../src/connectors/mcp.js");
-  mcpList = `${saved}notion-propstrata: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
+  mcpList = `${saved}notion-work: https://mcp.notion.com/mcp (HTTP) - ✓ Connected\n`;
   await servers(true);
-  await c("notion.intake", { board: "https://notion.so/second-board", server: "notion-propstrata" });
+  await c("notion.intake", { board: "https://notion.so/second-board", server: "notion-work" });
   await c("notion.intake", { board: "https://notion.so/broken-board" });
   const listed = (await c<{ boards: { url: string; server?: string }[] }>("notion.status")).boards;
   assert.equal(listed.length, 3);

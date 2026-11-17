@@ -54,9 +54,9 @@ test("a card's work goes where its board's folder and its own text point, ahead 
   const engine = new Engine(new Store(":memory:"));
   const repos = new Repos(engine.store, engine);
   const work = repos.add({ path: folder("system-automation") });
-  const tools = folder("Custom Tools");
+  const tools = folder("Side Projects");
   for (const name of ["sapele-app", "docs", "ledger-cli"]) mkdirSync(join(tools, name));
-  saveBoards(engine, [{ url: "https://notion.so/tools", name: "Custom Tools Board", status: "Ready for agent", folder: tools }]);
+  saveBoards(engine, [{ url: "https://notion.so/tools", name: "Side Projects Board", status: "Ready for agent", folder: tools }]);
   const intake = new Intake(engine.store, engine, {} as never);
   const queue = async (id: string, text: string, board = "https://notion.so/tools") => {
     const item = intake.add({ source: "notion", sourceId: id, text, meta: { pageId: id, board } })!;
