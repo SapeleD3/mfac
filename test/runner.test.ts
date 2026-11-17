@@ -8,6 +8,7 @@ import { call } from "../src/daemon/client.js";
 import type { TaskView } from "../src/workflow/engine.js";
 import { startEngine } from "../src/daemon/host.js";
 import { type Prompt, type Stage, runnerPart } from "../src/stages/runner.js";
+import { ROLES, permissionsFor } from "../src/stages/agent.js";
 import { ticketsPart } from "../src/board/tickets.js";
 
 const dir = mkdtempSync(join(tmpdir(), "factory-runner-"));
@@ -208,6 +209,17 @@ test("permission requests wait for your click in the panel", async () => {
 
   const unanswered = await c<{ behavior: string }>("hook.permission", { session_id: session, tool_name: "Bash", tool_input: { command: "ls" } });
   assert.equal(unanswered.behavior, "ask");
+});
+
+test("no stage can read credentials, edit outside its worktree, or fetch a URL without asking", () => {
+  for (const role of ROLES) {
+    const { allow, deny } = permissionsFor(role, "/tmp/job");
+    for (const path of ["~/.ssh/**", "~/.config/**", "~/.npmrc", "~/.claude.json", "**/.env"]) assert.ok(deny.includes(`Read(${path})`), `${role} can't read ${path}`);
+    assert.ok(deny.includes("Edit(~/.zshrc)"), `${role} can't edit shell startup files`);
+    assert.ok(!allow.includes("Edit") && !allow.includes("Write"), `${role} has no unscoped edits`);
+    assert.ok(!allow.some((a) => a.startsWith("WebFetch")), `${role} asks before fetching a URL`);
+  }
+  assert.ok(permissionsFor("builder", "/tmp/job").allow.includes("Edit(./**)"));
 });
 
 test("stopping a running task sends it to Needs you and ends its sessions", async () => {

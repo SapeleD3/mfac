@@ -48,6 +48,26 @@ const CHECKS = [
   "Bash(pytest:*)",
   "Bash(ruff:*)",
 ];
+const SECRETS = [
+  "~/.ssh/**",
+  "~/.aws/**",
+  "~/.config/**",
+  "~/.gnupg/**",
+  "~/.docker/**",
+  "~/.kube/**",
+  "~/.npmrc",
+  "~/.netrc",
+  "~/.git-credentials",
+  "~/.claude.json",
+  "~/.claude/.credentials.json",
+  "~/Library/Keychains/**",
+  "~/Library/Application Support/Claude/**",
+  "**/.env",
+  "**/.env.local",
+  "**/.env.*.local",
+  "**/.env.production",
+];
+const SHELL_STARTUP = ["~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.bashrc", "~/.bash_profile", "~/.profile", "~/Library/LaunchAgents/**"];
 const ALWAYS_DENY = [
   "Bash(git push:*)",
   "Bash(gh pr merge:*)",
@@ -57,8 +77,8 @@ const ALWAYS_DENY = [
   "Bash(rm -rf /:*)",
   "Bash(sudo:*)",
   "Bash(curl:*|*sh)",
-  "Read(~/.ssh/**)",
-  "Read(~/.aws/**)",
+  ...SECRETS.flatMap((path) => [`Read(${path})`, `Edit(${path})`, `Write(${path})`]),
+  ...SHELL_STARTUP.flatMap((path) => [`Edit(${path})`, `Write(${path})`]),
 ];
 
 const RUNS_CHECKS: readonly Role[] = ["builder", "code_review", "security_review", "ui_review", "confirm"];
@@ -77,7 +97,7 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
     case "coordinator":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, ...coord, ...memory] };
     case "researcher":
-      return { ...base, allow: [...READ, ...GIT_READ, ...job, "WebSearch", "WebFetch", "Bash(factory tlc:*)", "Bash(factory lookup:*)", "Bash(java:*)", ...memory] };
+      return { ...base, allow: [...READ, ...GIT_READ, ...job, "WebSearch", "Bash(factory tlc:*)", "Bash(factory lookup:*)", "Bash(java:*)", ...memory] };
     case "planner":
       return { ...base, allow: [...READ, ...GIT_READ, ...job, "Bash(factory ticket:*)", ...memory] };
     case "requirements_review":
@@ -90,8 +110,8 @@ function stationPermissions(role: Role, jobDir: string): { allow: string[]; deny
           ...GIT_READ,
           ...CHECKS,
           ...job,
-          "Edit",
-          "Write",
+          "Edit(./**)",
+          "Write(./**)",
           "Bash(git add:*)",
           "Bash(git commit:*)",
           "Bash(git mv:*)",
