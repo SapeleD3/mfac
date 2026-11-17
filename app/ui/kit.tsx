@@ -178,13 +178,13 @@ export function doing(t: Task): string {
     case "ResearchCheck":
       return "Checking the statechart and running TLC";
     case "ResearchGate":
-      return "Research ready: review in Notion";
+      return t.notionReviewId ? "Research ready: review in Notion" : "Research ready for your review";
     case "Planning":
       return m.loops.requirements ? `Planning: closing requirement gaps (round ${m.loops.requirements} of ${CAP})` : "Planning: splitting into reviewable units";
     case "RequirementsReview":
       return `Checking the plan against the original ask${m.loops.requirements ? ` (round ${m.loops.requirements + 1} of ${CAP})` : ""}`;
     case "PlanGate":
-      return "Plan ready: review in Notion";
+      return t.notionReviewId ? "Plan ready: review in Notion" : "Plan ready for your review";
     case "Building":
       return m.loops.review ? `Building: fixing review findings (loop ${m.loops.review} of ${CAP})` : "Building on its branch";
     case "Reviewing":

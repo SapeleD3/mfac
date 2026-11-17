@@ -8,6 +8,9 @@ import { CAP, type Task } from "../types";
 import { FileView } from "./task";
 
 interface Summary {
+  inNotion: boolean;
+  path: string;
+  requirements?: string;
   url?: string;
   comments: number;
   discussions: number;
@@ -49,7 +52,7 @@ export function Gate({ id }: { id: string }) {
   return <DocGate t={t} />;
 }
 
-function Decide({ t, note, extra, empty, mixed }: { t: Task; note: string; extra?: preact.ComponentChildren; empty?: boolean; mixed?: boolean }) {
+function Decide({ t, note, extra, empty, mixed, inNotion }: { t: Task; note: string; extra?: preact.ComponentChildren; empty?: boolean; mixed?: boolean; inNotion?: boolean }) {
   const s = t.machine.state as "ResearchGate" | "PlanGate" | "PRGate";
   const capped = s !== "ResearchGate";
   const used = t.machine.tries[s];
@@ -94,12 +97,16 @@ function Decide({ t, note, extra, empty, mixed }: { t: Task; note: string; extra
           ? "Done. The PR stays open for your usual merge; the source gets the link."
           : ends
             ? "Ends the task. It's research only: no plan, build or PR."
-            : `Moves to ${next}. Open Notion comments are kept as notes for later stages.`,
+            : `Moves to ${next}.${inNotion ? " Open Notion comments are kept as notes for later stages." : ""}`,
       )}
       {c(
         "back",
         "Send back",
-        targets.length ? "Goes back with your evaluation and every open comment. The stage updates the same page as a new round." : "No send-backs left at this gate: approve or drop.",
+        targets.length
+          ? inNotion
+            ? "Goes back with your evaluation and every open comment. The stage updates the same page as a new round."
+            : "Goes back with your note. The stage answers it in the next round."
+          : "No send-backs left at this gate: approve or drop.",
         !targets.length,
       )}
       {choice === "back" && targets.length > 0 && (
@@ -117,7 +124,11 @@ function Decide({ t, note, extra, empty, mixed }: { t: Task; note: string; extra
       )}
       {c("drop", "Drop", `Ends the task${t.source === "slack" || t.source === "jira" ? ` and leaves a note on ${t.source}` : ""}.`)}
       {extra}
-      {blocked && <div class="small warn-text">There are no comments on the Notion page yet. Comment there or say above what needs work, so the next round has something to act on.</div>}
+      {blocked && (
+        <div class="small warn-text">
+          {inNotion ? "There are no comments on the Notion page yet. Comment there or say above what needs work" : "Say above what needs work"}, so the next round has something to act on.
+        </div>
+      )}
       {choice === "approve" && mixed && <div class="small warn-text">You marked it as not solid. Approving moves it on anyway.</div>}
       <div class="row" style={{ marginTop: 8 }}>
         <Btn kind="btn-primary" disabled={blocked} onClick={decide}>
@@ -147,47 +158,51 @@ function DocGate({ t }: { t: Task }) {
   const note = [verdict ? `Overall: ${verdict === "solid" ? "solid" : verdict === "work" ? "needs work" : "off track"}.` : "", text.trim()].filter(Boolean).join(" ");
   return (
     <div class="pane-body gate-body">
-      <div class="notion-route">
-        <Brand n="notion" s={34} />
-        <div class="grow">
-          <b>Review this in Notion first.</b> The full {isPlan ? "plan" : "research doc, with the statechart, TLA+ model and TLC result,"} is on its Notion page. Leave a comment on each issue there,
-          anchored to the words it's about. Every open comment goes back with a send-back, and the next round replies under each one.
-          <ol class="nr-steps">
-            <li>Open the doc in Notion and read it in full</li>
-            <li>Comment on each issue, right on the text</li>
-            <li>Come back here: one overall evaluation, then decide</li>
-          </ol>
+      {s?.inNotion ? (
+        <div class="notion-route">
+          <Brand n="notion" s={34} />
+          <div class="grow">
+            <b>Review this in Notion first.</b> The full {isPlan ? "plan" : "research doc, with the statechart, TLA+ model and TLC result,"} is on its Notion page. Leave a comment on each issue there,
+            anchored to the words it's about. Every open comment goes back with a send-back, and the next round replies under each one.
+            <ol class="nr-steps">
+              <li>Open the doc in Notion and read it in full</li>
+              <li>Comment on each issue, right on the text</li>
+              <li>Come back here: one overall evaluation, then decide</li>
+            </ol>
+          </div>
+          <div class="col" style={{ alignItems: "flex-end" }}>
+            {s.url ? (
+              <Btn kind="btn-primary" onClick={() => openUrl(s.url!)}>
+                <Ic n="external-link" s={14} />
+                Open in Notion
+              </Btn>
+            ) : (
+              <Btn kind="btn-primary" disabled={publishing || s.publishing} onClick={publish}>
+                <Ic n="external-link" s={14} />
+                {publishing || s.publishing ? "Publishing…" : "Publish to Notion"}
+              </Btn>
+            )}
+            <span class="xs faint">{s.url ? `Factory Reviews / ${t.id} / Round ${round}` : "Not published yet. It goes to the Reviews database on your factory board."}</span>
+          </div>
         </div>
-        <div class="col" style={{ alignItems: "flex-end" }}>
-          {s?.url || !s ? (
-            <Btn kind="btn-primary" disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}>
-              <Ic n="external-link" s={14} />
-              Open in Notion
-            </Btn>
-          ) : s.boardReady ? (
-            <Btn kind="btn-primary" disabled={publishing || s.publishing} onClick={publish}>
-              <Ic n="external-link" s={14} />
-              {publishing || s.publishing ? "Publishing…" : "Publish to Notion"}
-            </Btn>
-          ) : (
-            <Btn kind="btn-primary" onClick={() => go("connections")}>
-              Create the factory board
+      ) : (
+        <div class="notion-route">
+          <Ic n="file-text" s={28} />
+          <div class="grow">
+            <b>Review it here.</b> The {isPlan ? "plan" : "research"} is below, with the builder detail folded away. Write what needs work in the note on the right: it goes back with a send-back, and
+            the next round answers it.
+          </div>
+          {s && (
+            <Btn onClick={() => openInVSCode(s.path)}>
+              <Ic n="code" s={14} />
+              Open in VS Code
             </Btn>
           )}
-          <span class="xs faint">
-            {s?.url
-              ? `Factory Reviews / ${t.id} / Round ${round}`
-              : s?.boardReady
-                ? "Not published yet. It goes to the Reviews database on your factory board."
-                : s
-                  ? "Reviews go to your factory board, which isn't created yet. Your watched boards are only for picking up work."
-                  : (sum.error ?? "Loading…")}
-          </span>
         </div>
-      </div>
+      )}
       <div class="gate-wrap">
         <article class="doc readonly">
-          <div class="ro-band">Summary preview · read only · comment in Notion, not here</div>
+          <div class="ro-band">{s?.inNotion ? "Summary preview · read only · comment in Notion, not here" : "Read only · your notes go in the box on the right"}</div>
           <h1>{t.title}</h1>
           <div class="props">
             <span>Stage</span>
@@ -211,6 +226,12 @@ function DocGate({ t }: { t: Task }) {
               {s.builder && <Markdown text={s.builder} class="doc-body" />}
               {!isPlan && (
                 <>
+                  {!s.inNotion && s.requirements && (
+                    <>
+                      <h3>Requirements</h3>
+                      <Markdown text={untitled(s.requirements)} class="doc-body" />
+                    </>
+                  )}
                   <h3>Statechart</h3>
                   {s.statechart ? <Markdown text={untitled(s.statechart.slice(0, 20_000))} class="doc-body" /> : <p class="dim">No statechart.md (the engine wouldn't open this gate without one).</p>}
                   <h3>Verification</h3>
@@ -220,7 +241,7 @@ function DocGate({ t }: { t: Task }) {
             </details>
           )}
           <p style={{ marginTop: 12, color: "#9b9b9b", fontSize: 13 }}>
-            In Notion the same doc also has requirements.md, and that's where comments go.
+            {s?.inNotion && "In Notion the same doc also has requirements.md, and that's where comments go."}
             {t.tags.includes("learn") && (
               <>
                 {" "}
@@ -230,27 +251,29 @@ function DocGate({ t }: { t: Task }) {
           </p>
         </article>
         <aside class="decide">
-          <div class="decide-sec">
-            <div class="row">
-              <b>Comments in Notion</b>
-              <span class="chip warn">{s?.url ? `${s.discussions} open` : "–"}</span>
-              <span class="grow" />
-              <span class="faint xs">{s?.url ? (s.commentsReadAt ? `read ${ago(s.commentsReadAt)}` : "reading…") : ""}</span>
+          {s?.inNotion && (
+            <div class="decide-sec">
+              <div class="row">
+                <b>Comments in Notion</b>
+                <span class="chip warn">{s?.url ? `${s.discussions} open` : "–"}</span>
+                <span class="grow" />
+                <span class="faint xs">{s?.url ? (s.commentsReadAt ? `read ${ago(s.commentsReadAt)}` : "reading…") : ""}</span>
+              </div>
+              <div class="small dim" style={{ marginTop: 4 }}>
+                Counted from the Notion page. You add and edit them there; they all go back with a send-back.
+              </div>
+              <div class="row" style={{ marginTop: 6 }}>
+                <Btn disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}>
+                  <Ic n="message-square" s={14} />
+                  Open comments in Notion
+                </Btn>
+              </div>
             </div>
-            <div class="small dim" style={{ marginTop: 4 }}>
-              Counted from the Notion page. You add and edit them there; they all go back with a send-back.
-            </div>
-            <div class="row" style={{ marginTop: 6 }}>
-              <Btn disabled={!s?.url} onClick={() => s?.url && openUrl(s.url)}>
-                <Ic n="message-square" s={14} />
-                Open comments in Notion
-              </Btn>
-            </div>
-          </div>
+          )}
           <div class="decide-sec">
             <b>Overall evaluation</b>
             <div class="small dim" style={{ margin: "2px 0 6px" }}>
-              One verdict on the whole document, not line comments.
+              {s?.inNotion ? "One verdict on the whole document, not line comments." : "One verdict, plus anything the next round should fix."}
             </div>
             <div class="seg" style={{ marginBottom: 6 }}>
               {(["solid", "work", "off"] as const).map((v) => (
@@ -259,9 +282,15 @@ function DocGate({ t }: { t: Task }) {
                 </button>
               ))}
             </div>
-            <textarea class="in" rows={3} placeholder="How does the document hold up as a whole?" value={text} onInput={(e) => setText(e.currentTarget.value)} />
+            <textarea
+              class="in"
+              rows={s?.inNotion ? 3 : 6}
+              placeholder={s?.inNotion ? "How does the document hold up as a whole?" : "What needs work? Name the section and what's wrong."}
+              value={text}
+              onInput={(e) => setText(e.currentTarget.value)}
+            />
           </div>
-          <Decide t={t} note={note} empty={!!s && s.comments === 0 && !text.trim()} mixed={verdict === "work" || verdict === "off"} />
+          <Decide t={t} note={note} inNotion={s?.inNotion} empty={!!s && s.comments === 0 && !text.trim()} mixed={verdict === "work" || verdict === "off"} />
           <div class="decide-sec">
             <div class="harden-note">
               <b>Corrections become checks.</b> After a send-back the coordinator asks whether a lint rule, type or test could have caught it, and queues a <span class="tag harden">harden</span> task

@@ -564,7 +564,7 @@ export class Runner {
         if (!r.ok) return "";
         if (r.task.machine.state === "ResearchGate") {
           this.gateOpened(r.task);
-          return `${check.detail} The research gate is open; the person reviews it in Notion. Stop and wait.`;
+          return `${check.detail} The research gate is open; the person reviews it. Stop and wait.`;
         }
         if (r.task.machine.state === "RequirementsReview") {
           const s = this.launch(r.task, "requirements_review", {
@@ -605,7 +605,7 @@ export class Runner {
         }
         if (r.task.machine.state === "ResearchGate") {
           this.gateOpened(r.task);
-          return "Every requirement is answered in the research. The research gate is open; the person reviews it in Notion. Stop and wait.";
+          return "Every requirement is answered in the research. The research gate is open; the person reviews it. Stop and wait.";
         }
         if (r.task.machine.state === "Researching")
           return `Gaps found: back to the researcher (round ${r.task.machine.loops.requirements}/3). Run the researcher with a note pointing at review-requirements.md.`;

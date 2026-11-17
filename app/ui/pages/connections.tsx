@@ -252,16 +252,12 @@ export function Connections() {
             </div>
           </div>
         </div>
-        <div class="grid2 top" style={{ marginTop: 16 }}>
-          {notion.data ? (
-            <>
-              <FactoryBoard s={notion.data} connected={notionOk} reload={notion.reload} />
-              <IntakeBoard s={notion.data} connected={notionOk} reload={notion.reload} />
-            </>
-          ) : (
-            <div class="small dim">{notion.error ?? "Loading…"}</div>
-          )}
-        </div>
+        {notion.data && (notionOk || notion.data.ready || notion.data.boards.length > 0) && (
+          <div class="grid2 top" style={{ marginTop: 16 }}>
+            <FactoryBoard s={notion.data} connected={notionOk} reload={notion.reload} />
+            <IntakeBoard s={notion.data} connected={notionOk} reload={notion.reload} />
+          </div>
+        )}
       </main>
     </div>
   );
@@ -313,7 +309,7 @@ function FactoryBoard({ s, connected, reload }: { s: NotionStatus; connected: bo
       <div class="card-h">
         Factory board{" "}
         <span class="faint small" style={{ fontWeight: 400 }}>
-          where research and plans are reviewed
+          optional: review research and plans in Notion instead of the app
         </span>
         <span class="grow" />
         {s.parentPageId && (

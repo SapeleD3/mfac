@@ -208,7 +208,7 @@ test("an ignored item can be promoted to a task, and the statechart refuses the 
 
 test("cards moved to Ready for agent on your own Notion board go straight to the queue, once", async () => {
   const none = await c<{ added: number; skipped?: string }>("intake.poll", { source: "notion" });
-  assert.match(none.skipped!, /no Notion board to watch/);
+  assert.match(none.skipped!, /no Notion board watched/);
   const before = triageCalls.length;
   await assert.rejects(c("notion.intake", { board: "Custom" }), /more than one Notion board matches "Custom"/);
   const r = await c<{ board: string; status: string; routine: Routine }>("notion.intake", { board: "side projects board", wait: true });

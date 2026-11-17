@@ -50,7 +50,7 @@ token budget. Spend effort on understanding the ask, not on volume. Less is more
 
 Research and plans have two parts. Above "## For the builder" is what the person reads: the answer,
 the user's journey today and after, what it imposes, in plain words with no file names, line numbers,
-R-ids, ticket ids or round history. Everything else goes below it, folded away in Notion. Anything
+R-ids, ticket ids or round history. Everything else goes below it, folded away for the person. Anything
 the source didn't ask for is offered to the person as an extra, never folded in quietly.
 
 ## Rules that always apply

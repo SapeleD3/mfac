@@ -55,6 +55,11 @@ export class NotionSync {
     return !!(ids.jobsDb && ids.ticketsDb && ids.reviewsDb);
   }
 
+  /** Reviews go to Notion only while the board exists and Notion is connected; otherwise they're the markdown files in the job folder. */
+  inNotion(): boolean {
+    return this.ready() && this.connections.ok("notion");
+  }
+
   private board(): notion.BoardIds {
     const ids = this.ids();
     if (!ids.jobsDb || !ids.ticketsDb || !ids.reviewsDb) throw new Error("the Notion board isn't set up (factory notion setup PAGE_NAME)");
@@ -251,6 +256,9 @@ export class NotionSync {
         .finally(() => this.refreshing.delete(t.id));
     }
     return {
+      inNotion: this.inNotion(),
+      path: join(job, file),
+      requirements: file === "research.md" && existsSync(join(job, "requirements.md")) ? readFileSync(join(job, "requirements.md"), "utf8").slice(0, 20_000) : undefined,
       url: t.notionReviewId ? notion.pageUrl(t.notionReviewId) : undefined,
       comments: cached.count,
       discussions: cached.discussions,
