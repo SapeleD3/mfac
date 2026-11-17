@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Tickets } from "../src/board/tickets.js";
+import { Connections, INFO } from "../src/connectors/connections.js";
 import { NotionSync, fold } from "../src/board/notion-sync.js";
 import type { RowUpdate } from "../src/connectors/notion.js";
 import { Engine } from "../src/workflow/engine.js";
@@ -54,4 +55,25 @@ test("the builder's part folds into one toggle, and a superseded ticket is dropp
   assert.equal(dropped.status, "Dropped");
   assert.equal(dropped.links.dropped, "the person checks it after deploy");
   assert.equal(tickets.add({ taskId: t.id, title: "Next", createdBy: "planner" }).id, `${t.id}-T2`, "a dropped ticket keeps its number");
+});
+
+test("without a connected Notion board, reviews are the local markdown and Notion isn't counted as needed", () => {
+  const store = new Store(":memory:");
+  const engine = new Engine(store);
+  const t = engine.add({ title: "Count properties" });
+  const connections = new Connections(store, engine, async () => "ok");
+  assert.equal(INFO.notion.required, false);
+  assert.equal(connections.used("notion"), false, "nobody chose Notion, so a missing connector raises nothing");
+
+  let connected = false;
+  const sync = new NotionSync(store, engine, new Tickets(store, engine), { ok: () => connected });
+  const local = sync.summary(t.id);
+  assert.equal(local.inNotion, false);
+  assert.match(local.path, /research\.md$/);
+
+  store.setSetting("notion_ids", { parentPageId: "p", jobsDb: "jobs", ticketsDb: "tickets", reviewsDb: "reviews" });
+  assert.equal(connections.used("notion"), true, "a factory board you set up counts");
+  assert.equal(sync.inNotion(), false, "a board whose connection is gone still reviews locally");
+  connected = true;
+  assert.equal(sync.inNotion(), true);
 });

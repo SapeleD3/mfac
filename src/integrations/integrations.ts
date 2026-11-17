@@ -108,8 +108,7 @@ export const integrationsPart =
         description: "Sends queued board changes in one batched call; makes no call when nothing changed",
         everySeconds: 600,
         run: async () => {
-          if (!sync.ready()) return "skip: the Notion board isn't set up (factory notion setup <page link>)";
-          if (!connections.ok("notion")) return "skip: Notion isn't connected; changes wait";
+          if (!sync.inNotion()) return "skip: reviews are local markdown (no Notion board in use)";
           if (!sync.pendingCount()) return "nothing to send";
           return `${await sync.flush()} board changes sent`;
         },
@@ -121,8 +120,7 @@ export const integrationsPart =
         everySeconds: 7200,
         workingHours: true,
         run: async () => {
-          if (!sync.ready()) return "skip: the Notion board isn't set up";
-          if (!connections.ok("notion")) return "skip: Notion isn't connected";
+          if (!sync.inNotion()) return "skip: no Notion board in use";
           return `${await sync.pullTickets()} tickets picked up from Notion`;
         },
       },
@@ -135,7 +133,7 @@ export const integrationsPart =
         run: async () => {
           const s = engine.settings().notion;
           if (s.meetings === false) return "skip: turned off (factory notion meetings --on)";
-          if (!connections.ok("notion")) return "skip: Notion isn't connected";
+          if (!connections.ok("notion")) return "skip: not using Notion";
           const server = s.meetingsServer ?? boards(engine)[0]?.server;
           const notes = await notion.meetingNotes(store, meetingsSince(store), server);
           const added = await saveMeetings(store, notes, server);
@@ -202,13 +200,13 @@ export const integrationsPart =
           ? `Done: the change is approved.${where}`
           : t.machine.state === "Dropped"
             ? `Dropped this one${d.note ? `: ${d.note}` : "."}`
-            : d.verdict === "approve" && t.machine.state === "Planning" && t.tags.includes("learn") && t.notionReviewId
+            : d.verdict === "approve" && t.machine.state === "Planning" && t.tags.includes("learn") && t.notionReviewId && sync.inNotion()
               ? `Research write-up (statechart and formal check included): ${notion.pageUrl(t.notionReviewId)}`
               : "";
       if (text) void writeBack(t, text).catch((e) => engine.emit("alert", { level: "warn", taskId: t.id, message: `Couldn't write back to ${t.source}: ${e instanceof Error ? e.message : e}` }));
     };
     engine.beforeWake.push(async (d) => {
-      if (d.verdict === "send_back" && sync.ready() && connections.ok("notion")) await sync.collectComments(d.task, d.note);
+      if (d.verdict === "send_back" && sync.inNotion()) await sync.collectComments(d.task, d.note);
     });
 
     return {

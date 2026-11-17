@@ -67,8 +67,8 @@ export const INFO: Record<ConnectionName, Omit<Connection, "name" | "status" | "
   },
   notion: {
     label: "Notion",
-    neededFor: "Review docs, comments, decisions, the factory board, learn-tagged artifacts",
-    required: true,
+    neededFor: "Review in Notion instead of the app, the factory board, intake from your Notion boards",
+    required: false,
     via: "The Notion connector in Claude",
     fix: { url: "https://claude.ai/customize/connectors", steps: CONNECTOR_STEPS("Notion", "notion") },
   },
@@ -241,9 +241,15 @@ export class Connections {
    */
   used(name: ConnectionName): boolean {
     if (INFO[name].required || name === "github" || name === "claude") return true;
+    if (name === "notion" && this.notionInUse()) return true;
     const chosen = connectorSettings(this.store).server?.[name];
     if (chosen === "") return false;
     return !!chosen || this.store.setting<string[]>("connections_enabled", []).includes(name);
+  }
+
+  private notionInUse(): boolean {
+    const n = this.engine.settings().notion;
+    return !!(this.store.setting<{ reviewsDb?: string }>("notion_ids", {}).reviewsDb || n.boards?.length || n.intakeBoard);
   }
 
   private enable(name: ConnectionName, on: boolean) {

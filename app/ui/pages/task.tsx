@@ -293,7 +293,7 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
     },
     {
       id: "rgate",
-      sub: m.approved.includes("research") ? "Approved by you" : "You review in Notion",
+      sub: m.approved.includes("research") ? "Approved by you" : t.notionReviewId ? "You review in Notion" : "You review it",
       files: [],
       cap: (
         <>
@@ -304,7 +304,7 @@ function Rail({ t, stages, files, onFile }: { t: Task; stages: Stage[]; files: s
     { id: "plan", sub: stageLine(last("planner")) || "planner", files: ["plan.md"].filter(has) },
     {
       id: "pgate",
-      sub: m.approved.includes("plan") ? "Approved by you" : "You review in Notion",
+      sub: m.approved.includes("plan") ? "Approved by you" : t.notionReviewId ? "You review in Notion" : "You review it",
       files: [],
       cap: (
         <>

@@ -2,7 +2,7 @@
 
 An on-device software factory for one person. Work arrives from Slack and Jira, a Haiku triage step
 sorts it, and each task runs through research, planning and a build loop driven by Claude Code on
-your own subscription. You see it at three gates: the research doc and the plan (reviewed in Notion, the plan only after it's been checked against the original ask),
+your own subscription. You see it at three gates: the research doc and the plan (reviewed as markdown in the app, or in Notion if you use it; the plan only after it's been checked against the original ask),
 and a pull request that has already been reviewed, fixed and confirmed to solve the problem.
 
 "Factory" is a placeholder name.
@@ -170,7 +170,7 @@ to the requirement ids, so the chain from the original ask to the merged code ca
   line numbers, requirement or ticket ids, or review-round history, and stays under 800 words for research
   and 1000 for a plan. The engine refuses research or a plan that breaks this. Anything the ask didn't
   request is listed under `## Extras, yes or no?` for you to decide, and the requirements review can't
-  wave it through. In Notion and the app, everything for the builder (requirements, review, statechart,
+  wave it through. In the app and Notion, everything for the builder (requirements, review, statechart,
   TLC) is folded away under one toggle.
 - **The plan is checked against the original ask before you see it.** A separate requirements review
   rereads the Slack message or Jira ticket and traces every requirement into the research and the plan.
@@ -211,7 +211,7 @@ and cost small. A week after a task finishes, the cleanup routine deletes its se
 A **research task** (recipe `research`: triage picks it when the ask wants an answer, findings or a
 recommendation rather than a change; or `factory add --recipe research`, or "Research only" in the New task
 window) runs only the research part: research with its statechart and TLC check, the requirements review
-of the research, then the research gate in Notion. Approving it ends the task; there is no plan, branch or
+of the research, then the research gate. Approving it ends the task; there is no plan, branch or
 PR, and the repo is read in place. A Notion card's Type property (Research, Spike, Bug, Feature and the
 like) sets the recipe with no model call, and so does a title that starts with "Research", "Investigate"
 and similar. To change it later, use `factory recipe ID research` or "Research only?" on the task page;
@@ -301,7 +301,8 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
 
 - `factory connections` shows Slack, Notion, Atlassian (Jira and Confluence), AWS, Gmail, Google Drive,
   Claude Code and GitHub as connected, expired or missing. AWS, Gmail, Drive and Atlassian are optional:
-  they stay quiet until `factory connect aws` (or `gmail`, `drive`, `jira`) turns them on. Each row shows the
+  they stay quiet until `factory connect aws` (or `gmail`, `drive`, `jira`) turns them on. Notion is
+  optional too: it counts once you connect it, set up the factory board or watch a Notion board. Each row shows the
   server it uses and the account or workspace that server is signed in to. With several servers for one
   service (two Notion workspaces, three AWS accounts), pick one on the row. AWS servers can make any AWS
   call through one generic tool, so stages may use only AWS tools that plainly read (get, list, describe,
@@ -324,7 +325,12 @@ has. The factory holds no tokens, needs no Slack app and no admin approval beyon
 - `factory disconnect slack` stops the factory using a connector; Claude keeps it. Remove it in Claude's
   connector settings to revoke access entirely.
 
-`factory connect notion` also builds your factory board on a page you name (`factory notion setup "Factory"`, or its link): **Jobs**, **Tickets**
+**Without Notion** (the default), research, plans and gates are the markdown files in the task's job folder.
+The gate shows the doc in the app, with the builder detail folded away and an Open in VS Code button.
+Write what needs work in the note: it goes back with a send-back, and the next round answers it. Cards,
+tickets and tasks are tracked in the factory itself. Nothing asks you to set Notion up.
+
+**With Notion**, `factory connect notion` also builds your factory board on a page you name (`factory notion setup "Factory"`, or its link): **Jobs**, **Tickets**
 (each tagged with its job, the stage that created it and the stage picking it up) and **Reviews**.
 At the research and plan gates the review doc is published there. Comment in Notion on every issue,
 then give one overall verdict (`factory approve`, `send-back`, `drop`, or the app). On a send-back, every
@@ -389,8 +395,8 @@ by Rust, and engine events stream back to both windows.
 - **Widget (default)**: a pill at the top right that opens into Needs you, Running and Up next. Gates
   can be approved or dropped right there; questions and permission prompts are answered there too.
 - **Full app**: the board (the engine refuses moves it doesn't allow, with the reason), the backlog and
-  the bin, each task's rail with its caps, the research and plan gates (read the summary, review in
-  Notion, then one overall verdict), PR ready, Needs you, the live session (watch, take over, or open
+  the bin, each task's rail with its caps, the research and plan gates (read the doc in the app, or
+  review in Notion if you use it, then one overall verdict), PR ready, Needs you, the live session (watch, take over, or open
   it in Terminal), inbox and triage, connections, routines, rules and learning, settings.
 - **Headless**: Settings → How it runs → Headless. The app quits at launch; the engine keeps running.
 - The menu bar icon opens the app or Needs you and shows or hides the widget. macOS notifications fire
