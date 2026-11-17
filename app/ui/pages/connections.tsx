@@ -471,14 +471,14 @@ function IntakeBoard({ s, connected, reload }: { s: NotionStatus; connected: boo
           <div class="label">{watched.length ? "Add another board" : "Add a board"}</div>
           <div class="fields">
             <Field label="Board name, as it shows in Notion">
-              <input class="in" placeholder="Custom Tools Board" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected || saving} />
+              <input class="in" placeholder="Side Projects Board" value={board} onInput={(e) => setBoard(e.currentTarget.value)} disabled={!connected || saving} />
             </Field>
             <Field label="Ready column">
               <input class="in" placeholder="Ready for agent" value={status} onInput={(e) => setStatus(e.currentTarget.value)} disabled={!connected || saving} />
             </Field>
             <Field label="Its work lives in (one repo, or a folder of repos the card names)" wide>
               <span class="row">
-                <input class="in" placeholder="~/Documents/Custom Tools" value={folder} onInput={(e) => setFolder(e.currentTarget.value)} disabled={!connected || saving} />
+                <input class="in" placeholder="~/code/side-projects" value={folder} onInput={(e) => setFolder(e.currentTarget.value)} disabled={!connected || saving} />
                 {inApp && (
                   <Btn onClick={() => choose()} disabled={!connected || saving}>
                     Choose…
